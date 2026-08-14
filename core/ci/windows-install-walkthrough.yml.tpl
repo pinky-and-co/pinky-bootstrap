@@ -1,0 +1,93 @@
+  install-walkthrough-windows:
+    # Le parcours d'INSTALL, joué de bout en bout sur Windows — pas les tests, pas les hooks.
+    #
+    # Pourquoi un job de plus alors que `precommit-windows` existe déjà : celui-là prouve que les
+    # hooks et la suite de tests tournent sous Windows, jamais que `init-workspace → render →
+    # distribute → drift` y arrive. C'est pourtant la seule séquence qu'un adoptant exécute, et deux
+    # de ses maillons sont OS-dépendants par construction :
+    #
+    #   - le lanceur des hooks est FIGÉ au rendu (`python3` sur POSIX, `py -3` sous Windows) et
+    #     s'écrit dans settings.json — un rendu fait ailleurs produit des hooks morts ;
+    #   - les chemins d'instance (`.pinky/config.txt`) portent antislashs et lettre de lecteur.
+    #
+    # Tant que ce job n'existait pas, la première exécution réelle de cette séquence sous Windows
+    # devait avoir lieu sur la machine de l'adoptant. Ajouté 2026-08-09 après avoir rejoué l'install
+    # d'un tiers sur macOS — qui, elle, a trouvé un défaut (card `monter-le-workspace-du-frere`).
+    #
+    # Profil `example` : le seul public, donc le seul disponible dans un checkout CI.
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: engine
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the engine as a package
+        run: pip install ./engine
+
+      - name: Install the tooling the distribution requires
+        # `pinky distribute` refuse de finir sans `prek` ni `detect-secrets` sur le PATH (échec
+        # explicite, exit 1). Ce sont donc des prérequis d'INSTALL au même titre que Python — le
+        # how-to ne les listait pas, trou trouvé par ce job au deuxième run (2026-08-09).
+        run: pip install prek detect-secrets
+
+      - name: Bootstrap a workspace + a repo to distribute to
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ws\pinky-demo-repo -Force | Out-Null
+          Set-Location ws
+          $ErrorActionPreference = 'Stop'
+          pinky init-workspace .
+          if ($LASTEXITCODE -ne 0) { throw "init-workspace a échoué ($LASTEXITCODE)" }
+          # Le marqueur doit exister ET porter config.txt — c'est lui qui DÉFINIT la racine
+          # (ADR-0065), et un `.pinky/` nu ne suffit pas (défaut trouvé sur pinky-provider).
+          if (-not (Test-Path .pinky\config.txt)) { throw "init-workspace n'a pas écrit .pinky/config.txt" }
+          "default_profile = example`nrepo_globs = pinky-demo-*" | Set-Content .pinky\config.txt
+          Set-Location pinky-demo-repo
+          git init -q -b main .
+          New-Item -ItemType File -Path README.md -Force | Out-Null
+          git add -A
+          git -c user.email=ci@example.invalid -c user.name=ci commit -qm init
+
+      - name: Render — and the launcher must be the Windows one
+        shell: pwsh
+        working-directory: ws
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pinky install --provider claude
+          if ($LASTEXITCODE -ne 0) { throw "pinky install a échoué ($LASTEXITCODE)" }
+          if (-not (Test-Path CLAUDE.md)) { throw "aucun CLAUDE.md rendu" }
+          $settings = Get-Content .claude\settings.json -Raw
+          # LE test de ce job : un rendu fait sur macOS/Linux écrirait `python3`, et les hooks ne
+          # démarreraient pas ici. Une régression sur ce point est silencieuse — les hooks ne
+          # tournent simplement jamais.
+          # Viser la forme EXACTE de la commande de hook : le mot `python3` nu pourrait
+          # légitimement apparaître dans une entrée `permissions.allow` d'un profil.
+          if ($settings -notmatch '"command": "py -3') { throw "settings.json ne porte pas le lanceur Windows (py -3)" }
+          if ($settings -match '"command": "python3')  { throw "settings.json porte un lanceur POSIX (python3)" }
+
+      - name: Distribute + drift on a real repo
+        shell: pwsh
+        working-directory: ws
+        run: |
+          # En pwsh, un exécutable natif qui rend un code non nul n'interrompt PAS le script —
+          # `$ErrorActionPreference` ne couvre que les cmdlets. Sans ces contrôles explicites, une
+          # distribution en échec passe inaperçue et les assertions suivantes mesurent un état
+          # qu'aucune commande n'a produit. Constaté au premier run de ce job (2026-08-09).
+          $ErrorActionPreference = 'Stop'
+          pinky distribute --repo pinky-demo-repo --profile example --dry-run
+          if ($LASTEXITCODE -ne 0) { throw "distribute --dry-run a échoué ($LASTEXITCODE)" }
+          pinky distribute --repo pinky-demo-repo --profile example
+          if ($LASTEXITCODE -ne 0) { throw "distribute a échoué ($LASTEXITCODE)" }
+          # `drift` sort 0 même quand il ne trouve AUCUN repo : c'est le no-op silencieux
+          # d'ADR-0065. On exige donc que le repo soit nommé dans la sortie, pas juste un code 0.
+          $out = pinky drift | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "drift a échoué ($LASTEXITCODE)" }
+          Write-Output $out
+          if ($out -notmatch 'pinky-demo-repo') { throw "drift n'a découvert aucun repo — no-op silencieux" }
+          if ($out -notmatch 'No drift') { throw "drift non nul juste apres distribution" }

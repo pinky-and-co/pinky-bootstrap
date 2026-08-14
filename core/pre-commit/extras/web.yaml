@@ -1,0 +1,47 @@
+  # ── EXTRA web — HTML/CSS/JS repos (package.json, no pyproject.toml) ────────
+  # Conventions: AGENT_JS_CONVENTIONS.md (file responsibilities + minification).
+  # Three warn-only hooks (never block — POC-friendly) + one hard block (engine sync).
+  # Each hook is the SOLE hook of its `- repo:` block so the à-la-carte filter removes whole
+  # blocks (HOOK_MANIFEST keys: js_file_size / js_structure / html_inline_js / js_engine_sync).
+
+  # Web: .js file size (warn-only)
+  - repo: local
+    hooks:
+      - id: js-file-size
+        name: "[JS-SIZE] .js file size"
+        entry: python scripts/hooks/check_js_file_size.py
+        language: python
+        files: \.js$
+        exclude: \.min\.js$
+        pass_filenames: true
+
+  # Web: app.js without an engine.js/core.js sibling (warn-only)
+  - repo: local
+    hooks:
+      - id: js-structure
+        name: "[JS-STRUCT] app.js logic extraction"
+        entry: python scripts/hooks/check_js_structure.py
+        language: python
+        files: \.js$
+        exclude: \.min\.js$
+        pass_filenames: true
+
+  # Web: inline <script> body in .html (warn-only)
+  - repo: local
+    hooks:
+      - id: html-inline-js
+        name: "[HTML-JS] Inline JS in .html"
+        entry: python scripts/hooks/check_html_inline_js.py
+        language: python
+        files: \.html$
+        pass_filenames: true
+
+  # Web: engine.js staged but engine.min.js not regenerated (HARD BLOCK)
+  - repo: local
+    hooks:
+      - id: js-engine-sync
+        name: "[JS-ENGINE-SYNC] engine.js / engine.min.js in sync"
+        entry: python scripts/hooks/check_js_engine_sync.py
+        language: python
+        files: \.js$
+        pass_filenames: true

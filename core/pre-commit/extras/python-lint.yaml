@@ -1,0 +1,32 @@
+  # ── EXTRA python-lint — repos with .py files but no pyproject.toml (no src/ layout) ──────
+  # Meta/tooling repos (the moteur itself, asset/infra scripts) ship Python without being a
+  # package: no src/, so mypy/bandit/interrogate/darglint (which all assume src/) don't apply.
+  # ruff-check/ruff-format have no such assumption — they walk the whole repo tree.
+  # --cache-dir: repos with a pyproject.toml redirect ruff's cache via [tool.ruff] cache-dir =
+  # ".cache/ruff" (workspace convention: every tool cache lives under .cache/). A repo with no
+  # pyproject.toml has no config file for that key, so ruff defaults to ./.ruff_cache at repo
+  # root — the CLI flag reproduces the same redirect without needing a standalone ruff.toml.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff-check
+        args: [--no-fix, --cache-dir=.cache/ruff]
+      - id: ruff-format
+        args: [--check, --cache-dir=.cache/ruff]
+
+  # Weak-assertion ratchet — mirrors the `python` extra's hook (tests.md § generator oracle). Blocks
+  # a fragment `assert "x" in <generator(...)>` whose generator has no whole-output equality oracle
+  # anywhere in tests/. Wired here 2026-07-25 (card CHANTIER0001 purger-generateurs-moteur): the
+  # moteur's 6 fragment-only sites were flags only under the hook's OLD per-file scoping — their
+  # oracles already lived in sibling files (test_precommit_config_oracle.py, test_profile_render_-
+  # oracles.py). Teaching the hook to resolve oracles repo-wide dropped the moteur to 0 flags, so the
+  # ratchet installs without blocking the first commit ("a hook one learns to --no-verify is worse
+  # than no hook"). check_weak_assertions.py scans the whole tests/ tree for the covered set.
+  - repo: local
+    hooks:
+      - id: check-weak-assertions
+        name: "[WEAK-ASSERT] Generated-output assertion needs an equality oracle"
+        entry: python scripts/hooks/check_weak_assertions.py
+        language: python
+        types: [python]
+        files: ^tests/

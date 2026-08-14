@@ -1,0 +1,10 @@
+  # ── EXTRA snowflake — Snowpark / Core API repos ───────────────────────────
+  # Snowpark / Core API conventions (no session.sql(), canonical method names)
+  - repo: local
+    hooks:
+      - id: check-snowpark-api
+        name: "[SNOWPARK-API] No session.sql(), canonical method names"
+        entry: python scripts/hooks/check_snowpark_api.py
+        language: python
+        types: [python]
+        files: ^src/

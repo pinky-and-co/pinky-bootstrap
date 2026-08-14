@@ -1,0 +1,66 @@
+.DS_Store
+__pycache__/
+
+# Caches d'outils. Les repos qui configurent `cache-dir` / `cache_dir` en pyproject les envoient
+# dans `.cache/` ; ce dépôt ne le fait pas encore, et les outils retombent alors sur leur défaut à
+# la racine. Les deux formes sont couvertes, pour que le rangement de la conf ne soit pas un
+# prérequis à un `git status` propre.
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.pyc
+# Venv du moteur — `scripts/hooks/run-tests` résout `.venv/bin/python` EN PREMIER. Sans lui, il
+# retombe sur le python3 système (sans pytest), sort en code 0 avec un avertissement, et la suite
+# n'est jamais exécutée au commit. Machine-locale par nature : jamais versionnée.
+# Pas de slash final : le venv vit hors d'iCloud (~/.cache/uv/…) et `.venv` n'est ici qu'un SYMLINK.
+# `.venv/` ne matche que les dossiers, donc le lien restait visible et committable — un chemin
+# absolu machine, inutile ailleurs. Même correctif que pinky-core (2026-07).
+.venv
+.env
+gen_planning_docs.py
+# ── mkdocs site (card site-mkdocs-sur-le-moteur) — same convention as the 8 libs ──────────────
+# docs/api/ itself is versioned (README.md, .pages) — mounting the site (this card) put it in the
+# nav, and a blanket `docs/api/` here meant README.md was never actually tracked, invisible locally
+# (present untracked on disk) but fatal on a clean CI checkout: NavEntryNotFound. Only the heavy
+# wget mirrors scripts/mirror_to_md.py can write under a per-library subdir are excluded, same
+# pattern as pinky-core.
+docs/api/*/*.com/
+# Local build output + local-dev asset symlink from pinky-studio, neither committed.
+docs/assets/
+site/
+site.nosync/
+# Per-machine local pointers — never versioned, never synced (each machine sets its own value)
+# `corpus-roots.txt` was listed here until 2026-08-06 and it was WRONG: the file is tracked, on
+# purpose. Its own header says it carries the CONVENTION only (relative paths, machine-independent),
+# while machine-specific roots go in the gitignored instance config. The gitignore line was the
+# thing that lied — a tracked file stays tracked whatever this file says, so nothing was broken,
+# but every reader was told the opposite of the design.
+#
+# `corpus-roots.local.txt` and `workspace-defaults.txt` were listed here until 2026-08-07. Both
+# lived at the MOTEUR root, which ADR-0065 killed: that path is the INSTALL path, not the workspace,
+# so a packaged moteur would write its config into site-packages. They merged into ONE file at
+# `<workspace root>/.pinky/config.txt` — outside this repo entirely, hence nothing left to ignore
+# here. Same git status and same role, they only ever differed in format.
+# `kanban-roots.txt` normally lives at the WORKSPACE root (outside any repo), but the hook resolves
+# "nearest, walking up" — so one dropped inside a repo is legal, and would otherwise be committed by
+# accident. Listed here for that case only.
+# It replaced the name `pluto-shared-root.txt`, which this file listed until 2026-08-06 and which
+# never existed in the code: the moteur is public corpus and its leak guard refuses `pluto-*`
+# patterns, so the pointer had to be named neutrally (ADR-0015 § Amendement).
+kanban-roots.txt
+# Same case as kanban-roots.txt: the marker normally sits at the WORKSPACE root (outside any repo),
+# but the resolver walks up, so one dropped inside a repo is legal — and would otherwise be
+# committed by accident, carrying this machine's absolute paths into a public repo.
+.pinky/
+# Local-only test fixtures — real/confidential queries (dayjob), never commit
+tests/*.sql
+tests/_local/
+# pinky_anonymize.py output — generated locally, never the anonymized data itself
+*.anon.csv
+*.anon.json
+*.anon.parquet
+# Arbre généré par le moteur — jamais versionné, SAUF policies.json qui est une
+# déclaration du repo (branch_workflow, languages) lue par les hooks et les skills.
+.claude/*
+!.claude/policies.json

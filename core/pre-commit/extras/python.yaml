@@ -1,0 +1,116 @@
+  # ── EXTRA python — repos with src/ ────────────────────────────────────────
+  # Python: ruff lint + format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff-check
+        args: [--no-fix]
+      - id: ruff-format
+        args: [--check]
+
+  # Python: type checking
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        # Hermetic (ADR-0026, supersedes ADR-0023's system carve-out): additional_dependencies is
+        # auto-derived per repo by setup.py (build_precommit_config) from THAT repo's own
+        # pyproject.toml runtime `dependencies` — mypy pin + real third-party deps, minus internal
+        # pinky-* packages (pre-release, not on PyPI, excluded from the derivation).
+        # --ignore-missing-imports stays as the residual fallback for those excluded imports only.
+        language: python
+        additional_dependencies: __MYPY_ADDITIONAL_DEPENDENCIES__
+        types: [python]
+        args: [--ignore-missing-imports]
+        files: ^src/
+        # mypy's incremental cache (.mypy_cache/) isn't safe under concurrent access — without
+        # this, prek/pre-commit's default file-batch parallelism spawns multiple mypy processes
+        # against the same cache dir and one crashes with INTERNAL ERROR (reproduced on
+        # pinky-core: a single-process run over the same files passes clean).
+        require_serial: true
+
+  # Python: security
+  # B108 (hardcoded /tmp) is skipped workspace-wide: Snowflake execution only exposes
+  # /tmp as a writable scratch directory, so it is the sanctioned path, not a smell.
+  - repo: https://github.com/PyCQA/bandit
+    rev: "1.9.4"
+    hooks:
+      - id: bandit
+        pass_filenames: false
+        args: [-r, src/, -ll, --skip, B108]
+        # `files: ^src/` — see the identical line on interrogate below for why this matters even
+        # with `pass_filenames: false` (which only controls what gets PASSED, not whether the hook
+        # runs at all).
+        files: ^src/
+
+  # Docstrings: coverage
+  - repo: local
+    hooks:
+      - id: interrogate
+        name: "[DOCSTRING] Coverage"
+        entry: interrogate
+        language: python
+        additional_dependencies: ["interrogate==1.7.0"]
+        pass_filenames: false
+        args: [src/, --ignore-init-method, --ignore-magic, --ignore-module, --ignore-private]
+        # Without this, the hook runs on EVERY commit regardless of what changed (pass_filenames:
+        # false + no files:/types: filter = pre-commit's default "matches everything"), always
+        # invoking `interrogate src/ ...` literally. mypy already skips cleanly on a repo with no
+        # src/ (it has `files: ^src/`, so pre-commit never runs it when nothing matches); bandit's
+        # `-r src/` on a missing dir just recurses over zero files and exits clean — but
+        # interrogate's CLI validates the path with click's `Path(exists=True)`, so a genuinely
+        # ABSENT src/ (not just empty) makes it hard-error (exit 2) instead of skipping. Found live
+        # 2026-08-07: the first "python"-extra repo without a src/ layout (pinky-workspace, via
+        # card pyproject-entry-point-et-ci-windows) — every prior consumer of this extra had one,
+        # so the gap was invisible until then.
+        files: ^src/
+
+  # Docstrings: args/returns match signature
+  #
+  # PAS de `--strictness` : le DÉFAUT de darglint est `long`, et c'est exactement le comportement
+  # voulu — une description d'une ligne ou de dix passe sans sections, mais dès qu'une section
+  # `Args:`/`Returns:` est ouverte elle doit être complète.
+  #
+  # Un `--strictness=short` avait été ajouté le 2026-07-31 pour obtenir cette propriété, sur la
+  # croyance que le défaut était `full`. FAUX, mesuré le 2026-08-06 sur `pinky_snowpark/xml.py` :
+  # long = 0 erreur · défaut = 0 · short = 3 · full = 5. `short` est plus STRICT que le défaut pour
+  # une docstring en prose — il exige des sections dès que la description dépasse une ligne. Le flag
+  # resserrait donc ce qu'il prétendait relâcher. Jamais distribué, il n'avait jamais mordu ; il a
+  # cassé les CI de pinky-snowpark (3) et pinky-connect (62) le jour de sa distribution.
+  #
+  # Troisième niveau de l'erreur, et le plus parlant : chaque repo porte déjà un `.darglint` qui
+  # déclare `strictness = long`. Un flag CLI ÉCRASE ce fichier. Le socle n'a donc pas à trancher
+  # cette valeur — le repo l'a déjà fait, et il a raison. Règle qui en découle : ne pas passer en
+  # ligne de commande ce qu'un fichier de config du repo possède.
+  - repo: local
+    hooks:
+      - id: darglint
+        name: "[DOCSTRING] Args/Returns match"
+        entry: darglint
+        language: python
+        additional_dependencies: ["darglint==1.8.1"]
+        types: [python]
+        files: ^src/
+
+  # Typed API guard
+  - repo: local
+    hooks:
+      - id: check-typed-api
+        name: "[TYPED-API] No raw dict/tuple/set in public annotations"
+        entry: python scripts/hooks/check_typed_api.py
+        language: python
+        types: [python]
+        files: ^src/
+
+  # Weak-assertion ratchet — first hook to target tests/, not src/ (tests.md § generator oracle).
+  # Blocks a fragment `assert "x" in <generator(...)>` that has no whole-output equality oracle in
+  # the same file. Narrow by design (name-matched generators only) so it stays at ~0 flags.
+  - repo: local
+    hooks:
+      - id: check-weak-assertions
+        name: "[WEAK-ASSERT] Generated-output assertion needs an equality oracle"
+        entry: python scripts/hooks/check_weak_assertions.py
+        language: python
+        types: [python]
+        files: ^tests/

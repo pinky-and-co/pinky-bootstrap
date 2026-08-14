@@ -1,0 +1,6 @@
+# Deps for scripts/mirror_to_md.py — HTML doc mirror → lean Markdown (ADR-0017).
+# Generation-time only; not bundled in any shipped lib.
+#   python3 -m pip install -r pinky-workspace/scripts/requirements-mirror.txt
+beautifulsoup4>=4.12
+lxml>=5.0
+markdownify>=0.13

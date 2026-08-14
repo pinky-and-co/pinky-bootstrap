@@ -1,0 +1,179 @@
+"""`cli_pinky.py` — sub-commands over `setup.py`'s flags (chantier-0001, card
+`cli-pinky-sous-commandes-au-lieu-de-flags`).
+
+Pins the exact defect the card measured: `setup.py --help` swallows `--help` as an unknown flag
+(`add_help=False` + `parse_known_args`) and falls into the interactive install branch, which WRITES.
+`cli_pinky.py --help` must exit 0, print the sub-commands, and write nothing.
+
+Dispatch is tested by capturing what each `cmd_*` hands to `setup.cli.main()` — proof the helper
+stays a thin translator (the card's "zero logic" constraint), never a second copy of setup/cli.py's
+mode logic.
+
+The implementation lives in `setup/cli_pinky.py` (kanban card `cli-pinky-py-n-est-pas-editable`);
+`cli_pinky` (root) is a thin re-exporting shim over it. Tests call through `cli_pinky.main` — the
+same function object as `cli_pinky_impl.main` — but patch dispatch targets on `cli_pinky_impl`,
+since that's the module a `cmd_*` function's globals actually resolve `setup_main` against.
+"""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+import cli_pinky
+import setup.cli_pinky as cli_pinky_impl
+
+# ── --help pins the defect the card measured ───────────────────────────────────
+
+
+def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["--help"])
+    assert exc.value.code == 0
+    out = capsys.readouterr().out
+    for name in (
+        "new-repo",
+        "distribute",
+        "drift",
+        "check-public",
+        "render",
+        "into",
+        "install",
+    ):
+        assert name in out
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_help_names_the_command_the_reader_typed(monkeypatch, capsys):
+    """L'aide nomme `argv[0]`, jamais un nom de fichier codé en dur.
+
+    `prog="cli_pinky.py"` était figé, donc `pinky drift --help` répondait
+    `usage: cli_pinky.py drift` — le nom d'un fichier que personne ne tape, propagé à CHAQUE
+    sous-commande (elles héritent du prog du parent). Les deux points d'entrée sont légitimes
+    (console script `pinky`, run direct `python cli_pinky.py`), donc aucun littéral ne peut être
+    juste pour les deux : le défaut est le codage en dur lui-même, pas la valeur choisie.
+
+    Simulé par `sys.argv[0]`, ce qu'argparse lit réellement — pas en patchant `prog`, ce qui
+    testerait le test.
+    """
+    for argv0, expected in (
+        ("/opt/venv/bin/pinky", "pinky"),
+        ("cli_pinky.py", "cli_pinky.py"),
+    ):
+        monkeypatch.setattr(sys, "argv", [argv0])
+        with pytest.raises(SystemExit) as exc:
+            cli_pinky.main(["drift", "--help"])
+        assert exc.value.code == 0
+        out = capsys.readouterr().out
+        assert out.startswith(f"usage: {expected} drift"), out.splitlines()[0]
+
+
+def test_no_command_is_an_error_not_a_silent_default(capsys):
+    # The bug being fixed: an unrecognized/absent mode used to fall through to interactive
+    # install. required=True on the subparsers makes an absent sub-command a hard argparse error.
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main([])
+    assert exc.value.code != 0
+
+
+# ── dispatch — each cmd_* is a thin, testable translation to setup.cli argv ────
+
+
+def _captured_argv(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli_pinky_impl, "setup_main", lambda argv: calls.append(argv))
+    return calls
+
+
+def test_new_repo_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["new-repo", "pinky-foo", "--scaffold", "--type", "web"])
+    assert calls == [["--new-repo", "pinky-foo", "--scaffold", "--type", "web"]]
+
+
+def test_new_repo_type_implies_scaffold(monkeypatch):
+    # --type without an explicit --scaffold still needs setup.py's --scaffold flag present,
+    # since --type has nothing to act on otherwise (setup/cli.py rejects that combination).
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["new-repo", "pinky-foo", "--type", "data"])
+    assert calls == [["--new-repo", "pinky-foo", "--scaffold", "--type", "data"]]
+
+
+def test_distribute_dispatch_repo(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["distribute", "--repo", "pinky-core", "--commit"])
+    assert calls == [["--repo", "pinky-core", "--commit"]]
+
+
+def test_distribute_dispatch_all(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["distribute", "--all", "--profile", "pluto"])
+    assert calls == [["--all", "--profile", "pluto"]]
+
+
+def test_drift_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["drift"])
+    assert calls == [["--check-drift"]]
+
+
+def test_check_public_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["check-public"])
+    assert calls == [["--check-public"]]
+
+
+def test_render_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["render", "--profile", "pinky", "--output", "/tmp/CLAUDE.md"])
+    assert calls == [["--profile", "pinky", "--output", "/tmp/CLAUDE.md"]]
+
+
+def test_into_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(
+        ["into", "/path/to/repo", "--profile", "pinky", "--target-os", "windows"]
+    )
+    assert calls == [
+        ["--into", "/path/to/repo", "--profile", "pinky", "--target-os", "windows"]
+    ]
+
+
+def test_install_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["install", "--provider", "claude"])
+    assert calls == [["--provider", "claude"]]
+
+
+# ── setup.cli.main(argv) — the programmatic entry point cli_pinky.py relies on ─
+
+
+def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
+    import setup.cli
+
+    # sys.argv carries something main(argv) must NOT read — proof argv, not sys.argv, drove parsing.
+    monkeypatch.setattr(
+        sys, "argv", ["setup.py", "--check-public", "--profile", "from-sys-argv"]
+    )
+    seen: list[str | None] = []
+    monkeypatch.setattr(
+        setup.cli, "check_public", lambda profile: seen.append(profile) or True
+    )
+
+    with pytest.raises(SystemExit):
+        setup.cli.main(["--check-public", "--profile", "from-explicit-argv"])
+
+    assert seen == ["from-explicit-argv"]
+
+
+# ── the root shim must stay a re-export, never a second copy ──────────────────
+
+
+def test_root_shim_reexports_the_same_objects_as_setup_cli_pinky():
+    # The whole point of the shim: `cli_pinky.main`/`setup_main` must be the exact functions
+    # defined in `setup/cli_pinky.py`, not a duplicate — otherwise the two entry points (installed
+    # console script vs `python cli_pinky.py`) could silently diverge again.
+    assert cli_pinky.main is cli_pinky_impl.main
+    assert cli_pinky.setup_main is cli_pinky_impl.setup_main
