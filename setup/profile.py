@@ -140,55 +140,6 @@ def _expand_agent_refs(
     return result
 
 
-def _inject_agent_model(
-    text: str, model_routing: dict[str, str], *, context: str
-) -> str:
-    """Insert a ``model:`` frontmatter line derived from ``tier:``, resolved via the profile's
-    ``model_routing`` table.
-
-    A hand-written ``model:`` next to ``tier:`` is two sources of truth for the same fact — exactly
-    what let 3 agents ship ``tier: fast`` + ``model: sonnet`` since their creation, never synced,
-    silently pinning them to the wrong model (found via CodeBurn token-usage data 2026-08-09: Haiku
-    near-zero despite `/commit`'s `fast` tier). Deriving ``model:`` here removes the second copy —
-    the source files carry ``tier:`` only, the distributed file gets ``model:`` injected.
-
-    No-op when the file carries no ``tier:`` (nothing to derive from — not every agent needs one).
-    """
-    fm_match = re.match(r"^---\n(.*?\n)---\n", text, re.DOTALL)
-    if fm_match is None:
-        return text
-    tier_match = re.search(r"^tier:\s*(\S+)\s*$", fm_match.group(1), re.MULTILINE)
-    if tier_match is None:
-        return text
-    tier = tier_match.group(1)
-    model = model_routing.get(tier)
-    if model is None:
-        sys.exit(
-            f"✗ {context}: tier '{tier}' has no entry in the profile's model_routing "
-            f"({', '.join(sorted(model_routing))})"
-        )
-    insert_at = fm_match.start(1) + tier_match.end()
-    return text[:insert_at] + f"\nmodel: {model}" + text[insert_at:]
-
-
-def _inject_agent_language(text: str, language: str, *, context: str) -> str:
-    """Insert a chat-language directive into an agent's system-prompt body, resolved via the SAME
-    axis formula ``render_languages`` uses for CLAUDE.md's `chat` line — never hand-typed in the
-    agent file, which every profile shares and none of them may pin to one language.
-
-    A forked agent does not reliably apply CLAUDE.md's language policy on its own (observed
-    2026-08-09: `gitmoji`'s first live run answered in English despite CLAUDE.md — and its policy
-    naming a different language — being loaded). An explicit, profile-resolved directive closes the
-    gap without a second place to keep in sync with ``render_languages``.
-    """
-    fm_match = re.match(r"^---\n.*?\n---\n", text, re.DOTALL)
-    if fm_match is None:
-        return text
-    directive = f"\nRespond to the user in `{language}` — this workspace's chat language policy.\n"
-    insert_at = fm_match.end()
-    return text[:insert_at] + directive + text[insert_at:]
-
-
 def _resolve_agent(
     entry: str,
     profile_path: Path,
@@ -353,46 +304,6 @@ def resolve_profile_agents(
     return agents, unresolved
 
 
-def build_knowledge_index(
-    profile: dict,
-    profile_path: Path,
-    *,
-    link_base: str | None = None,
-    scope_caps: frozenset[str] | None = None,
-    roots: list[Path] | None = None,
-) -> str:
-    """Build the {{knowledge_index}} markdown — one routing line per knowledge agent.
-
-    ``- [H1 name](workspace-relative-path) — summary``  (read lazily by path). When ``link_base``
-    is set (``--into``), links point at ``<link_base>/<basename>`` — the agents bundled into the
-    standalone POC repo — instead of the author-machine corpus path. ``roots`` restricts which
-    corpus roots feed the index (default: every declared root).
-
-    Order: the discovered agents by root then filename (nobody authored their order, but grouping by
-    corpus keeps a root's agents together), then any profile entry discovery did not already find, in
-    **declaration order** — the profile author's ordering is the reading order for the half they
-    control. An entry that IS discovered keeps its discovered position: the index is one list, and
-    rendering the same agent twice to honour two orderings would be worse than either.
-    """
-    if scope_caps is None:
-        scope_caps = resolve_scope_capabilities()
-    resolved_agents, unresolved = resolve_profile_agents(
-        profile, profile_path, scope_caps, roots
-    )
-    lines = [f"- ⚠️ unresolved: `{entry}`" for entry in unresolved]
-    for resolved in resolved_agents.values():
-        rel = f"{link_base}/{resolved.name}" if link_base else _display_path(resolved)
-        name, summary = _agent_name_and_summary(resolved)
-        # `slot:` is rendered INTO the index so a command can find its contributors without opening
-        # every agent to read a frontmatter (N reads per invocation, paid every time). The index is
-        # already in context; the marker makes it answer "who contributes to X" for free.
-        slot = _frontmatter_field(resolved, "slot")
-        marker = f" `[{slot}]`" if slot else ""
-        suffix = f" — {summary}" if summary else ""
-        lines.append(f"- [{name}]({rel}){marker}{suffix}")
-    return "\n".join(lines) if lines else "_(no knowledge agents declared)_"
-
-
 def _command_description(path: Path) -> str:
     """Read the `description:` frontmatter field from a command file — empty if absent."""
     in_frontmatter = False
@@ -462,44 +373,6 @@ def _meets_requirements(path: Path, scope_caps: frozenset[str]) -> bool:
     if machine is not None and machine not in MACHINE_CAPABILITIES:
         return False
     return True
-
-
-def build_commands_index(
-    profile_path: Path | None, scope_caps: frozenset[str] | None = None
-) -> str:
-    """Build the {{commands_index}} markdown table — one row per installed slash command.
-
-    Mechanically generated from each command file's `description:` frontmatter — never hand-typed —
-    profile-aware via the same ``_scaffolding_sources`` union `.claude/commands/` is actually built
-    from (core + this profile's private commands, profile wins on a name collision). This is the
-    single generation point; a table that drifts from what's installed is exactly the failure this
-    replaces (2026-07-10: the old hand-typed table listed a removed command and was missing 9 of 17).
-
-    ``scope_caps`` must be the SAME set passed to the install, or the table drifts again — this time
-    advertising a command the capability filter withheld. Pass it explicitly rather than letting
-    each call resolve its own: two resolutions of the same thing are two chances to disagree.
-
-    A skill also creates a slash command (its directory name), so it belongs in the same table —
-    otherwise a command migrated to a skill (e.g. ``commit``, forked into the ``gitmoji`` agent)
-    would silently vanish from this list despite `/commit` still working. Skipped when the skill
-    declares ``user-invocable: false`` — it never appears in the `/` menu, so listing it here would
-    be the table lying in the other direction.
-    """
-    sources = _scaffolding_sources("commands", profile_path, scope_caps=scope_caps)
-    rows = [
-        f"| `/{Path(name).stem}` | {_command_description(path)} |"
-        for name, path in sorted(sources.items())
-    ]
-    for name, skill_dir in sorted(_skill_sources(profile_path).items()):
-        skill_md = skill_dir / "SKILL.md"
-        if (
-            not skill_md.exists()
-            or _frontmatter_field(skill_md, "user-invocable") == "false"
-        ):
-            continue
-        rows.append(f"| `/{name}` | {_command_description(skill_md)} |")
-    header = "| Command | What it does |\n|---------|-------------|"
-    return header + "\n" + "\n".join(rows) if rows else header
 
 
 # Canonical language axes (ordered) — the override vocabulary for a profile's `languages:` block.
@@ -1037,24 +910,6 @@ def _scaffolding_sources(
     return sources
 
 
-def _skill_sources(profile_path: Path | None) -> dict[str, Path]:
-    """Resolve skill directories (each entry is a directory, not a flat file).
-
-    Skills in core/skills/<name>/ are the base; a profile's <profile dir>/skills/<name>/
-    overrides a core skill of the same name (last writer wins by directory name).
-    """
-    src_dirs = [CORE_DIR / "skills"]
-    if profile_path is not None:
-        src_dirs.append(profile_path.parent / "skills")
-    sources: dict[str, Path] = {}
-    for sd in src_dirs:
-        if sd.is_dir():
-            for skill_dir in sorted(sd.iterdir()):
-                if skill_dir.is_dir():
-                    sources[skill_dir.name] = skill_dir
-    return sources
-
-
 def _install_claude_scaffolding(
     profile_path: Path | None = None,
     target_root: Path = WORKSPACE_ROOT,
@@ -1219,54 +1074,28 @@ def _write_settings_json(profile: dict, claude_dir: Path) -> Path | None:
     return target
 
 
-# Scripts REGISTERED as lifecycle hooks in settings.json.
-# (statusline.py, pinky_local.py) are helpers, not hooks. Doubles as the managed-group marker set:
-# a settings.json hook group is OURS iff its command references one of these basenames.
-REGISTERED_HOOK_SCRIPTS = (
-    "stop_handoff.py",
-    "guard.py",
-    "check_privacy_egress.py",
-    "post_edit_lint.py",
-)
 
 
-def _merge_managed_groups(existing: object, managed: list[dict]) -> list[dict]:
-    """Replace the framework-managed group(s) in a hook-event list, preserving user-added groups.
+def _install_status_lines(claude_dir: Path, target_os: str | None = None) -> None:
+    """Copy the status-line scripts into ``<claude_dir>/scripts/`` and wire them in ``settings.json``.
 
-    Managed = any group whose command mentions a REGISTERED_HOOK_SCRIPTS basename. Idempotent:
-    rerunning drops the previous managed groups and appends the fresh ones; a user's own group
-    (custom linter, notifier) survives every setup.py run.
-    """
-    kept = [
-        group
-        for group in (existing if isinstance(existing, list) else [])
-        if isinstance(group, dict)
-        and not any(
-            any(
-                script in (h.get("command") or "") for script in REGISTERED_HOOK_SCRIPTS
-            )
-            for h in (group.get("hooks") or [])
-            if isinstance(h, dict)
-        )
-    ]
-    return kept + managed
+    Only the status lines: every lifecycle hook (Stop, PreToolUse, PostToolUse) now ships with a
+    plugin, which the plugin mechanism registers on its own. A status line cannot — ``statusLine``
+    is a settings key with no plugin equivalent, and a plugin's own ``settings.json`` supports
+    ``subagentStatusLine`` only. Shipping half a feature through each channel would mean two places
+    to keep in sync, so both stay here.
 
-
-def _install_harness_hooks(claude_dir: Path, target_os: str | None = None) -> None:
-    """Install the Claude Code harness hooks into ``<claude_dir>/hooks/`` and wire ``settings.json``.
-
-    Generic framework behaviour (kanban feature, CHANTIER0001), not profile-gated: copies every
-    script from ``core/status-lines/`` and registers the lifecycle hooks. On ``Stop`` and
-    ``PreToolUse`` only the MANAGED groups are replaced (see ``_merge_managed_groups``) — user-added
-    groups, other hook events and every non-hooks key in settings.json are preserved.
-    ``settings.local.json`` is never touched.
+    The commands carry an ABSOLUTE path. A relative one resolves against the session's working
+    directory, which is not the directory holding the scripts — the status line then renders
+    nothing, silently, with no error anywhere (found live 2026-08-14).
 
     ``target_os`` (``"Windows"`` or anything else, mirrors ``platform.system()``) picks the launcher
-    for the machine that will RUN the config, not the one generating it. Self-install
-    (``install_from_profile``) leaves it unset — target == author machine by construction, so
-    ``platform.system()`` is correct. ``--into`` (rendering for a non-author machine, e.g. le frère)
-    must pass it explicitly: ``platform.system()`` there reads the author's OS, which silently
-    committed the wrong launcher (loup, CHANTIER0001, 2026-07-04).
+    for the machine that will RUN the config, not the one generating it. Self-install leaves it
+    unset — target == author machine by construction. ``--into`` (rendering for a non-author
+    machine, e.g. le frère) must pass it explicitly: ``platform.system()`` there reads the author's
+    OS, which silently committed the wrong launcher (loup, CHANTIER0001, 2026-07-04).
+
+    Every other key in ``settings.json`` is preserved; ``settings.local.json`` is never touched.
     """
     if not CORE_HARNESS_HOOKS_DIR.is_dir():
         return
@@ -1274,10 +1103,10 @@ def _install_harness_hooks(claude_dir: Path, target_os: str | None = None) -> No
     if not scripts:
         return
 
-    hooks_dst = claude_dir / "hooks"
-    hooks_dst.mkdir(parents=True, exist_ok=True)
+    scripts_dst = claude_dir / "scripts"
+    scripts_dst.mkdir(parents=True, exist_ok=True)
     for src in scripts:
-        dst = hooks_dst / src.name
+        dst = scripts_dst / src.name
         shutil.copy(src, dst)
         dst.chmod(0o755)
 
@@ -1291,82 +1120,23 @@ def _install_harness_hooks(claude_dir: Path, target_os: str | None = None) -> No
     if not isinstance(data, dict):
         data = {}
 
-    hooks = data.get("hooks")
-    if not isinstance(hooks, dict):
-        hooks = {}
-    # Path base resolves cross-harness: ${CLAUDE_PROJECT_DIR:-.} = the var under Claude Code
-    # (it sets it), else cwd `.` — so a harness that reads .claude/settings.json but does NOT
-    # set CLAUDE_PROJECT_DIR (e.g. Cortex Code/COCO, whose -w workdir defaults to the project)
-    # doesn't break on an empty var. Braces are doubled ({{ }}) for the surrounding f-string.
-    # Interpreter is OS-specific: `py -3` on Windows (no `python3` there — the frère's machine),
-    # `python3` elsewhere. `target_os` wins when set (--into for a non-author machine); else the
-    # generating machine's OS (self-install, target == author by construction).
     launcher = "py -3" if (target_os or platform.system()) == "Windows" else "python3"
-    stop_cmd = f'{launcher} "${{CLAUDE_PROJECT_DIR:-.}}/.claude/hooks/stop_handoff.py"'
-    hooks["Stop"] = _merge_managed_groups(
-        hooks.get("Stop"), [{"hooks": [{"type": "command", "command": stop_cmd}]}]
-    )
-    # PreToolUse guard (/careful + /freeze + /guard): one script reads the .guard-state.json the
-    # slash commands toggle and asks/denies accordingly. Matcher covers Bash (careful) + the
-    # write-class tools (freeze). Dormant — and free — until a slash command activates the state.
-    guard_cmd = f'{launcher} "${{CLAUDE_PROJECT_DIR:-.}}/.claude/hooks/guard.py"'
-    # PreToolUse privacy guard (card `privacy-routing`): a Read — or a read-like Bash command
-    # (cat/head/tail…, pre-allowed prompt-free by permissions_allow) — of a file whose CONTENT
-    # carries secret-shaped data is denied before it reaches the cloud model (path-level egress is
-    # already covered by permissions_deny). Always on — detection reuses scrub(), allowlist honoured.
-    privacy_cmd = (
-        f'{launcher} "${{CLAUDE_PROJECT_DIR:-.}}/.claude/hooks/check_privacy_egress.py"'
-    )
-    hooks["PreToolUse"] = _merge_managed_groups(
-        hooks.get("PreToolUse"),
-        [
-            {
-                "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
-                "hooks": [{"type": "command", "command": guard_cmd}],
-            },
-            {
-                "matcher": "Read|Bash",
-                "hooks": [{"type": "command", "command": privacy_cmd}],
-            },
-        ],
-    )
-    # PostToolUse linter (kanban card `posttooluse-checker-du-fichier-ecrit`): runs the checker(s)
-    # relevant to the file just written (routing mirrors .pre-commit-config.yaml's own files:/types:
-    # filters) and surfaces violations via exit 2 + stderr — Claude Code feeds that back to the agent
-    # in the SAME turn, before its next tool call. Informs only: the write already happened and can't
-    # be un-done, so this never blocks (that's PreToolUse's job, above). Same matcher scope as guard's
-    # write-class tools, minus Bash — this hook only knows how to lint a file, not a shell command.
-    lint_cmd = (
-        f'{launcher} "${{CLAUDE_PROJECT_DIR:-.}}/.claude/hooks/post_edit_lint.py"'
-    )
-    hooks["PostToolUse"] = _merge_managed_groups(
-        hooks.get("PostToolUse"),
-        [
-            {
-                "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-                "hooks": [{"type": "command", "command": lint_cmd}],
-            },
-        ],
-    )
-    data["hooks"] = hooks
+    for key, script in (
+        ("statusLine", "statusline.py"),
+        ("subagentStatusLine", "subagent_statusline.py"),
+    ):
+        path = scripts_dst / script
+        if path.exists():
+            data[key] = {
+                "type": "command",
+                "command": f'{launcher} "{path}"',
+            }
 
     claude_dir.mkdir(parents=True, exist_ok=True)
     target.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    # The guard's runtime state (.guard-state.json) is per-machine and ephemeral — never commit it.
-    gitignore = claude_dir / ".gitignore"
-    if ".guard-state.json" not in (
-        gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
-    ):
-        with gitignore.open("a", encoding="utf-8") as fh:
-            fh.write(".guard-state.json\n")
-    n_hooks = sum(1 for s in scripts if s.name in REGISTERED_HOOK_SCRIPTS)
-    n_helpers = len(scripts) - n_hooks
-    print(
-        f"  ✓ .claude/hooks/  ({n_hooks} hook(s) + {n_helpers} helper(s)) "
-        "+ settings.json Stop + PreToolUse guard + PostToolUse lint"
-    )
+    print(f"  \u2713 .claude/scripts/  ({len(scripts)} status line(s)) + settings.json")
 
 
 def install_from_profile(profile_arg: str, output: Path | None = None) -> None:
@@ -1417,7 +1187,7 @@ def install_from_profile(profile_arg: str, output: Path | None = None) -> None:
         # Least-agency baseline: render the profile's permissions_deny into .claude/settings.json.
         _write_settings_json(profile, WORKSPACE_ROOT / ".claude")
         # Harness hooks (Stop → kanban handoff auto-maintainer) + settings.json wiring.
-        _install_harness_hooks(WORKSPACE_ROOT / ".claude")
+        _install_status_lines(WORKSPACE_ROOT / ".claude")
 
     _print_profile_summary(profile, profile_path, target)
     # Rendering is not distributing — ADR-0055's drift check only fires on the distribution flags,
@@ -1507,7 +1277,7 @@ def install_into_repo(
     _write_settings_json(profile, repo / ".claude")
     # 5. Harness hooks (Stop → kanban handoff auto-maintainer). No-op at runtime when the cloned
     #    repo has no _KANBAN/, so it degrades cleanly on a POC machine.
-    _install_harness_hooks(repo / ".claude", target_os=target_os)
+    _install_status_lines(repo / ".claude", target_os=target_os)
 
     _print_profile_summary(profile, profile_path, repo / "CLAUDE.md")
     warn_on_drift()  # same blind spot as install_from_profile — advisory, never blocking

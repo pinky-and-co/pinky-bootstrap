@@ -68,6 +68,7 @@ packages = ["setup"]
 [tool.hatch.build.targets.wheel.force-include]
 "cli_pinky.py" = "cli_pinky.py"
 "core" = "core"
+"corpus-public" = "corpus-public"
 "scripts" = "scripts"
 
 [tool.hatch.build.targets.sdist]
@@ -75,6 +76,7 @@ include = [
     "setup",
     "cli_pinky.py",
     "core",
+    "corpus-public",
     "scripts",
     "README.md",
 ]

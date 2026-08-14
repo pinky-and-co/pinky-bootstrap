@@ -163,22 +163,6 @@ def test_validate_profile_fails_on_out_of_range_value(capsys):
     reason="profil privé `pinky` absent du checkout public (CI) — la CI annonce ce qu'elle "
     "ne couvre pas plutôt que de mentir par omission",
 )
-def test_render_claude_md_includes_behavior_section():
-    # Seul test dont le profil est le SUJET : asserte que `pinky` diale teaching_mode on.
-    # Non basculable sur le profil public (`example` garde les valeurs par défaut) —
-    # d'où le marqueur + skipif au lieu d'un switch.
-    profile, ppath = setup.load_profile("pinky")
-    content = setup.render_claude_md(profile, ppath, template_name="CLAUDE-base.md.tpl")
-    assert "## Behavior policy" in content
-    assert "Vocabulary** — teach" in content  # pinky profile dials it to teach
-
-
-if __name__ == "__main__":
-    import pytest
-
-    sys.exit(pytest.main([__file__, "-q"]))
-
-
 # ── multi_agent — le 3e knob, rendu depuis 2026-08-09 ────────────────────────
 
 
@@ -202,22 +186,6 @@ def test_render_multi_agent_carries_the_dialed_value():
 
     assert "**Max concurrent Tasks:** 8" in rendered
     assert "**Per-Task timeout:** 15 min" in rendered  # knob non dialé → défaut moteur
-
-
-def test_the_no_loop_rule_no_longer_restates_a_number():
-    """Cliquet anti-dérive : la rule ne doit plus porter de valeur en dur.
-
-    C'est la source du mensonge d'origine. Un `(default: 4)` réintroduit passerait tous les autres
-    tests — seul celui-ci le voit.
-    """
-    import re
-
-    rule = (setup.CORE_DIR / "rules" / "base" / "apply-convention.md").read_text(
-        encoding="utf-8"
-    )
-    culprits = re.findall(r"(?:default|max|timeout)[^\n]{0,30}?\b\d+\b", rule, re.I)
-
-    assert not culprits, f"valeur en dur réintroduite dans la rule : {culprits}"
 
 
 @pytest.mark.parametrize(

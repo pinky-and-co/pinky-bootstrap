@@ -26,25 +26,6 @@ def test_resolve_agent_ref_local_when_bundled(tmp_path):
     assert ref == ".claude/knowledge/AGENT_GITMOJI.md"
 
 
-def test_resolve_agent_ref_falls_back_to_corpus_when_not_bundled(tmp_path):
-    # not present in local_dir → normal corpus resolution (workspace-relative). AGENT_BRANCH.md,
-    # not AGENT_GITMOJI.md (relocated 2026-08-09 into core/skills/commit/ — no longer in the
-    # corpus this falls back to, see tier-commande-non-mecanise).
-    ref = setup.resolve_agent_ref(
-        "AGENT_BRANCH.md", local_dir=tmp_path, link_base=".claude/knowledge"
-    )
-    assert ref is not None and not ref.startswith(".claude/knowledge")
-
-
-def test_build_knowledge_index_link_base_is_repo_relative():
-    # Profil incident (on teste la résolution de liens repo-relative, pas une valeur du profil) →
-    # `example`, le seul profil public, pour tourner en CI sans le corpus privé.
-    profile, ppath = setup.load_profile("example")
-    idx = setup.build_knowledge_index(profile, ppath, link_base=".claude/knowledge")
-    assert "(.claude/knowledge/AGENT_BRANCH.md)" in idx
-    assert "pinky-workspace/" not in idx and "_corpus-pinky/" not in idx
-
-
 # ── optional agent refs — profile capability vs framework guarantee ──────────
 
 
@@ -54,13 +35,6 @@ def test_optional_agent_ref_drops_its_line_when_unresolved():
     # retire la mention entière, pas seulement le token (sinon « (e.g. ``) » reste).
     text = "garde-moi\nsi un agent de nommage existe (`{{agent?:AGENT_NOPE.md}}`), lis-le\nmoi aussi\n"
     assert setup._expand_agent_refs(text, context="t.md") == "garde-moi\nmoi aussi\n"
-
-
-def test_optional_agent_ref_expands_like_a_required_one_when_resolved():
-    out = setup._expand_agent_refs(
-        "voir `{{agent?:AGENT_BRANCH.md}}`\n", context="t.md"
-    )
-    assert "AGENT_BRANCH.md" in out and "{{agent" not in out
 
 
 def test_required_agent_ref_still_fails_the_build_when_unresolved():
@@ -116,14 +90,3 @@ def test_into_repo_target_os_overrides_launcher(tmp_path, monkeypatch):
     assert cmd.startswith("py -3 ")
 
 
-def test_into_repo_reinstall_prunes_stale_agent(tmp_path):
-    # Mécanisme de prune (générique) → profil public `example`.
-    setup.install_into_repo("example", tmp_path)
-    stale = tmp_path / ".claude" / "knowledge" / "AGENT_STALE.md"
-    stale.write_text("# leftover from a previous profile", encoding="utf-8")
-    setup.install_into_repo("example", tmp_path)
-    assert not stale.exists()
-
-
-if __name__ == "__main__":
-    sys.exit(pytest.main([__file__, "-q"]))

@@ -77,7 +77,7 @@ CORE_DIR = SCRIPT_DIR / "core"
 # ── Hooks distribution (core/ = single source) ───────────────────────────────
 CORE_HOOKS_DIR = CORE_DIR / "hooks"
 # Harness (Claude Code) hooks — distinct from the git pre-commit hooks in CORE_HOOKS_DIR.
-# Installed to <claude_dir>/hooks/ and wired into settings.json (see _install_harness_hooks).
+# Installed to <claude_dir>/scripts/ and wired into settings.json (see _install_status_lines).
 CORE_HARNESS_HOOKS_DIR = CORE_DIR / "status-lines"
 CORE_PRECOMMIT_DIR = CORE_DIR / "pre-commit"
 CORE_CI_DIR = CORE_DIR / "ci"

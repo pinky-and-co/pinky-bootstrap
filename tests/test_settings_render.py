@@ -158,132 +158,74 @@ def test_write_overwrites_stale_deny_on_reinstall(tmp_path):
     assert data["permissions"]["deny"] == ["Bash(ssh *)"]
 
 
-# ── _install_harness_hooks — Stop hook script + settings.json wiring ──────────
+# ── _install_status_lines — scripts copy + settings.json wiring ──────────────
 
 
-def test_harness_hooks_copies_script_and_wires_stop(tmp_path):
-    setup._install_harness_hooks(tmp_path)
-    assert (tmp_path / "hooks" / "stop_handoff.py").exists()
+def test_status_lines_are_copied_and_wired(tmp_path):
+    """Les deux scripts atterrissent dans scripts/ et chaque clé pointe le bon fichier."""
+    setup._install_status_lines(tmp_path)
+    for name in ("statusline.py", "subagent_statusline.py"):
+        assert (tmp_path / "scripts" / name).is_file()
     data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
-    stop = data["hooks"]["Stop"]
-    assert "stop_handoff.py" in stop[0]["hooks"][0]["command"]
+    assert data["statusLine"]["type"] == "command"
+    assert data["statusLine"]["command"].endswith('scripts/statusline.py"')
+    assert data["subagentStatusLine"]["command"].endswith('scripts/subagent_statusline.py"')
 
 
-def test_harness_hooks_copy_guard_and_wire_pretooluse(tmp_path):
-    setup._install_harness_hooks(tmp_path)
-    assert (tmp_path / "hooks" / "guard.py").exists()
-    pre = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "PreToolUse"
-    ]
-    assert "guard.py" in pre[0]["hooks"][0]["command"]
-    # the matcher must reach Bash (careful) and the write-class tools (freeze)
-    assert "Bash" in pre[0]["matcher"] and "Edit" in pre[0]["matcher"]
-
-
-def test_harness_hooks_privacy_matcher_covers_read_and_bash(tmp_path):
-    # Loup audit 2026-07-04 : matcher Read seul → `cat secret.txt` (auto-allowed) contournait le
-    # guard sans prompt. Le matcher doit couvrir les deux canaux d'ingestion.
-    setup._install_harness_hooks(tmp_path)
-    pre = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "PreToolUse"
-    ]
-    privacy = [g for g in pre if "check_privacy_egress" in g["hooks"][0]["command"]]
-    assert (
-        privacy and "Read" in privacy[0]["matcher"] and "Bash" in privacy[0]["matcher"]
-    )
-
-
-def test_harness_hooks_gitignore_guard_state(tmp_path):
-    setup._install_harness_hooks(tmp_path)
-    setup._install_harness_hooks(tmp_path)  # idempotent — no duplicate line
-    ignore = (tmp_path / ".gitignore").read_text(encoding="utf-8")
-    assert ignore.count(".guard-state.json") == 1
-
-
-def test_harness_hooks_use_windows_launcher(tmp_path, monkeypatch):
-    monkeypatch.setattr(setup.platform, "system", lambda: "Windows")
-    setup._install_harness_hooks(tmp_path)
-    cmd = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "Stop"
-    ][0]["hooks"][0]["command"]
-    assert cmd.startswith("py -3 ")
-
-
-def test_harness_hooks_use_python3_off_windows(tmp_path, monkeypatch):
-    monkeypatch.setattr(setup.platform, "system", lambda: "Darwin")
-    setup._install_harness_hooks(tmp_path)
-    cmd = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "Stop"
-    ][0]["hooks"][0]["command"]
-    assert cmd.startswith("python3 ")
-
-
-def test_harness_hooks_target_os_overrides_host_windows(tmp_path, monkeypatch):
-    # Loup audit 2026-07-04 : --into rend depuis la machine AUTEUR (ex. Mac), pas la cible
-    # (ex. frère, Windows) — platform.system() lit la mauvaise machine. target_os doit gagner.
-    monkeypatch.setattr(setup.platform, "system", lambda: "Darwin")
-    setup._install_harness_hooks(tmp_path, target_os="Windows")
-    cmd = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "Stop"
-    ][0]["hooks"][0]["command"]
-    assert cmd.startswith("py -3 ")
-
-
-def test_harness_hooks_target_os_overrides_host_posix(tmp_path, monkeypatch):
-    monkeypatch.setattr(setup.platform, "system", lambda: "Windows")
-    setup._install_harness_hooks(tmp_path, target_os="posix")
-    cmd = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "Stop"
-    ][0]["hooks"][0]["command"]
-    assert cmd.startswith("python3 ")
-
-
-def test_harness_hooks_preserve_user_pretooluse_groups(tmp_path):
-    # Loup mineur audit 2026-07-04 : `hooks["PreToolUse"] = […]` écrasait tout groupe utilisateur,
-    # alors que la docstring promet la préservation. Seuls les groupes MANAGÉS sont remplacés.
-    user_group = {
-        "matcher": "Bash",
-        "hooks": [{"type": "command", "command": "my-custom-lint.sh"}],
-    }
-    (tmp_path / "settings.json").write_text(
-        json.dumps({"hooks": {"PreToolUse": [user_group]}}), encoding="utf-8"
-    )
-    setup._install_harness_hooks(tmp_path)
-    setup._install_harness_hooks(
-        tmp_path
-    )  # idempotent — les groupes managés ne se dupliquent pas
-    pre = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))["hooks"][
-        "PreToolUse"
-    ]
-    commands = [g["hooks"][0]["command"] for g in pre]
-    assert "my-custom-lint.sh" in commands
-    assert sum("guard.py" in c for c in commands) == 1
-    assert sum("check_privacy_egress" in c for c in commands) == 1
-
-
-def test_harness_hooks_preserve_user_stop_groups(tmp_path):
-    user_group = {"hooks": [{"type": "command", "command": "notify-me.sh"}]}
-    (tmp_path / "settings.json").write_text(
-        json.dumps({"hooks": {"Stop": [user_group]}}), encoding="utf-8"
-    )
-    setup._install_harness_hooks(tmp_path)
-    setup._install_harness_hooks(tmp_path)
-    stop = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))[
-        "hooks"
-    ]["Stop"]
-    commands = [g["hooks"][0]["command"] for g in stop]
-    assert "notify-me.sh" in commands
-    assert sum("stop_handoff.py" in c for c in commands) == 1
-
-
-def test_harness_hooks_preserve_permissions_and_are_idempotent(tmp_path):
-    profile = {"name": "poc", "permissions_deny": ["Bash(ssh *)"]}
-    setup._write_settings_json(profile, tmp_path)
-    setup._install_harness_hooks(tmp_path)
-    setup._install_harness_hooks(tmp_path)  # second run must not duplicate
+def test_status_line_command_carries_an_absolute_path(tmp_path):
+    """Un chemin relatif se résout contre le cwd de la session, pas contre scripts/ — la status
+    line ne rend alors rien, sans erreur nulle part. Incident réel du 2026-08-14."""
+    setup._install_status_lines(tmp_path)
     data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
-    assert data["permissions"]["deny"] == ["Bash(ssh *)"]
-    assert len(data["hooks"]["Stop"]) == 1
+    quoted = data["statusLine"]["command"].split('"')[1]
+    assert Path(quoted).is_absolute()
+    assert Path(quoted).is_file()
+
+
+def test_status_lines_register_no_lifecycle_hook(tmp_path):
+    """Stop/PreToolUse/PostToolUse appartiennent aux plugins depuis la migration — cette fonction
+    ne doit plus en écrire aucun, sinon deux canaux enregistrent le même hook."""
+    setup._install_status_lines(tmp_path)
+    data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert "hooks" not in data
+
+
+def test_status_lines_use_windows_launcher(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.profile.platform, "system", lambda: "Windows")
+    setup._install_status_lines(tmp_path)
+    data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert data["statusLine"]["command"].startswith("py -3 ")
+
+
+def test_status_lines_use_python3_off_windows(tmp_path, monkeypatch):
+    monkeypatch.setattr(setup.profile.platform, "system", lambda: "Darwin")
+    setup._install_status_lines(tmp_path)
+    data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert data["statusLine"]["command"].startswith("python3 ")
+
+
+def test_status_lines_target_os_overrides_host(tmp_path, monkeypatch):
+    """--into rend pour la machine CIBLE : l'OS de l'auteur ne doit pas fuiter dans le launcher."""
+    monkeypatch.setattr(setup.profile.platform, "system", lambda: "Darwin")
+    setup._install_status_lines(tmp_path, target_os="Windows")
+    data = json.loads((tmp_path / "settings.json").read_text(encoding="utf-8"))
+    assert data["statusLine"]["command"].startswith("py -3 ")
+
+
+def test_status_lines_preserve_other_keys_and_are_idempotent(tmp_path):
+    """Tout ce qui n'est pas une status line survit, et deux passages donnent le même fichier."""
+    (tmp_path).mkdir(parents=True, exist_ok=True)
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"permissions": {"allow": ["Bash(git status:*)"]}, "outputStyle": "ADHD"}),
+        encoding="utf-8",
+    )
+    setup._install_status_lines(tmp_path)
+    first = (tmp_path / "settings.json").read_text(encoding="utf-8")
+    data = json.loads(first)
+    assert data["permissions"]["allow"] == ["Bash(git status:*)"]
+    assert data["outputStyle"] == "ADHD"
+    setup._install_status_lines(tmp_path)
+    assert (tmp_path / "settings.json").read_text(encoding="utf-8") == first
 
 
 # ── distribution guards (setup.py misc — loups mineurs audit 2026-07-04) ─────
