@@ -18,15 +18,12 @@ Usage:
     python cli_pinky.py drift
     python cli_pinky.py check-public
     python cli_pinky.py check-machine
-    python cli_pinky.py render --profile pinky
-    python cli_pinky.py into --profile pinky /path/to/repo
-    python cli_pinky.py install --provider claude
 """
 
 import argparse
 
 from .cli import main as setup_main
-from .common import CORE_DIR, SCRIPT_DIR, PROVIDERS
+from .common import CORE_DIR, SCRIPT_DIR
 from .product_scaffold import REPO_TYPES
 from .profile import _command_description
 
@@ -117,27 +114,6 @@ def cmd_check_machine(_args: argparse.Namespace) -> None:
     setup_main(["--check-machine"])
 
 
-def cmd_render(args: argparse.Namespace) -> None:
-    argv = ["--profile", args.profile]
-    if args.output:
-        argv += ["--output", args.output]
-    setup_main(argv)
-
-
-def cmd_into(args: argparse.Namespace) -> None:
-    argv = ["--into", args.target, "--profile", args.profile]
-    if args.target_os:
-        argv += ["--target-os", args.target_os]
-    setup_main(argv)
-
-
-def cmd_install(args: argparse.Namespace) -> None:
-    argv = []
-    if args.provider:
-        argv += ["--provider", args.provider]
-    setup_main(argv)
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         # NO hardcoded `prog`: this module has two legitimate entry points — the installed console
@@ -188,25 +164,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="🔎 report locally installed skills/plugins the moteur has no record of",
     )
     p.set_defaults(func=cmd_check_machine)
-
-    p = sub.add_parser("render", help="📝 render CLAUDE.md from a profile")
-    p.add_argument("--profile", required=True)
-    p.add_argument("--output", default=None)
-    p.set_defaults(func=cmd_render)
-
-    p = sub.add_parser(
-        "into", help="🚚 render the full agent layer into a standalone repo"
-    )
-    p.add_argument("target")
-    p.add_argument("--profile", required=True)
-    p.add_argument("--target-os", choices=["windows", "posix"], default=None)
-    p.set_defaults(func=cmd_into)
-
-    p = sub.add_parser(
-        "install", help="🎛️ interactive provider install (default setup.py mode)"
-    )
-    p.add_argument("--provider", choices=PROVIDERS, default=None)
-    p.set_defaults(func=cmd_install)
 
     return parser
 

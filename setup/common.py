@@ -105,7 +105,7 @@ from render_docs import (  # noqa: E402
 def engine_version() -> str:
     """The moteur's own version, from installed package metadata or its own `pyproject.toml`."""
     try:
-        return metadata.version("pinky-workspace")
+        return metadata.version("pinky-bootstrap")
     except metadata.PackageNotFoundError:
         data = tomllib.loads(
             (SCRIPT_DIR / "pyproject.toml").read_text(encoding="utf-8")

@@ -3,18 +3,11 @@
 import argparse
 from pathlib import Path
 
-from .common import (
-    DEFAULT_PUBLIC_PROFILE,
-    PROVIDERS,
-    REPO_GLOBS,
-    WORKSPACE_ROOT,
-    init_workspace,
-)
+from .common import DEFAULT_PUBLIC_PROFILE, init_workspace
 from .leak_guard import check_public
 from .machine_check import check_machine
-from .precommit import discover_repos, new_repo, run_distribution
+from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
-from .profile import install_from_profile, install_into_repo, install_provider
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -22,7 +15,6 @@ def main(argv: list[str] | None = None) -> None:
     invoke a mode programmatically without touching ``sys.argv`` — ``None`` (the CLI entry point)
     keeps today's behavior, delegating to argparse's own ``sys.argv[1:]`` default."""
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--provider", choices=PROVIDERS, default=None)
     # Hooks distribution
     parser.add_argument("--repo", default=None, help="distribute to a single repo")
     parser.add_argument(
@@ -56,10 +48,7 @@ def main(argv: list[str] | None = None) -> None:
         metavar="DIR",
         help="create the `.pinky/` marker (+ a commented config.txt) that DEFINES a directory as a "
         "pinky workspace. Defaults to the current directory. Idempotent: an existing config.txt is "
-        "never overwritten. Exposed as `pinky init-workspace` (cli_pinky.py) once packaged — a "
-        "separate subcommand from `pinky install` (the interactive provider render), not something "
-        "it calls: bootstrapping the workspace and installing a provider's CLAUDE.md are distinct "
-        "steps a third party runs once each.",
+        "never overwritten. Exposed as `pinky init-workspace` (cli_pinky.py) once packaged.",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="print actions, write nothing"
@@ -95,28 +84,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--profile",
         default=None,
-        help="profile path or name; alone → render CLAUDE.md (Phase 3), "
-        "with a distribution flag → gates hooks on its layers.hooks (Phase 2a)",
-    )
-    parser.add_argument(
-        "--output",
-        default=None,
-        help="render CLAUDE.md to this path instead of WORKSPACE_ROOT/CLAUDE.md "
-        "(skips .claude/ scaffolding — for temp/validation renders)",
-    )
-    parser.add_argument(
-        "--into",
-        default=None,
-        help="render the profile's FULL agent layer (CLAUDE.md + .claude/ + bundled knowledge) "
-        "INTO a standalone repo so it carries its config committed (requires --profile)",
-    )
-    parser.add_argument(
-        "--target-os",
-        choices=["windows", "posix"],
-        default=None,
-        help="with --into: OS of the machine that will RUN the rendered repo (e.g. le frère's "
-        "Windows machine), when it differs from the machine generating it. Picks the correct "
-        "harness-hook launcher (py -3 vs python3). Omit when target == the generating machine.",
+        help="profile path or name; gates --check-public's scan, or (with a distribution flag) "
+        "hooks on its layers.hooks (Phase 2a)",
     )
     args, _ = parser.parse_known_args(argv)
 
@@ -151,61 +120,13 @@ def main(argv: list[str] | None = None) -> None:
         run_distribution(args)
         return
 
-    # --into <repo>: render the full agent layer INTO a standalone repo (committed POC config).
-    if args.into:
-        if not args.profile:
-            print(
-                "--into requires --profile <name> (which profile to render into the repo)."
-            )
-            raise SystemExit(1)
-        target_os = {"windows": "Windows", "posix": "posix"}.get(args.target_os)
-        install_into_repo(args.profile, Path(args.into), target_os=target_os)
-        return
-
-    # Profile render mode (Phase 3): --profile alone renders CLAUDE.md from the profile.
-    if args.profile:
-        install_from_profile(
-            args.profile, output=Path(args.output) if args.output else None
-        )
-        return
-
-    print("pinky workspace setup")
-    print("======================")
-    print(f"Workspace root: {WORKSPACE_ROOT}")
-
-    provider = args.provider
-    if provider is None:
-        print("\nAvailable providers:")
-        for p in PROVIDERS:
-            print(f"  - {p}")
-        provider = input("\nProvider [claude]: ").strip() or "claude"
-
-    install_provider(provider)
-
-    # This used to print three hardcoded `git clone git@github.com:<PINKY_ORG>/pinky-core` lines —
-    # an instance-shaped literal in the moteur (exactly what ADR-0065 § "carries no instance-shaped
-    # literal" and ADR-0069 remove everywhere else), printed on EVERY render whatever the profile. On
-    # a machine rendering another org's profile it named private repos of an org that operator has
-    # nothing to do with, and `<PINKY_ORG>` was never substituted, so it was not even usable by the
-    # author. Found 2026-08-09 by replaying a third-party install end to end.
-    #
-    # What replaces it is derived from this workspace: how many repos its own `repo_globs` actually
-    # match. Reporting the count also surfaces the ZERO case, which is the silent no-op ADR-0065
-    # exists to kill — a render that succeeds while the distribution can reach nothing.
-    print()
-    if not REPO_GLOBS:
-        print(
-            "No `repo_globs` in .pinky/config.txt — `pinky distribute` would find zero repos.\n"
-            "  Set it to the glob(s) naming your repos, then clone them next to this workspace."
-        )
-        return
-    globs = ", ".join(REPO_GLOBS)
-    found = discover_repos()
-    if found:
-        print(f"Repos matching `{globs}` next to this workspace: {len(found)}")
-        print("  Next: pinky distribute --repo <name> --profile <name> --dry-run")
-    else:
-        print(
-            f"No repo matching `{globs}` next to this workspace yet.\n"
-            "  Clone them here, then: pinky distribute --repo <name> --profile <name>"
-        )
+    # No mode flag matched: this low-level flag interface has no interactive default (that was
+    # install_provider's job, removed with the dead CLAUDE.md render engine — 2026-08-17). Point at
+    # the friendly facade instead of guessing what the caller wanted.
+    print("pinky workspace setup — no mode flag given.")
+    print(
+        "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
+        "--init-workspace, --new-repo, --repo/--all (distribute), --check-drift, --check-public, "
+        "--check-machine."
+    )
+    raise SystemExit(1)

@@ -180,5 +180,20 @@ def test_owning_corpus_root_is_derived_not_configured(tmp_path):
     assert setup.owning_corpus_root(tmp_path / "ailleurs" / "profile.yaml") is None
 
 
+def test_public_scan_covers_all_shipped_core_subdirs():
+    # Angle mort relevé par l'audit : status-lines / pre-commit / conventions shippent
+    # dans le moteur public et doivent être leak-scannés comme rules/commands/agents.
+    assert {
+        "rules",
+        "commands",
+        "agents",
+        "skills",
+        "status-lines",
+        "hooks",
+        "pre-commit",
+        "conventions",
+    } <= set(setup.PUBLIC_SCAN_SUBDIRS)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

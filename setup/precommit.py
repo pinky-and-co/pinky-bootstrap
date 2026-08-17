@@ -439,7 +439,11 @@ CI_INSTALL_OVERRIDES: dict[str, str] = {
 # `pinky-workspace` joined 2026-08-07 (card `pyproject-entry-point-et-ci-windows`, ADR-0065
 # decision 6): "the cheapest gesture to turn the brother's machine into a tested case rather than a
 # hope" — the moteur's own 396-test suite had never run on native Windows path separators before.
-CI_WINDOWS_PILOT: frozenset[str] = frozenset({"pinky-core", "pinky-workspace"})
+# `pinky-bootstrap` (2026-08-17): the moteur itself, ported from `pinky-workspace` — the intent
+# survives the rename, the literal has to follow it or the moteur silently loses the coverage.
+CI_WINDOWS_PILOT: frozenset[str] = frozenset(
+    {"pinky-core", "pinky-workspace", "pinky-bootstrap"}
+)
 
 
 def _d1_database_name(repo: Path) -> str | None:
