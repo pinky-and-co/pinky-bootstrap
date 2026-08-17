@@ -124,7 +124,9 @@ def main(argv: list[str] | None = None) -> None:
     # install_provider's job, removed with the dead CLAUDE.md render engine — 2026-08-17). Point at
     # the friendly facade instead of guessing what the caller wanted.
     print("pinky workspace setup — no mode flag given.")
-    print("Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
-          "--init-workspace, --new-repo, --repo/--all (distribute), --check-drift, --check-public, "
-          "--check-machine.")
+    print(
+        "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
+        "--init-workspace, --new-repo, --repo/--all (distribute), --check-drift, --check-public, "
+        "--check-machine."
+    )
     raise SystemExit(1)

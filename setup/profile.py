@@ -411,4 +411,3 @@ def _scaffolding_sources(
             n: f for n, f in sources.items() if _meets_requirements(f, scope_caps)
         }
     return sources
-

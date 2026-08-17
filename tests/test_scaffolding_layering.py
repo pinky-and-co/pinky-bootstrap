@@ -230,4 +230,3 @@ def test_frontmatter_is_only_read_when_the_file_opens_with_it(tmp_path):
         "---\ncapability: snowflake\n---\n# AGENT_VRAI.md\n", encoding="utf-8"
     )
     assert setup.profile._frontmatter_field(vrai, "capability") == "snowflake"
-
