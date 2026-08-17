@@ -214,22 +214,18 @@ def test_install_walkthrough_job_only_lands_on_the_engine(tmp_path):
     assert "install-walkthrough-windows" not in consumer_jobs
 
 
-def test_install_walkthrough_asserts_the_windows_launcher(tmp_path):
-    """Le job doit VÉRIFIER `py -3`, pas seulement rendre.
+def test_install_walkthrough_covers_the_real_sequence(tmp_path):
+    """Le job doit couvrir `init-workspace → distribute → drift` — la séquence qu'un adoptant joue.
 
-    C'est sa seule raison d'être : le lanceur des hooks est figé au rendu, donc un rendu fait
-    ailleurs qu'ici produit des hooks qui ne démarrent jamais — une panne muette. Un job qui
-    rendrait sans contrôler le lanceur passerait au vert sur exactement ce défaut.
+    La vérification du lanceur (`py -3` dans `.claude/settings.json`) a été retirée 2026-08-17 avec
+    le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/`, rien à figer.
     """
     fragment = (
         precommit_mod.CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
     ).read_text(encoding="utf-8")
 
-    assert '"command": "py -3' in fragment
-    assert (
-        '"command": "python3' in fragment
-    )  # l'assertion négative, qui refuse le lanceur POSIX
     assert "pinky init-workspace" in fragment
+    assert "pinky distribute" in fragment
     assert "pinky drift" in fragment
 
 

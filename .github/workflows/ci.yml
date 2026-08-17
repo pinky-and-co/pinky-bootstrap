@@ -55,17 +55,17 @@ jobs:
     # Le parcours d'INSTALL, joué de bout en bout sur Windows — pas les tests, pas les hooks.
     #
     # Pourquoi un job de plus alors que `precommit-windows` existe déjà : celui-là prouve que les
-    # hooks et la suite de tests tournent sous Windows, jamais que `init-workspace → render →
-    # distribute → drift` y arrive. C'est pourtant la seule séquence qu'un adoptant exécute, et deux
-    # de ses maillons sont OS-dépendants par construction :
-    #
-    #   - le lanceur des hooks est FIGÉ au rendu (`python3` sur POSIX, `py -3` sous Windows) et
-    #     s'écrit dans settings.json — un rendu fait ailleurs produit des hooks morts ;
-    #   - les chemins d'instance (`.pinky/config.txt`) portent antislashs et lettre de lecteur.
+    # hooks et la suite de tests tournent sous Windows, jamais que `init-workspace → distribute →
+    # drift` y arrive. C'est pourtant la séquence qu'un adoptant exécute, et ses chemins d'instance
+    # (`.pinky/config.txt`) portent antislashs et lettre de lecteur — un piège Windows-only.
     #
     # Tant que ce job n'existait pas, la première exécution réelle de cette séquence sous Windows
     # devait avoir lieu sur la machine de l'adoptant. Ajouté 2026-08-09 après avoir rejoué l'install
     # d'un tiers sur macOS — qui, elle, a trouvé un défaut (card `monter-le-workspace-du-frere`).
+    #
+    # La vérification du lanceur de hook (`py -3` vs `python3` dans settings.json) a été retirée
+    # 2026-08-17 avec le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/` du
+    # tout, prek provisionne son propre interpréteur (`language: python`) — plus rien à figer.
     #
     # Profil `example` : le seul public, donc le seul disponible dans un checkout CI.
     runs-on: windows-latest
@@ -106,23 +106,6 @@ jobs:
           New-Item -ItemType File -Path README.md -Force | Out-Null
           git add -A
           git -c user.email=ci@example.invalid -c user.name=ci commit -qm init
-
-      - name: Render — and the launcher must be the Windows one
-        shell: pwsh
-        working-directory: ws
-        run: |
-          $ErrorActionPreference = 'Stop'
-          pinky install --provider claude
-          if ($LASTEXITCODE -ne 0) { throw "pinky install a échoué ($LASTEXITCODE)" }
-          if (-not (Test-Path CLAUDE.md)) { throw "aucun CLAUDE.md rendu" }
-          $settings = Get-Content .claude\settings.json -Raw
-          # LE test de ce job : un rendu fait sur macOS/Linux écrirait `python3`, et les hooks ne
-          # démarreraient pas ici. Une régression sur ce point est silencieuse — les hooks ne
-          # tournent simplement jamais.
-          # Viser la forme EXACTE de la commande de hook : le mot `python3` nu pourrait
-          # légitimement apparaître dans une entrée `permissions.allow` d'un profil.
-          if ($settings -notmatch '"command": "py -3') { throw "settings.json ne porte pas le lanceur Windows (py -3)" }
-          if ($settings -match '"command": "python3')  { throw "settings.json porte un lanceur POSIX (python3)" }
 
       - name: Distribute + drift on a real repo
         shell: pwsh
