@@ -1,8 +1,8 @@
 """Public-corpus leak guard (--check-public) — anti-regression gate for the public profile.
 
-Renders the designated public profile in memory and scans every surface it ships — each resolved
-knowledge agent, the rendered CLAUDE.md, and the profile-independent core/rules/* — for
-product/private-doc leaks. FAILS (exit 1, listing file:line) on the codenames AND the instance
+Scans every surface the designated public profile ships — each resolved knowledge agent and the
+profile-independent core/rules/* (etc., see PUBLIC_SCAN_SUBDIRS) — for product/private-doc leaks.
+FAILS (exit 1, listing file:line) on the codenames AND the instance
 identity (GitHub org / asset host) declared by the PRIVATE profiles, while letting the bare public
 brand token `pinky` pass — the identity check catches the `pinky`-shaped strings the codename hunt
 lets through (org `pinky-and-co`, asset host), the gap that let a render_docs.py leak pass in 2026-07.
@@ -34,7 +34,7 @@ from .common import (
     load_profile,
     owning_corpus_root,
 )
-from .profile import _resolve_agent, render_claude_md, validate_profile
+from .profile import _resolve_agent, validate_profile
 
 # Every core/ subdir shipped in the public moteur — ALL are leak-scanned by --check-public.
 # Keep in sync with what setup.py actually distributes (scaffolding + hooks + pre-commit + skills).
@@ -134,8 +134,8 @@ def _scan_text_for_leaks(label: str, text: str, patterns: tuple[str, ...]) -> li
 def check_public(profile_arg: str | None) -> int:
     """Scan the public profile's shipped surfaces for product/private-doc leaks.
 
-    Renders the designated public profile (arg, else DEFAULT_PUBLIC_PROFILE) in memory and scans:
-    every resolved knowledge agent file, the rendered CLAUDE.md, and core/rules/*. Returns the
+    Loads the designated public profile (arg, else DEFAULT_PUBLIC_PROFILE) and scans: every
+    resolved knowledge agent file, and core/rules/* (etc., PUBLIC_SCAN_SUBDIRS). Returns the
     total hit count (0 = clean). Refuses to run against a profile marked `visibility: private`.
     No configured target, or no private profile declaring patterns → clean no-op with a clear
     message (a fork that hasn't set anything up is not a failure).
@@ -201,14 +201,7 @@ def check_public(profile_arg: str | None) -> int:
             _display_path(resolved), resolved.read_text(encoding="utf-8"), patterns
         )
 
-    # 2. the rendered CLAUDE.md (the routing index surfaces agent H1s + summaries)
-    hits += _scan_text_for_leaks(
-        "<rendered CLAUDE.md>",
-        render_claude_md(profile, profile_path, roots=bounded),
-        patterns,
-    )
-
-    # 3. every profile-independent moteur surface shipped to consumers — not just rules/commands/
+    # 2. every profile-independent moteur surface shipped to consumers — not just rules/commands/
     # agents: a leak in a skill, a harness-hook docstring, a pre-commit fragment or a convention
     # file ships in the public moteur all the same (angle mort relevé par l'audit 2026-07-04).
     for sub in PUBLIC_SCAN_SUBDIRS:

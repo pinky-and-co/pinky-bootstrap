@@ -102,27 +102,7 @@ def test_does_not_exit_the_process(tmp_path, monkeypatch):
 # ── wiring — both render entry points call it ────────────────────────────────
 
 
-def test_install_from_profile_warns(tmp_path, monkeypatch, capsys):
-    """`--provider claude` aliases `--profile <default>` (profile.py), so covering
-    install_from_profile covers both spellings of the render path."""
-    called: list[str] = []
-    monkeypatch.setattr(setup.profile, "warn_on_drift", lambda: called.append("x"))
-    monkeypatch.setenv("CORPUS_ROOT", "corpus-public")
-
-    setup.install_from_profile("example", output=tmp_path / "CLAUDE.md")
-
-    assert called == ["x"]
-    assert (tmp_path / "CLAUDE.md").exists()  # and the render still happened
-
-
-def test_install_into_repo_warns(tmp_path, monkeypatch):
-    """`--into` renders the full agent layer into a standalone repo — same blind spot."""
-    called: list[str] = []
-    monkeypatch.setattr(setup.profile, "warn_on_drift", lambda: called.append("x"))
-    monkeypatch.setenv("CORPUS_ROOT", "corpus-public")
-
-    target = tmp_path / "pinky-poc"
-    target.mkdir()
-    setup.install_into_repo("example", target)
-
-    assert called == ["x"]
+# `install_from_profile`/`install_into_repo` (the render path this section wired warn_on_drift
+# into) were removed 2026-08-17 along with the dead CLAUDE.md render engine — the wiring tests for
+# that path went with them. `warn_on_drift()` itself, and its distribution-path wiring, are
+# unaffected — see the tests above.

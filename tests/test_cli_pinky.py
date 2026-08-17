@@ -38,9 +38,6 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
         "distribute",
         "drift",
         "check-public",
-        "render",
-        "into",
-        "install",
     ):
         assert name in out
     assert list(tmp_path.iterdir()) == []
@@ -125,27 +122,8 @@ def test_check_public_dispatch(monkeypatch):
     assert calls == [["--check-public"]]
 
 
-def test_render_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["render", "--profile", "pinky", "--output", "/tmp/CLAUDE.md"])
-    assert calls == [["--profile", "pinky", "--output", "/tmp/CLAUDE.md"]]
-
-
-def test_into_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(
-        ["into", "/path/to/repo", "--profile", "pinky", "--target-os", "windows"]
-    )
-    assert calls == [
-        ["--into", "/path/to/repo", "--profile", "pinky", "--target-os", "windows"]
-    ]
-
-
-def test_install_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install", "--provider", "claude"])
-    assert calls == [["--provider", "claude"]]
-
+# `render`/`into`/`install` sub-commands (the dead CLAUDE.md render engine's CLI surface) were
+# removed 2026-08-17 along with `install_from_profile`/`install_into_repo`/`install_provider`.
 
 # ── setup.cli.main(argv) — the programmatic entry point cli_pinky.py relies on ─
 
