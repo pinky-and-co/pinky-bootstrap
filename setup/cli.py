@@ -3,11 +3,12 @@
 import argparse
 from pathlib import Path
 
-from .common import DEFAULT_PUBLIC_PROFILE, init_workspace
+from .common import DEFAULT_PUBLIC_PROFILE, WORKSPACE_ROOT, init_workspace
 from .leak_guard import check_public
 from .machine_check import check_machine
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
+from .rules import distribute_rules, print_rules_report
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -15,6 +16,17 @@ def main(argv: list[str] | None = None) -> None:
     invoke a mode programmatically without touching ``sys.argv`` — ``None`` (the CLI entry point)
     keeps today's behavior, delegating to argparse's own ``sys.argv[1:]`` default."""
     parser = argparse.ArgumentParser(add_help=False)
+    # Rules distribution — targets the WORKSPACE (.claude/rules/), not a repo, which is why it is
+    # its own mode rather than a flag on --repo/--all.
+    parser.add_argument(
+        "--rules",
+        nargs="?",
+        const=str(WORKSPACE_ROOT),
+        default=None,
+        metavar="WORKSPACE",
+        help="distribute rules/core/ into <workspace>/.claude/rules/ "
+        "(default: the detected workspace root). Overwrites by name, deletes nothing.",
+    )
     # Hooks distribution
     parser.add_argument("--repo", default=None, help="distribute to a single repo")
     parser.add_argument(
@@ -91,6 +103,11 @@ def main(argv: list[str] | None = None) -> None:
 
     # Workspace bootstrap (ADR-0065): creates the marker that DEFINES the workspace. Runs before
     # every other mode because they all resolve WORKSPACE_ROOT through it.
+    if args.rules is not None:
+        workspace = Path(args.rules)
+        print_rules_report(distribute_rules(workspace), workspace)
+        return
+
     if args.init_workspace:
         raise SystemExit(0 if init_workspace(Path(args.init_workspace)) else 1)
 
@@ -126,7 +143,7 @@ def main(argv: list[str] | None = None) -> None:
     print("pinky workspace setup — no mode flag given.")
     print(
         "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
-        "--init-workspace, --new-repo, --repo/--all (distribute), --check-drift, --check-public, "
-        "--check-machine."
+        "--init-workspace, --new-repo, --repo/--all (distribute), --rules (workspace rules), "
+        "--check-drift, --check-public, --check-machine."
     )
     raise SystemExit(1)

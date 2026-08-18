@@ -43,48 +43,11 @@ def test_scaffolding_sources_profile_overrides_core_on_name(tmp_path):
     assert sources["commit.md"] == profile_cmds / "commit.md"
 
 
-def test_scaffolding_sources_rules_layers_base_and_profile(tmp_path):
-    # Les rules privées du profil (ex. pinky-libs, qui nomme des libs produit) SONT layerées sur la
-    # base publique — même split public/privé que commands/agents (cf. docstring _scaffolding_sources).
-    profile_rules = tmp_path / "rules"
-    profile_rules.mkdir()
-    (profile_rules / "private-rule.md").write_text(
-        "instance-specific", encoding="utf-8"
-    )
-    profile_yaml = tmp_path / "profile.yaml"
-    profile_yaml.write_text("name: x", encoding="utf-8")
-
-    sources = setup._scaffolding_sources("rules", profile_yaml, scope_caps=frozenset())
-    assert sources["private-rule.md"] == profile_rules / "private-rule.md"
-    # Périmètre sans capacité → il ne reste que la base : aucune règle de domaine ne passe.
-    base = setup.CORE_DIR / "rules" / "base"
-    others = {n: p for n, p in sources.items() if n != "private-rule.md"}
-    assert others and all(p.is_relative_to(base) for p in others.values())
-
-
-def test_domain_rules_join_the_same_rule_set_when_the_capability_is_in_scope(tmp_path):
-    """ADR-0060 — la capacité décide la PRÉSENCE d'une règle de domaine, `paths:` son CHARGEMENT.
-
-    Remplace le domain layer d'ADR-0014, qui rendait ses règles dans `WORKSPACE_ROOT/<subdir>/` en
-    supposant que les repos y seraient clonés. Ils ne l'ont jamais été — `discover_repos()` globe la
-    RACINE — donc ces 6 règles n'ont jamais atteint une session. Vérifié le 2026-08-05 : zéro
-    intersection entre `<workspace>/.claude/rules/` et `pinky/.claude/rules/`.
-    """
-    profile_yaml = tmp_path / "profile.yaml"
-    profile_yaml.write_text("name: x", encoding="utf-8")
-
-    sans = setup._scaffolding_sources("rules", profile_yaml, scope_caps=frozenset())
-    avec = setup._scaffolding_sources(
-        "rules", profile_yaml, scope_caps=frozenset({"snowflake"})
-    )
-    domain = {
-        f.name for f in (setup.CORE_DIR / "rules" / "domain-snowflake").glob("*.md")
-    }
-
-    assert domain, "le répertoire domain-snowflake ne doit pas être vide"
-    assert domain.isdisjoint(sans)  # hors périmètre : aucune
-    assert domain.issubset(set(avec))  # dans le périmètre : toutes
-    assert set(avec) - set(sans) == domain  # oracle : elles seules changent
+# Deux tests ont été retirés d'ici : ils exigeaient `core/rules/base/` et
+# `core/rules/domain-snowflake/` non vides. Ces répertoires n'ont jamais été portés dans ce repo,
+# et le découpage qui les remplace est `rules/core/` + `rules/<plugin>/` — ils n'avaient donc plus
+# d'objet, tout en bloquant chaque commit du repo via les hooks. La distribution des rules est
+# désormais couverte par `test_rules_distribution.py`.
 
 
 def test_every_domain_rule_is_path_scoped(tmp_path):
