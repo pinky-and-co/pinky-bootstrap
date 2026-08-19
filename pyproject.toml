@@ -49,11 +49,12 @@ dev = ["pytest"]
 # rename are a LATER phase, 228 files across the parc reference render_docs.py's distributed copies).
 #
 # `setup` is a real Python package (packages=[...] below); `cli_pinky.py` is a loose top-level
-# module (the sub-command dispatcher — see its own docstring); `core/`, `corpus-public/`,
-# `providers/`, `scripts/` are NOT Python packages, they are data the CLI reads by path at runtime
-# (CORE_DIR / CORPUS_POINTER_FILE's default root / the provider docs / the standalone scripts index)
-# — SIBLINGS of `setup/` in today's repo layout, and they must stay siblings once installed, because
-# common.py resolves them as `SCRIPT_DIR / "core"` etc. and SCRIPT_DIR becomes the install root.
+# module (the sub-command dispatcher — see its own docstring); `agentic-harness/`, `hygiene/`,
+# `corpus-public/`, `providers/`, `scripts/`, `tools/` are NOT Python packages, they are data the CLI
+# reads by path at runtime (AGENTIC_HARNESS_DIR/HYGIENE_DIR / CORPUS_POINTER_FILE's default root /
+# the provider docs / the standalone scripts index) — SIBLINGS of `setup/` in today's repo layout,
+# and they must stay siblings once installed, because common.py resolves them as
+# `SCRIPT_DIR / "agentic-harness"` etc. and SCRIPT_DIR becomes the install root.
 #
 # THIS is the silent failure point the card names, and it bit for real once already while writing
 # this file: the first version force-included the FOUR directories above but not `corpus-roots.txt`
@@ -67,16 +68,20 @@ packages = ["setup"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "cli_pinky.py" = "cli_pinky.py"
-"core" = "core"
+"agentic-harness" = "agentic-harness"
+"hygiene" = "hygiene"
 "corpus-public" = "corpus-public"
 "scripts" = "scripts"
+"tools" = "tools"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "setup",
     "cli_pinky.py",
-    "core",
+    "agentic-harness",
+    "hygiene",
     "corpus-public",
     "scripts",
+    "tools",
     "README.md",
 ]
