@@ -10,7 +10,7 @@ no `--profile`, 18 with `--profile pluto`, no invocation reporting 0).
 
 The memory rides in the `docs_identity.json` that `distribute()` already writes into every repo — no
 new artefact. `SuiteIdentity.from_dict` reads only its `_FIELDS`, so the extra key is invisible to
-`core/hooks/render_docs.py`, the generic shipped engine that must stay free of routing.
+`hygiene/hooks/render_docs.py`, the generic shipped engine that must stay free of routing.
 """
 
 import json

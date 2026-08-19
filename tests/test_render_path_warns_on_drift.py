@@ -4,7 +4,7 @@ Card `render-path-ne-verifie-aucune-derive`: ADR-0055 folded the drift check int
 precisely so nobody could forget it ("the tool tells you, you don't have to think about it"). But it
 only fires on the DISTRIBUTION flags (`--repo`, `--all`, `--check-drift`). The second path — rendering,
 `--provider claude` / `--profile <name>` / `--into` — writes CLAUDE.md and `.claude/` and checks
-nothing. A session that edits `core/pre-commit/` then runs only `--provider claude`, which is what
+nothing. A session that edits `hygiene/pre-commit/` then runs only `--provider claude`, which is what
 `feedback_core_edit_needs_setup` prescribes to the letter, walks away believing it distributed while
 the 19 repos stay stale without a word. Measured 2026-08-05: 30 divergences accumulated that way.
 

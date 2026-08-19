@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "core" / "hooks"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "hygiene" / "hooks"))
 from render_docs import (  # noqa: E402
     SuiteIdentity,
     render_readme_badges,

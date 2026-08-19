@@ -25,7 +25,10 @@ def test_no_public_artefact_names_a_private_instance():
     import re as _re
 
     patterns = _re.compile(r"agent_pinky|agent_snowflake_pinky|pythia", _re.I)
-    for d in (setup.CORE_DIR / "commands", setup.CORE_DIR / "agents"):
+    for d in (
+        setup.AGENTIC_HARNESS_DIR / "commands",
+        setup.AGENTIC_HARNESS_DIR / "agents",
+    ):
         for f in sorted(d.glob("*.md")):
             assert not patterns.search(f.read_text(encoding="utf-8")), (
                 f"{f.name} nomme un artefact d'instance — utiliser le slot, pas l'exemple"
@@ -57,7 +60,9 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
     sans `paths:` elle serait injectée même en travaillant sur un repo JS. C'est précisément la
     dépense qu'ADR-0057 a mesurée et réduite, et le prix à payer pour avoir supprimé le sous-arbre.
     """
-    for f in sorted((setup.CORE_DIR / "rules" / "domain-snowflake").glob("*.md")):
+    for f in sorted(
+        (setup.AGENTIC_HARNESS_DIR / "rules" / "domain-snowflake").glob("*.md")
+    ):
         head = f.read_text(encoding="utf-8").split("---")[1]
         assert "paths:" in head, f"{f.name} n'est pas scopée par paths:"
         assert "capability:" in head, f"{f.name} ne déclare pas sa capacité"
@@ -65,7 +70,7 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
 
 def test_scaffolding_sources_no_profile_is_core_only():
     sources = setup._scaffolding_sources("commands", None)
-    assert all(p.is_relative_to(setup.CORE_DIR) for p in sources.values())
+    assert all(p.is_relative_to(setup.AGENTIC_HARNESS_DIR) for p in sources.values())
 
 
 # --- Routage par capacité : `capability:` (le repo) + `machine:` (l'opérateur) -------------------
@@ -99,7 +104,7 @@ def test_chantier_is_socle_and_must_stay_so():
     partagé existe »), alors que le board partagé existait depuis le 2026-07-31. Un commentaire ne
     garde rien ; ce test, si.
     """
-    chantier = setup.CORE_DIR / "commands" / "chantier.md"
+    chantier = setup.AGENTIC_HARNESS_DIR / "commands" / "chantier.md"
     assert setup.profile._command_requirements(chantier) == (None, None)
     assert setup.profile._meets_requirements(chantier, frozenset())
 

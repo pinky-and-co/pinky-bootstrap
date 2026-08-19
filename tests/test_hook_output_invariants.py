@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-HOOKS = Path(__file__).parent.parent / "core" / "status-lines"
+HOOKS = Path(__file__).parent.parent / "agentic-harness" / "status-lines"
 sys.path.insert(0, str(HOOKS))
 
 _WALLCLOCK = re.compile(

@@ -30,7 +30,7 @@ SCRIPT_DIR = PACKAGE_DIR.parent
 # So the workspace announces ITSELF, with a `.pinky/` marker directory at its root, and the moteur
 # finds it by walking up from the CURRENT DIRECTORY — the one place that reliably says which
 # workspace the operator means. Same resolver shape as declared_kanbans() in
-# core/status-lines/stop_handoff.py (`[start, *start.parents]`, env > pointer > default): one
+# agentic-harness/status-lines/stop_handoff.py (`[start, *start.parents]`, env > pointer > default): one
 # mechanism, two consumers, ported here rather than re-invented.
 WORKSPACE_ROOT_ENV = "PINKY_WORKSPACE_ROOT"
 MARKER_DIR_NAME = ".pinky"
@@ -70,17 +70,19 @@ def find_workspace_root(start: Path) -> Path:
 WORKSPACE_ROOT = find_workspace_root(Path.cwd())
 MARKER_DIR = WORKSPACE_ROOT / MARKER_DIR_NAME
 
-# core/ is the single source for the provider runner (rules, commands, agents,
-# CLAUDE.md.tpl) as well as the hooks distribution below.
-CORE_DIR = SCRIPT_DIR / "core"
+# Two source roots, split by what they are — not one `core/` mixing both (2026-08-20 reorg):
+# agentic-harness/ = content a Claude Code session loads (rules, status-lines) ; hygiene/ = non-
+# agentic repo tooling (ci, hooks, pre-commit) this CLI distributes into consumer repos.
+AGENTIC_HARNESS_DIR = SCRIPT_DIR / "agentic-harness"
+HYGIENE_DIR = SCRIPT_DIR / "hygiene"
 
-# ── Hooks distribution (core/ = single source) ───────────────────────────────
-CORE_HOOKS_DIR = CORE_DIR / "hooks"
+# ── Hooks distribution (hygiene/ = single source) ────────────────────────────
+CORE_HOOKS_DIR = HYGIENE_DIR / "hooks"
 # Harness (Claude Code) hooks — distinct from the git pre-commit hooks in CORE_HOOKS_DIR.
 # Installed to <claude_dir>/scripts/ and wired into settings.json (see _install_status_lines).
-CORE_HARNESS_HOOKS_DIR = CORE_DIR / "status-lines"
-CORE_PRECOMMIT_DIR = CORE_DIR / "pre-commit"
-CORE_CI_DIR = CORE_DIR / "ci"
+CORE_HARNESS_HOOKS_DIR = AGENTIC_HARNESS_DIR / "status-lines"
+CORE_PRECOMMIT_DIR = HYGIENE_DIR / "pre-commit"
+CORE_CI_DIR = HYGIENE_DIR / "ci"
 
 # render_docs.py renders the repo-local README/index.md sections (badges/tagline/documentation/
 # license). It is distributed as-is into every repo's scripts/hooks/ so the `generate-docs` commit
@@ -487,7 +489,8 @@ __all__ = [
     "MARKER_DIR",
     "MARKER_DIR_NAME",
     "find_workspace_root",
-    "CORE_DIR",
+    "AGENTIC_HARNESS_DIR",
+    "HYGIENE_DIR",
     "CORE_HOOKS_DIR",
     "CORE_HARNESS_HOOKS_DIR",
     "CORE_PRECOMMIT_DIR",
