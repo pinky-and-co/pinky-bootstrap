@@ -4,12 +4,7 @@ The rules that steer every session used to be generated into ``.claude/rules/`` 
 no longer exists, leaving them in a directory under no version control and with no source. This
 module is the replacement path: the rules live here, in git, and are copied out.
 
-**Orphans are deliberately left alone, and that is temporary.** A rule already sitting in the
-target that this repo does not (yet) own is reported, never deleted — the migration moves rules
-over one at a time, and purging on the first pass would wipe the ones not yet migrated. Once they
-all live here, the distribution is expected to purge instead: the target becomes a mirror, and a
-file with no source in ``rules/core/`` is drift. Do not read the current tolerance as the intended
-end state.
+The target is a mirror of ``rules/core/``: a file with no matching source is drift and is purged.
 """
 
 from __future__ import annotations
@@ -17,40 +12,46 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .common import SCRIPT_DIR
+from .common import AGENTIC_HARNESS_DIR
 
-RULES_DIR = SCRIPT_DIR / "rules"
+RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
 CORE_RULES_DIR = RULES_DIR / "core"
 TARGET_REL = ".claude/rules"
 
 
 @dataclass(frozen=True)
 class RulesReport:
-    """Outcome of one distribution pass.
+    """Outcome of one distribution pass — a plan when ``apply=False``, an executed report otherwise.
 
     Attributes:
-        written: Rule filenames created or updated in the target.
+        added: Rule filenames with no prior file in the target.
+        modified: Rule filenames whose target content differs from the source.
         unchanged: Rule filenames already byte-identical in the target.
-        orphans: Filenames present in the target with no source in ``rules/core/`` — not yet
-            migrated, left untouched on purpose.
+        purged: Filenames removed (or, unapplied, slated for removal) from the target — present
+            there with no matching source in ``rules/core/``.
     """
 
-    written: list[str] = field(default_factory=list)
+    added: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
-    orphans: list[str] = field(default_factory=list)
+    purged: list[str] = field(default_factory=list)
+
+    @property
+    def has_changes(self) -> bool:
+        return bool(self.added or self.modified or self.purged)
 
 
-def distribute_rules(workspace: Path) -> RulesReport:
-    """Copy every ``rules/core/*.md`` into ``<workspace>/.claude/rules/``.
+def distribute_rules(workspace: Path, *, apply: bool = True) -> RulesReport:
+    """Diff ``rules/core/*.md`` against ``<workspace>/.claude/rules/``, applying the diff by default.
 
-    Overwrites by filename and deletes nothing. The target directory is created if absent.
+    The target is a mirror of ``rules/core/``: a file with no matching source is purged.
 
     Args:
         workspace: Workspace root — the directory holding ``.claude/``.
+        apply: When False, compute the diff without touching the filesystem — a plan.
 
     Returns:
-        A RulesReport listing what was written, what was already current, and which target files
-        have no source here yet.
+        A RulesReport — the plan when ``apply=False``, what was actually done otherwise.
 
     Raises:
         FileNotFoundError: If ``rules/core/`` does not exist in this repo.
@@ -61,47 +62,63 @@ def distribute_rules(workspace: Path) -> RulesReport:
         )
 
     target = workspace.expanduser().resolve() / TARGET_REL
-    target.mkdir(parents=True, exist_ok=True)
+    if apply:
+        target.mkdir(parents=True, exist_ok=True)
 
-    report = RulesReport()
     sources = sorted(CORE_RULES_DIR.glob("*.md"))
+    added: list[str] = []
+    modified: list[str] = []
+    unchanged: list[str] = []
     for src in sources:
         dst = target / src.name
         payload = src.read_text(encoding="utf-8")
-        # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
-        # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
-        if dst.exists() and dst.read_text(encoding="utf-8") == payload:
-            report.unchanged.append(src.name)
-            continue
-        dst.write_text(payload, encoding="utf-8")
-        report.written.append(src.name)
+        if dst.exists():
+            # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
+            # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
+            if dst.read_text(encoding="utf-8") == payload:
+                unchanged.append(src.name)
+                continue
+            modified.append(src.name)
+        else:
+            added.append(src.name)
+        if apply:
+            dst.write_text(payload, encoding="utf-8")
 
     owned = {src.name for src in sources}
-    report.orphans.extend(
-        sorted(f.name for f in target.glob("*.md") if f.name not in owned)
+    purged: list[str] = []
+    if target.is_dir():
+        for f in sorted(target.glob("*.md")):
+            if f.name not in owned:
+                purged.append(f.name)
+                if apply:
+                    f.unlink()
+
+    return RulesReport(
+        added=added, modified=modified, unchanged=unchanged, purged=purged
     )
-    return report
 
 
 def print_rules_report(report: RulesReport, workspace: Path) -> None:
-    """Print a distribution report, orphan count included.
-
-    The orphan count is the migration's progress counter: it drops by one each time a rule moves
-    into ``rules/core/``, and reaching zero is what makes purging safe to turn on.
+    """Print a distribution plan or report — additions, modifications, deletions, unchanged count.
 
     Args:
         report: Result of :func:`distribute_rules`.
-        workspace: Workspace root the rules were written to.
+        workspace: Workspace root the rules target (or targeted).
     """
     print(f"rules → {workspace / TARGET_REL}")
-    print(
-        f"  écrites   : {len(report.written)}"
-        + (f"  ({', '.join(report.written)})" if report.written else "")
-    )
-    print(f"  inchangées: {len(report.unchanged)}")
-    if report.orphans:
-        print(
-            f"  orphelines: {len(report.orphans)} — pas encore migrées, laissées en place"
-        )
-        for name in report.orphans:
-            print(f"      {name}")
+    if not report.has_changes:
+        print(f"  nothing to do — {len(report.unchanged)} unchanged")
+        return
+    if report.added:
+        print(f"\n➕ added ({len(report.added)})")
+        for name in report.added:
+            print(f"    {name}")
+    if report.modified:
+        print(f"\n🔄 modified ({len(report.modified)})")
+        for name in report.modified:
+            print(f"    {name}")
+    if report.purged:
+        print(f"\n🗑️ removed ({len(report.purged)}) — no source left in rules/core/")
+        for name in report.purged:
+            print(f"    {name}")
+    print(f"\n  unchanged: {len(report.unchanged)}")

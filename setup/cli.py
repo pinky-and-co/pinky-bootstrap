@@ -1,6 +1,7 @@
 """CLI glue — argparse + mode dispatch. See setup.py at the workspace root for usage."""
 
 import argparse
+import sys
 from pathlib import Path
 
 from .common import DEFAULT_PUBLIC_PROFILE, WORKSPACE_ROOT, init_workspace
@@ -25,7 +26,8 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         metavar="WORKSPACE",
         help="distribute rules/core/ into <workspace>/.claude/rules/ "
-        "(default: the detected workspace root). Overwrites by name, deletes nothing.",
+        "(default: the detected workspace root). Shows the plan, asks for confirmation before "
+        "applying — see --dry-run and --yes.",
     )
     # Hooks distribution
     parser.add_argument("--repo", default=None, help="distribute to a single repo")
@@ -63,7 +65,16 @@ def main(argv: list[str] | None = None) -> None:
         "never overwritten. Exposed as `pinky init-workspace` (cli_pinky.py) once packaged.",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="print actions, write nothing"
+        "--dry-run",
+        action="store_true",
+        help="print actions, write nothing. With --rules: print the plan and stop, never ask",
+    )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="with --rules: apply the plan without asking for confirmation "
+        "(required in a non-interactive shell — no stdin to prompt on)",
     )
     parser.add_argument(
         "--check-drift", action="store_true", help="report repo vs source drift"
@@ -105,7 +116,19 @@ def main(argv: list[str] | None = None) -> None:
     # every other mode because they all resolve WORKSPACE_ROOT through it.
     if args.rules is not None:
         workspace = Path(args.rules)
-        print_rules_report(distribute_rules(workspace), workspace)
+        plan = distribute_rules(workspace, apply=False)
+        print_rules_report(plan, workspace)
+        if not plan.has_changes or args.dry_run:
+            return
+        if not args.yes:
+            if not sys.stdin.isatty():
+                print("\nNon-interactive shell — pass --yes to apply.", file=sys.stderr)
+                raise SystemExit(1)
+            if input("\nApply this plan? [y/N] ").strip().lower() != "y":
+                print("Cancelled.")
+                return
+        distribute_rules(workspace, apply=True)
+        print("\nApplied.")
         return
 
     if args.init_workspace:
