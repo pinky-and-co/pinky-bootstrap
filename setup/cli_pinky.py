@@ -23,17 +23,17 @@ Usage:
 import argparse
 
 from .cli import main as setup_main
-from .common import CORE_DIR, SCRIPT_DIR
+from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .product_scaffold import REPO_TYPES
 from .profile import _command_description
 
-SCRIPTS_DIR = SCRIPT_DIR / "scripts"
+SCRIPTS_DIR = SCRIPT_DIR / "tools"
 
 
 def _commands_index() -> str:
-    """`/command — description` for every core/commands/*.md — the same source CLAUDE.md's own
+    """`/command — description` for every agentic-harness/commands/*.md — the same source CLAUDE.md's own
     table renders, read here instead of duplicated, so the two views can't drift apart."""
-    commands_dir = CORE_DIR / "commands"
+    commands_dir = AGENTIC_HARNESS_DIR / "commands"
     if not commands_dir.is_dir():
         return ""
     lines = [
@@ -44,12 +44,12 @@ def _commands_index() -> str:
 
 
 def _scripts_index() -> str:
-    """One line per standalone tool in scripts/ (excluding scripts/hooks/, distributed per-repo —
-    not something to run directly)."""
+    """One line per standalone maintainer tool in tools/ — distinct from scripts/hooks/, this repo's
+    own installed copy of what it distributes, never a tool run directly."""
     if not SCRIPTS_DIR.is_dir():
         return ""
     lines = [
-        f"  scripts/{path.name}"
+        f"  tools/{path.name}"
         for path in sorted(SCRIPTS_DIR.glob("*.py"))
         if path.is_file()
     ]

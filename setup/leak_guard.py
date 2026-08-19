@@ -1,7 +1,7 @@
 """Public-corpus leak guard (--check-public) — anti-regression gate for the public profile.
 
 Scans every surface the designated public profile ships — each resolved knowledge agent and the
-profile-independent core/rules/* (etc., see PUBLIC_SCAN_SUBDIRS) — for product/private-doc leaks.
+profile-independent agentic-harness/rules/* (etc., see PUBLIC_SCAN_SUBDIRS) — for product/private-doc leaks.
 FAILS (exit 1, listing file:line) on the codenames AND the instance
 identity (GitHub org / asset host) declared by the PRIVATE profiles, while letting the bare public
 brand token `pinky` pass — the identity check catches the `pinky`-shaped strings the codename hunt
@@ -27,7 +27,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .common import (
-    CORE_DIR,
+    AGENTIC_HARNESS_DIR,
+    HYGIENE_DIR,
     DEFAULT_PUBLIC_PROFILE,
     _display_path,
     iter_profiles,
@@ -36,18 +37,20 @@ from .common import (
 )
 from .profile import _resolve_agent, validate_profile
 
-# Every core/ subdir shipped in the public moteur — ALL are leak-scanned by --check-public.
-# Keep in sync with what setup.py actually distributes (scaffolding + hooks + pre-commit + skills).
-PUBLIC_SCAN_SUBDIRS = (
-    "rules",
-    "commands",
-    "agents",
-    "skills",
-    "status-lines",
-    "hooks",
-    "pre-commit",
-    "conventions",
-)
+# Every subdir shipped in the public moteur, and which root it lives under post-reorg (2026-08-20:
+# core/ split into agentic-harness/ + hygiene/) — ALL are leak-scanned by --check-public. Keep in
+# sync with what setup.py actually distributes.
+PUBLIC_SCAN_ROOTS = {
+    "rules": AGENTIC_HARNESS_DIR,
+    "commands": AGENTIC_HARNESS_DIR,
+    "agents": AGENTIC_HARNESS_DIR,
+    "skills": AGENTIC_HARNESS_DIR,
+    "status-lines": AGENTIC_HARNESS_DIR,
+    "hooks": HYGIENE_DIR,
+    "pre-commit": HYGIENE_DIR,
+    "conventions": HYGIENE_DIR,
+}
+PUBLIC_SCAN_SUBDIRS = tuple(PUBLIC_SCAN_ROOTS)
 
 
 def _load_patterns_file(path_str: str, base: Path) -> list[str]:
@@ -135,7 +138,7 @@ def check_public(profile_arg: str | None) -> int:
     """Scan the public profile's shipped surfaces for product/private-doc leaks.
 
     Loads the designated public profile (arg, else DEFAULT_PUBLIC_PROFILE) and scans: every
-    resolved knowledge agent file, and core/rules/* (etc., PUBLIC_SCAN_SUBDIRS). Returns the
+    resolved knowledge agent file, and agentic-harness/rules/* (etc., PUBLIC_SCAN_SUBDIRS). Returns the
     total hit count (0 = clean). Refuses to run against a profile marked `visibility: private`.
     No configured target, or no private profile declaring patterns → clean no-op with a clear
     message (a fork that hasn't set anything up is not a failure).
@@ -205,7 +208,7 @@ def check_public(profile_arg: str | None) -> int:
     # agents: a leak in a skill, a harness-hook docstring, a pre-commit fragment or a convention
     # file ships in the public moteur all the same (angle mort relevé par l'audit 2026-07-04).
     for sub in PUBLIC_SCAN_SUBDIRS:
-        sub_dir = CORE_DIR / sub
+        sub_dir = PUBLIC_SCAN_ROOTS[sub] / sub
         if sub_dir.is_dir():
             for f in sorted(sub_dir.rglob("*")):
                 if f.is_file() and "__pycache__" not in f.parts:

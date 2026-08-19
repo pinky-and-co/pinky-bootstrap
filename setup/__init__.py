@@ -19,7 +19,8 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 from .common import (
-    CORE_DIR,
+    AGENTIC_HARNESS_DIR,
+    HYGIENE_DIR,
     CORE_HARNESS_HOOKS_DIR,
     CORE_HOOKS_DIR,
     CORE_PRECOMMIT_DIR,
@@ -124,7 +125,8 @@ from .precommit import (
 from .cli import main
 
 __all__ = [
-    "CORE_DIR",
+    "AGENTIC_HARNESS_DIR",
+    "HYGIENE_DIR",
     "CORE_HARNESS_HOOKS_DIR",
     "CORE_HOOKS_DIR",
     "CORE_PRECOMMIT_DIR",

@@ -17,7 +17,7 @@ an empty one.
 import sys
 from pathlib import Path
 
-HOOKS = Path(__file__).parent.parent / "core" / "status-lines"
+HOOKS = Path(__file__).parent.parent / "agentic-harness" / "status-lines"
 sys.path.insert(0, str(HOOKS))
 
 import statusline as sl  # noqa: E402

@@ -1,8 +1,8 @@
 """Hooks distribution — core/ is the single source. setup.py distributes, per repo:
-    1. core/hooks/*                 → <repo>/scripts/hooks/
+    1. hygiene/hooks/*                 → <repo>/scripts/hooks/
     2. base + extras                → <repo>/.pre-commit-config.yaml     (generated)
-    2b. core/ci/ci.yml.tpl          → <repo>/.github/workflows/ci.yml    (generated, libs)
-    2c. core/ci/prek.yml.tpl        → <repo>/.github/workflows/prek.yml  (generated, non-libs)
+    2b. hygiene/ci/ci.yml.tpl          → <repo>/.github/workflows/ci.yml    (generated, libs)
+    2c. hygiene/ci/prek.yml.tpl        → <repo>/.github/workflows/prek.yml  (generated, non-libs)
     3. prek install (+ commit-msg hook type)
 `--check-drift` compares each repo against the source without writing anything.
 """
@@ -81,7 +81,7 @@ SOCLE_HOOKS: dict[str, tuple[str, str | None]] = {
 #
 # Anything NOT in this manifest is socle or capability-routed → never filtered.
 #
-# Structural invariant (verified against core/pre-commit/{base,extras/*}.yaml): every selectable
+# Structural invariant (verified against hygiene/pre-commit/{base,extras/*}.yaml): every selectable
 # hook is the SOLE hook of its own `- repo:` block, so filtering removes whole repo blocks — never
 # a partial edit, never a dangling external-repo stub.
 HOOK_MANIFEST: dict[str, tuple[str, str | None]] = {
@@ -280,7 +280,7 @@ def resolve_extras(repo: Path) -> list[str]:
                     layout, so the full python extra's src/-scoped hooks (mypy, bandit,
                     interrogate, darglint) don't apply. ruff-check/ruff-format do (no src/
                     assumption) — this is the gap the pinky-workspace-self-lint card found:
-                    the moteur's own core/*.py, setup/*.py, core/hooks/*.py went unlinted.
+                    the moteur's own hygiene/*.py, setup/*.py, hygiene/hooks/*.py went unlinted.
     Repos with neither pyproject, package.json, nor any .py file get base only — fine for any
     repo (zws, secrets, forbidden-keywords, commit-msg).
 
@@ -350,7 +350,7 @@ def build_precommit_config(
     """Assemble .pre-commit-config.yaml = base + selected extras (text concat).
 
     When ``repo`` IS the moteur itself (``repo.resolve() == SCRIPT_DIR.resolve()``),
-    ``core/pre-commit/workspace-self.yaml`` is appended last — the public-corpus leak guard
+    ``hygiene/pre-commit/workspace-self.yaml`` is appended last — the public-corpus leak guard
     (``--check-public``), which only makes sense here (needs setup.py + corpus-public/ + the
     private profiles). It is NOT a layout extra (identity axis, not repo-layout), so it lives
     outside ``extras/`` and never ships to a consumer repo.
@@ -393,7 +393,7 @@ def build_precommit_config(
 # ── CI workflow distribution (chantier-0001, distribute-ci-yml-from-core) ────────────────────
 # Before this, .github/workflows/ci.yml was hand-maintained per repo — the only piece of
 # governance setup.py never touched, so a transverse CI change (the docs-only-deadlock fix) was
-# a manual fan-out to N repos. core/ci/ci.yml.tpl is now the single source; render_ci_yml derives
+# a manual fan-out to N repos. hygiene/ci/ci.yml.tpl is now the single source; render_ci_yml derives
 # the per-repo file. Two axes vary per repo and are NOT derivable from resolve_extras() (which
 # answers "python" identically for pinky-core and pinky-provider) — explicit override tables,
 # same pattern as SOCLE_HOOKS/HOOK_MANIFEST above.
@@ -473,7 +473,7 @@ def _d1_database_name(repo: Path) -> str | None:
 
 
 def render_ci_yml(repo: Path) -> str | None:
-    """Render .github/workflows/ci.yml for ``repo`` from core/ci/ci.yml.tpl, or None.
+    """Render .github/workflows/ci.yml for ``repo`` from hygiene/ci/ci.yml.tpl, or None.
 
     None when the repo has no derivable Python version pin (see ``_python_version_pin`` — no
     ``pyproject.toml`` or no ``requires-python``): same gate as the ``python`` pre-commit extra,
@@ -604,7 +604,7 @@ def _load_docs_identity(profile_arg: str | None) -> SuiteIdentity:
     if path is None or not path.exists():
         sys.exit(
             f"✗ no docs_identity.json for profile '{name}' — required to generate docs "
-            "(instance identity; see core/hooks/render_docs.py, the de-leak)"
+            "(instance identity; see hygiene/hooks/render_docs.py, the de-leak)"
         )
     return SuiteIdentity.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
@@ -628,7 +628,7 @@ def render_docs_identity(identity: SuiteIdentity, profile_name: str | None) -> s
     """The ``scripts/hooks/docs_identity.json`` text distributed into one repo.
 
     Wraps ``SuiteIdentity.to_json()`` rather than extending it: ``to_json`` lives in
-    ``core/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay free
+    ``hygiene/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay free
     of routing concerns. The ``profile`` and ``engine_version`` keys are written HERE, by the
     distributor, and read back by ``repo_profile`` / ``check_drift`` respectively. ``from_dict``
     reads ``_FIELDS`` only, so the extra keys are invisible to the commit-time hook that consumes
@@ -709,7 +709,7 @@ def distribute(
                 dst.chmod(0o755)
 
     # 1b. docs_identity.json — the instance identity render_docs.py reads at commit time. Values come
-    #     from the profile (de-leak); never hardcoded in core/hooks/render_docs.py (the generic engine).
+    #     from the profile (de-leak); never hardcoded in hygiene/hooks/render_docs.py (the generic engine).
     #     Also carries `profile`: the regime this repo is on, so `--all` and `--check-drift` can
     #     resolve it per repo instead of imposing the caller's (see render_docs_identity).
     print(f"  {tag}hook  scripts/hooks/docs_identity.json")
@@ -970,7 +970,7 @@ DISTRIBUTED_PATHS = (
     ".github/workflows/prek.yml",
 )
 
-# No `(scope)` — core/hooks/commit-msg's PATTERN is strictly `<emoji> <type>: <description>`
+# No `(scope)` — hygiene/hooks/commit-msg's PATTERN is strictly `<emoji> <type>: <description>`
 # (tightened after this constant was last exercised via bulk --commit; a `chore(hooks):` scope
 # fails it, drift caught 2026-07-11 rolling out the docs_identity pitch fields).
 COMMIT_MESSAGE = "🔧 chore: adopt pinky-workspace centralized hooks distribution"
@@ -1113,7 +1113,7 @@ def check_drift(
     """Compare each repo against the workspace source; return divergence count.
 
     The expected hook-script set is per-repo (ADR-0027, via `_hook_files`) — scoped to what that
-    repo's own extras actually reference, not the full `core/hooks/` directory. ``selected_hooks``
+    repo's own extras actually reference, not the full `hygiene/hooks/` directory. ``selected_hooks``
     (ADR-0008) further narrows it to the profile's selection.
 
     ``None`` no longer means "no filtering": it means **resolve each repo's own profile** (the one

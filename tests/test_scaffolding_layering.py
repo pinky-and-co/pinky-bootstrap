@@ -25,7 +25,10 @@ def test_no_public_artefact_names_a_private_instance():
     import re as _re
 
     patterns = _re.compile(r"agent_pinky|agent_snowflake_pinky|pythia", _re.I)
-    for d in (setup.CORE_DIR / "commands", setup.CORE_DIR / "agents"):
+    for d in (
+        setup.AGENTIC_HARNESS_DIR / "commands",
+        setup.AGENTIC_HARNESS_DIR / "agents",
+    ):
         for f in sorted(d.glob("*.md")):
             assert not patterns.search(f.read_text(encoding="utf-8")), (
                 f"{f.name} nomme un artefact d'instance — utiliser le slot, pas l'exemple"
@@ -43,48 +46,11 @@ def test_scaffolding_sources_profile_overrides_core_on_name(tmp_path):
     assert sources["commit.md"] == profile_cmds / "commit.md"
 
 
-def test_scaffolding_sources_rules_layers_base_and_profile(tmp_path):
-    # Les rules privées du profil (ex. pinky-libs, qui nomme des libs produit) SONT layerées sur la
-    # base publique — même split public/privé que commands/agents (cf. docstring _scaffolding_sources).
-    profile_rules = tmp_path / "rules"
-    profile_rules.mkdir()
-    (profile_rules / "private-rule.md").write_text(
-        "instance-specific", encoding="utf-8"
-    )
-    profile_yaml = tmp_path / "profile.yaml"
-    profile_yaml.write_text("name: x", encoding="utf-8")
-
-    sources = setup._scaffolding_sources("rules", profile_yaml, scope_caps=frozenset())
-    assert sources["private-rule.md"] == profile_rules / "private-rule.md"
-    # Périmètre sans capacité → il ne reste que la base : aucune règle de domaine ne passe.
-    base = setup.CORE_DIR / "rules" / "base"
-    others = {n: p for n, p in sources.items() if n != "private-rule.md"}
-    assert others and all(p.is_relative_to(base) for p in others.values())
-
-
-def test_domain_rules_join_the_same_rule_set_when_the_capability_is_in_scope(tmp_path):
-    """ADR-0060 — la capacité décide la PRÉSENCE d'une règle de domaine, `paths:` son CHARGEMENT.
-
-    Remplace le domain layer d'ADR-0014, qui rendait ses règles dans `WORKSPACE_ROOT/<subdir>/` en
-    supposant que les repos y seraient clonés. Ils ne l'ont jamais été — `discover_repos()` globe la
-    RACINE — donc ces 6 règles n'ont jamais atteint une session. Vérifié le 2026-08-05 : zéro
-    intersection entre `<workspace>/.claude/rules/` et `pinky/.claude/rules/`.
-    """
-    profile_yaml = tmp_path / "profile.yaml"
-    profile_yaml.write_text("name: x", encoding="utf-8")
-
-    sans = setup._scaffolding_sources("rules", profile_yaml, scope_caps=frozenset())
-    avec = setup._scaffolding_sources(
-        "rules", profile_yaml, scope_caps=frozenset({"snowflake"})
-    )
-    domain = {
-        f.name for f in (setup.CORE_DIR / "rules" / "domain-snowflake").glob("*.md")
-    }
-
-    assert domain, "le répertoire domain-snowflake ne doit pas être vide"
-    assert domain.isdisjoint(sans)  # hors périmètre : aucune
-    assert domain.issubset(set(avec))  # dans le périmètre : toutes
-    assert set(avec) - set(sans) == domain  # oracle : elles seules changent
+# Deux tests ont été retirés d'ici : ils exigeaient `core/rules/base/` et
+# `core/rules/domain-snowflake/` non vides. Ces répertoires n'ont jamais été portés dans ce repo,
+# et le découpage qui les remplace est `rules/core/` + `rules/<plugin>/` — ils n'avaient donc plus
+# d'objet, tout en bloquant chaque commit du repo via les hooks. La distribution des rules est
+# désormais couverte par `test_rules_distribution.py`.
 
 
 def test_every_domain_rule_is_path_scoped(tmp_path):
@@ -94,7 +60,9 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
     sans `paths:` elle serait injectée même en travaillant sur un repo JS. C'est précisément la
     dépense qu'ADR-0057 a mesurée et réduite, et le prix à payer pour avoir supprimé le sous-arbre.
     """
-    for f in sorted((setup.CORE_DIR / "rules" / "domain-snowflake").glob("*.md")):
+    for f in sorted(
+        (setup.AGENTIC_HARNESS_DIR / "rules" / "domain-snowflake").glob("*.md")
+    ):
         head = f.read_text(encoding="utf-8").split("---")[1]
         assert "paths:" in head, f"{f.name} n'est pas scopée par paths:"
         assert "capability:" in head, f"{f.name} ne déclare pas sa capacité"
@@ -102,7 +70,7 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
 
 def test_scaffolding_sources_no_profile_is_core_only():
     sources = setup._scaffolding_sources("commands", None)
-    assert all(p.is_relative_to(setup.CORE_DIR) for p in sources.values())
+    assert all(p.is_relative_to(setup.AGENTIC_HARNESS_DIR) for p in sources.values())
 
 
 # --- Routage par capacité : `capability:` (le repo) + `machine:` (l'opérateur) -------------------
@@ -136,7 +104,7 @@ def test_chantier_is_socle_and_must_stay_so():
     partagé existe »), alors que le board partagé existait depuis le 2026-07-31. Un commentaire ne
     garde rien ; ce test, si.
     """
-    chantier = setup.CORE_DIR / "commands" / "chantier.md"
+    chantier = setup.AGENTIC_HARNESS_DIR / "commands" / "chantier.md"
     assert setup.profile._command_requirements(chantier) == (None, None)
     assert setup.profile._meets_requirements(chantier, frozenset())
 

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-HOOK = Path(__file__).parent.parent / "core" / "hooks" / "run-tests"
+HOOK = Path(__file__).parent.parent / "hygiene" / "hooks" / "run-tests"
 
 PASSING_JS = "import {test} from 'node:test';\ntest('ok', () => {});\n"
 FAILING_JS = (
@@ -259,9 +259,9 @@ def test_test_gate_declares_no_files_pattern():
     import yaml  # noqa: PLC0415 — pytest.importorskip est déjà fait en tête de module ailleurs
 
     base = yaml.safe_load(
-        (Path(__file__).parent.parent / "core" / "pre-commit" / "base.yaml").read_text(
-            encoding="utf-8"
-        )
+        (
+            Path(__file__).parent.parent / "hygiene" / "pre-commit" / "base.yaml"
+        ).read_text(encoding="utf-8")
     )
     gate = [
         h

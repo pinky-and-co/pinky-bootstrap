@@ -1,13 +1,15 @@
 """CLI glue — argparse + mode dispatch. See setup.py at the workspace root for usage."""
 
 import argparse
+import sys
 from pathlib import Path
 
-from .common import DEFAULT_PUBLIC_PROFILE, init_workspace
+from .common import DEFAULT_PUBLIC_PROFILE, WORKSPACE_ROOT, init_workspace
 from .leak_guard import check_public
 from .machine_check import check_machine
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
+from .rules import distribute_rules, print_rules_report
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -15,6 +17,18 @@ def main(argv: list[str] | None = None) -> None:
     invoke a mode programmatically without touching ``sys.argv`` — ``None`` (the CLI entry point)
     keeps today's behavior, delegating to argparse's own ``sys.argv[1:]`` default."""
     parser = argparse.ArgumentParser(add_help=False)
+    # Rules distribution — targets the WORKSPACE (.claude/rules/), not a repo, which is why it is
+    # its own mode rather than a flag on --repo/--all.
+    parser.add_argument(
+        "--rules",
+        nargs="?",
+        const=str(WORKSPACE_ROOT),
+        default=None,
+        metavar="WORKSPACE",
+        help="distribute rules/core/ into <workspace>/.claude/rules/ "
+        "(default: the detected workspace root). Shows the plan, asks for confirmation before "
+        "applying — see --dry-run and --yes.",
+    )
     # Hooks distribution
     parser.add_argument("--repo", default=None, help="distribute to a single repo")
     parser.add_argument(
@@ -51,7 +65,16 @@ def main(argv: list[str] | None = None) -> None:
         "never overwritten. Exposed as `pinky init-workspace` (cli_pinky.py) once packaged.",
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="print actions, write nothing"
+        "--dry-run",
+        action="store_true",
+        help="print actions, write nothing. With --rules: print the plan and stop, never ask",
+    )
+    parser.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="with --rules: apply the plan without asking for confirmation "
+        "(required in a non-interactive shell — no stdin to prompt on)",
     )
     parser.add_argument(
         "--check-drift", action="store_true", help="report repo vs source drift"
@@ -91,6 +114,23 @@ def main(argv: list[str] | None = None) -> None:
 
     # Workspace bootstrap (ADR-0065): creates the marker that DEFINES the workspace. Runs before
     # every other mode because they all resolve WORKSPACE_ROOT through it.
+    if args.rules is not None:
+        workspace = Path(args.rules)
+        plan = distribute_rules(workspace, apply=False)
+        print_rules_report(plan, workspace)
+        if not plan.has_changes or args.dry_run:
+            return
+        if not args.yes:
+            if not sys.stdin.isatty():
+                print("\nNon-interactive shell — pass --yes to apply.", file=sys.stderr)
+                raise SystemExit(1)
+            if input("\nApply this plan? [y/N] ").strip().lower() != "y":
+                print("Cancelled.")
+                return
+        distribute_rules(workspace, apply=True)
+        print("\nApplied.")
+        return
+
     if args.init_workspace:
         raise SystemExit(0 if init_workspace(Path(args.init_workspace)) else 1)
 
@@ -126,7 +166,7 @@ def main(argv: list[str] | None = None) -> None:
     print("pinky workspace setup — no mode flag given.")
     print(
         "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
-        "--init-workspace, --new-repo, --repo/--all (distribute), --check-drift, --check-public, "
-        "--check-machine."
+        "--init-workspace, --new-repo, --repo/--all (distribute), --rules (workspace rules), "
+        "--check-drift, --check-public, --check-machine."
     )
     raise SystemExit(1)

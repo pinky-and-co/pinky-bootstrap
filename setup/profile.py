@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 from .common import (
-    CORE_DIR,
+    AGENTIC_HARNESS_DIR,
     MACHINE_CAPABILITIES,
     corpus_roots,
 )
@@ -364,10 +364,10 @@ def _scaffolding_sources(
     Commands and agents layer the PUBLIC moteur set (``core/<subfolder>/``) with the active
     profile's PRIVATE set (``<profile dir>/<subfolder>/``) — same public/private split as the
     knowledge agents. A profile file overrides a core file of the same name. ``rules`` layers the
-    PUBLIC base set (``core/rules/base/``) with the profile's PRIVATE ``<profile dir>/rules/`` —
+    PUBLIC base set (``agentic-harness/rules/base/``) with the profile's PRIVATE ``<profile dir>/rules/`` —
     instance-specific, leaky rules (e.g. "reuse the pinky libs", which names product libraries)
     live in the private corpus, never in the public base. They land in the workspace-root base
-    layer so they load under every sibling repo. Domain rules (``core/rules/domain-<x>/``) land in
+    layer so they load under every sibling repo. Domain rules (``agentic-harness/rules/domain-<x>/``) land in
     the SAME set, gated by the capability each declares (ADR-0060, superseding ADR-0014's subtree).
     """
     if subfolder == "rules":
@@ -375,14 +375,14 @@ def _scaffolding_sources(
         # They land in the SAME .claude/rules/ as the base ones: the workspace has one rule
         # surface, not one per subtree. The `paths:` frontmatter is what keeps a domain rule from
         # costing context on unrelated work — capability decides PRESENCE, paths decides LOADING.
-        src_dirs = [CORE_DIR / "rules" / "base"]
+        src_dirs = [AGENTIC_HARNESS_DIR / "rules" / "base"]
         src_dirs += sorted(
-            d for d in (CORE_DIR / "rules").glob("domain-*") if d.is_dir()
+            d for d in (AGENTIC_HARNESS_DIR / "rules").glob("domain-*") if d.is_dir()
         )
         if profile_path is not None:
             src_dirs.append(profile_path.parent / "rules")
     else:
-        src_dirs = [CORE_DIR / subfolder]
+        src_dirs = [AGENTIC_HARNESS_DIR / subfolder]
         if profile_path is not None:
             src_dirs.append(profile_path.parent / subfolder)
     sources: dict[str, Path] = {}

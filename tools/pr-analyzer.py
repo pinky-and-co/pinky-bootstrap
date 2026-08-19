@@ -9,7 +9,7 @@ Usage:
     python pr-analyzer.py [--diff-file FILE] [--stats]
 
     Or pipe diff directly:
-    git diff develop...HEAD | python pinky-workspace/scripts/pr-analyzer.py --stats
+    git diff develop...HEAD | python tools/pr-analyzer.py --stats
 """
 
 import os
@@ -311,10 +311,8 @@ def main():
         elif not sys.stdin.isatty():
             diff_content = sys.stdin.buffer.read().decode("utf-8", errors="replace")
         else:
-            print(
-                "Usage: git diff develop...HEAD | python pinky-workspace/scripts/pr-analyzer.py"
-            )
-            print("       python pinky-workspace/scripts/pr-analyzer.py -f diff.txt")
+            print("Usage: git diff develop...HEAD | python tools/pr-analyzer.py")
+            print("       python tools/pr-analyzer.py -f diff.txt")
             sys.exit(1)
     except OSError as e:
         print(f"Error reading diff input: {e}", file=sys.stderr)
