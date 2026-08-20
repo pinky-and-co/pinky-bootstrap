@@ -720,6 +720,18 @@ def distribute(
             if not dry_run:
                 pin_path.write_text(f"{python_pin}\n", encoding="utf-8")
 
+    # 1g. .claude/policies.json — scaffold with branch_workflow: null if missing, never overwrite.
+    #     No safe universal default (verified: "git flow" on pinky-lib/ops, "github flow" on
+    #     pinky-agentic-plugins) — a repo fact, decided per repo, not inheritable or inventable.
+    #     null (not an empty object) names the expected key so it's visibly unset, not silently
+    #     absent — a human fills in the value.
+    policies_path = repo / ".claude" / "policies.json"
+    if not policies_path.exists():
+        print(f"  {tag}scaffold .claude/policies.json (branch_workflow: null)")
+        if not dry_run:
+            policies_path.parent.mkdir(parents=True, exist_ok=True)
+            policies_path.write_text('{"branch_workflow": null}\n', encoding="utf-8")
+
     # 2. .pre-commit-config.yaml
     print(f"  {tag}config  .pre-commit-config.yaml")
     if not dry_run:

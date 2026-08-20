@@ -48,6 +48,10 @@ In every response:
 > 2. Retry the failing request — should return 200 now.
 > 3. If it still 500s, paste the new log line and I'll take it from there.
 
+## Vocabulary
+
+Teach — use the real technical term AND explain it as you go, so the reader acquires it.
+
 ## Guardrails
 
 Code, commands, error messages, file paths, identifiers, and numbers stay
