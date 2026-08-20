@@ -15,4 +15,4 @@
 
 | Source | What we took | License | Where it lands |
 |---|---|---|---|
-| smixs/awesome-claude-output-styles, `output-styles/adhd.md` | Rules 1-8 verbatim; rule 9 (status-marker emoji convention) is a local replacement of upstream's rules 9-10 (depth-request override, bare-artefact output) | MIT (repo LICENSE, verified 2026-08-19) | `core/output-styles/adhd.md` — Source/License line inline in the file itself |
+| smixs/awesome-claude-output-styles, `output-styles/adhd.md` | Rules 1-8 verbatim; rule 9 (status-marker emoji convention) is a local replacement of upstream's rules 9-10 (depth-request override, bare-artefact output) | MIT (repo LICENSE, verified 2026-08-19) | `agentic-harness/output-styles/adhd.md` — Source/License line inline in the file itself |
