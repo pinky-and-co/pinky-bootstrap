@@ -49,6 +49,8 @@ except Exception:
     pass
 
 # --- ANSI colors ---
+
+WHITE = "\033[37m"
 RESET = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -60,6 +62,7 @@ YELLOW = "\033[33m"
 RED = "\033[31m"
 GREY = "\033[90m"
 YELLOW_BG = "\033[43;30m"  # yellow background, black text ->  "warning" effect
+RED_BG = "\033[41;30m"  # red background, white text ->  "alert" effect
 
 SEP = f"  {GREY}·{RESET}  "
 SEP_LINE = f"{DIM}-{RESET}"
@@ -274,6 +277,7 @@ def build_lines(data: dict) -> list[str]:
     lines: list[str] = []
 
     version = _safe_get(data, "version", "?")
+    line0_left_parts = ["⚪️"]
     line0_right_parts = [f"{DIM}v{version}{RESET}"]
     # ---------- Ligne 1 : version, modèle, effort, thinking, fast mode, output style ----------
     model = _safe_get(data, "model.display_name", "?")
@@ -352,21 +356,21 @@ def build_lines(data: dict) -> list[str]:
 
     # ---------- Optional line : rate limits > 90% ----------
     warnings = []
+    bg = YELLOW_BG
     for label, key in (("Session", "five_hour"), ("Hebdo", "seven_day")):
         used = _safe_get(data, f"rate_limits.{key}.used_percentage")
         resets_at = _safe_get(data, f"rate_limits.{key}.resets_at")
         if used is not None and used > 90:
             reset_txt = _fmt_epoch(resets_at) if resets_at else "?"
             warnings.append(f"{label}: {used:.0f}% (reset {reset_txt})")
+            if used >= 100:
+                bg = RED_BG
 
     if warnings:
-        warn_line = f"{YELLOW_BG} ⚠️  RATE LIMIT — {' | '.join(warnings)} {RESET}"
-        lines.append(warn_line)
-        lines.append(SEP_LINE)
+        line0_left_parts = [f"{bg} ⚠ RATE LIMIT — {' | '.join(warnings)} {RESET}"]
 
     max_left, max_right = _compute_content_width(
         [
-            ([], line0_right_parts),
             (line1_left_parts, line1_right_parts),
             (line2_left_parts, line2_right_parts),
             (line3_left_parts, line3_right_parts),
@@ -377,7 +381,9 @@ def build_lines(data: dict) -> list[str]:
         overflow = natural_total - columns
         max_left = max(10, max_left - overflow)
 
-    lines.append(_render_flex([], line0_right_parts, left_column_width=max_left))
+    lines.append(
+        _render_flex(line0_left_parts, line0_right_parts, left_column_width=max_left)
+    )
     lines.append(SEP_LINE)
     lines.append(
         _render_flex(line1_left_parts, line1_right_parts, left_column_width=max_left)

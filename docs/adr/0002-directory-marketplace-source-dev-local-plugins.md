@@ -2,7 +2,7 @@
 title: "0002"
 ---
 # ADR-0002 — Marketplace `directory` en dev local pour les repos plugin, `github` pour la consommation
-*Update date : 2026-08-18 15:00*
+*Update date : 2026-08-21 00:48*
 
 Status: proposé — mécanisme de bascule pas encore vérifié, voir § Conséquences
 Date: 2026-08-18
@@ -57,16 +57,10 @@ corrigée dans la foulée).
 - Le gate de version de `claude plugin update` devient hors-sujet pendant le dev actif — bumper
   `plugin.json` est réservé aux vrais jalons, jamais à chaque fix (même philosophie que `/release`
   pour les libs `pinky-*` : bump à un point de release délibéré, jamais à chaque commit).
-- **Tenté et ÉCHOUÉ le 18/08** : éditer `extraKnownMarketplaces.pinky-agentic-plugins.source` dans
-  `~/.claude/settings.json` (github → directory) puis `/reload-plugins --force`. Vérifié après coup
-  (`claude plugin marketplace list`) : la source reste `GitHub`, aucun effet. Cause probable :
-  `extraKnownMarketplaces` ne s'applique qu'à l'enregistrement **initial** d'une marketplace ; une
-  fois connue, `~/.claude/plugins/known_marketplaces.json` fait autorité et n'est pas relu depuis
-  `settings.json` — pas vérifié en détail, hypothèse la plus probable à ce stade. La vraie bascule
-  demanderait `claude plugin marketplace remove pinky-agentic-plugins` puis un `add` sur le chemin
-  local — **non tenté** : `remove` a un rayon d'action non vérifié (désinstalle-t-il les plugins déjà
-  installés depuis cette marketplace ?), risque jugé disproportionné pour continuer à tâtonner le
-  même jour après 3 échecs déjà (voir § Contexte).
+- Éditer `extraKnownMarketplaces.<nom>.source` dans `~/.claude/settings.json` pour une marketplace
+  déjà connue n'a pas toujours suffi seul (constaté le 18/08) — `claude plugin marketplace add
+  <chemin-local>` (enregistrement frais) est le chemin fiable. `github` n'est de toute façon pas un
+  type de source unique : `directory` en est un autre, pas une bascule spéciale à part.
 - Fix ligne 9 (`allowed-tools`) de `commit-and-pr/SKILL.md` appliqué dans le clone
   `bootstrap/pinky-agentic-plugins/` (guillemets manquants autour de
   `${CLAUDE_PLUGIN_ROOT}/hooks/resolve_policy.py`, cause du rejet de permission sur

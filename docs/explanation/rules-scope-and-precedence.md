@@ -7,7 +7,7 @@ correct there rather than everywhere.
 
 | Level | Source | Scope |
 |---|---|---|
-| `core` | `rules/core/` | the whole workspace |
+| `pc-core` | `rules/pc-core/` | the whole workspace |
 | plugin | `rules/<plugin>/` | the directory where the CLI installed it |
 | session | an inline instruction | the current turn, above everything |
 

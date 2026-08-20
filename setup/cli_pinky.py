@@ -119,13 +119,18 @@ def cmd_check_public(args: argparse.Namespace) -> None:
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
-    Phase 1 only: orchestrates the one step that already has its own convergence mechanism today
-    (`rules` — idempotent via `distribute_rules`, no state-file entry needed, the files themselves
-    are the source of truth). statusline/marketplaces/output-styles land in later phases, each
-    behind its own `setup.state_file` ledger entry once wired (see kanban card
-    `installeur-state-file-entree-4-cli-setup.md`) — no stub steps added ahead of the code that
-    would actually run them.
+    `--plugin` runs the scope wizard (user/project, depth, target) instead of the default rules
+    step — a different concern (one plugin, one chosen scope) from the base convergence. statusline/
+    output-styles land in later phases, each behind its own `setup.state_file` ledger entry once
+    wired (see kanban card `installeur-state-file-entree-4-cli-setup.md`) — no stub steps added
+    ahead of the code that would actually run them.
     """
+    if args.plugin:
+        argv = ["--plugin", args.plugin]
+        if args.marketplace:
+            argv += ["--marketplace", args.marketplace]
+        setup_main(argv)
+        return
     argv = ["--rules"]
     if args.yes:
         argv.append("--yes")
@@ -166,10 +171,21 @@ def build_parser() -> argparse.ArgumentParser:
         "install", help="🚀 replayable installer — converges this machine's setup"
     )
     p.add_argument("--yes", "-y", action="store_true")
+    p.add_argument(
+        "--plugin",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="enable this plugin via the interactive scope wizard (user/project/depth/target)",
+    )
+    p.add_argument(
+        "--marketplace",
+        default=None,
+        help="with --plugin: the marketplace it comes from",
+    )
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser(
-        "rules", help="📐 distribute rules/core/ into <workspace>/.claude/rules/"
+        "rules", help="📐 distribute rules/pc-core/ into <workspace>/.claude/rules/"
     )
     p.add_argument("workspace", nargs="?", default=None)
     p.add_argument("--dry-run", action="store_true")

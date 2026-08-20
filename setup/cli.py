@@ -6,9 +6,10 @@ from pathlib import Path
 
 from .common import WORKSPACE_ROOT
 from .leak_guard import check_public
+from .plugin_scope import run_marketplace_wizard
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
-from .rules import distribute_rules, print_rules_report
+from .rules import distribute_all_plugin_rules, print_all_plugin_rules_report
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -24,7 +25,7 @@ def main(argv: list[str] | None = None) -> None:
         const=str(WORKSPACE_ROOT),
         default=None,
         metavar="WORKSPACE",
-        help="distribute rules/core/ into <workspace>/.claude/rules/ "
+        help="distribute rules/pc-core/ into <workspace>/.claude/rules/ "
         "(default: the detected workspace root). Shows the plan, asks for confirmation before "
         "applying — see --dry-run and --yes.",
     )
@@ -91,13 +92,35 @@ def main(argv: list[str] | None = None) -> None:
         help="profile path or name; gates --check-public's scan, or (with a distribution flag) "
         "hooks on its layers.hooks (Phase 2a)",
     )
+    parser.add_argument(
+        "--plugin",
+        default=None,
+        metavar="PLUGIN_ID",
+        help="enable this plugin — runs the interactive scope wizard (user/project, depth, "
+        "target) then merges enabledPlugins into the chosen <root>/.claude/settings.json",
+    )
+    parser.add_argument(
+        "--marketplace",
+        default=None,
+        help="with --plugin: the marketplace the plugin comes from (renders as PLUGIN@MARKETPLACE "
+        "in enabledPlugins)",
+    )
     args, _ = parser.parse_known_args(argv)
+
+    if args.plugin is not None:
+        run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
+        return
 
     if args.rules is not None:
         workspace = Path(args.rules)
-        plan = distribute_rules(workspace, apply=False)
-        print_rules_report(plan, workspace)
-        if not plan.has_changes or args.dry_run:
+        plan = distribute_all_plugin_rules(workspace, apply=False)
+        print_all_plugin_rules_report(plan)
+        has_changes = any(
+            report.has_changes
+            for by_target in plan.values()
+            for report in by_target.values()
+        )
+        if not has_changes or args.dry_run:
             return
         if not args.yes:
             if not sys.stdin.isatty():
@@ -106,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
             if input("\nApply this plan? [y/N] ").strip().lower() != "y":
                 print("Cancelled.")
                 return
-        distribute_rules(workspace, apply=True)
+        distribute_all_plugin_rules(workspace, apply=True)
         print("\nApplied.")
         return
 

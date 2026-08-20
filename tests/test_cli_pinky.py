@@ -125,6 +125,28 @@ def test_install_dispatch_yes(monkeypatch):
     assert calls == [["--rules", "--yes"]]
 
 
+def test_install_dispatch_plugin(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["install", "--plugin", "pc-statusline"])
+    assert calls == [["--plugin", "pc-statusline"]]
+
+
+def test_install_dispatch_plugin_with_marketplace(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(
+        [
+            "install",
+            "--plugin",
+            "pc-statusline",
+            "--marketplace",
+            "pinky-agentic-plugins",
+        ]
+    )
+    assert calls == [
+        ["--plugin", "pc-statusline", "--marketplace", "pinky-agentic-plugins"]
+    ]
+
+
 def test_rules_dispatch_default_workspace(monkeypatch):
     # No positional workspace -> bare `--rules` (setup.cli's own const=WORKSPACE_ROOT kicks in).
     calls = _captured_argv(monkeypatch)

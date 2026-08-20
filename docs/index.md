@@ -2,6 +2,15 @@
 
 ## ADR
 
-- [0001 — `statusLine`/`subagentStatusLine`/`enabledPlugins` se rendent au niveau USER, jamais workspace](adr/0001-statusline-enabledplugins-niveau-user.md)
+- [0001 — `statusLine`/`subagentStatusLine` niveau user ; `enabledPlugins` scope git-repo-root](adr/0001-statusline-enabledplugins-niveau-user.md)
 - [0002 — Marketplace `directory` en dev local pour les repos plugin, `github` pour la consommation](adr/0002-directory-marketplace-source-dev-local-plugins.md)
 - [0005 — `CLAUDE.md`/`AGENTS.md` : import ou symlink selon le niveau](adr/0005-agents-md-symlink-par-niveau.md)
+
+## How-to
+
+- [install-plugin.md](how-to/install-plugin.md) — installer un plugin puis l'activer au bon scope (user/groupe/repo)
+
+## Explanation
+
+- [rules-scope-and-precedence.md](explanation/rules-scope-and-precedence.md) — où une rule s'applique, qui gagne
+- [claude-code-architecture-findings.md](explanation/claude-code-architecture-findings.md) — tests empiriques skills/plugins/forks/CLAUDE.md, référence avant de re-tester
