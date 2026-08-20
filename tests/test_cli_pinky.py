@@ -36,6 +36,7 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     for name in (
         "new-repo",
         "distribute",
+        "install",
         "rules",
         "drift",
         "check-public",
@@ -109,6 +110,19 @@ def test_distribute_dispatch_all(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["distribute", "--all", "--profile", "pluto"])
     assert calls == [["--all", "--profile", "pluto"]]
+
+
+def test_install_dispatch_default(monkeypatch):
+    # Phase 1: install only orchestrates `rules` today — same argv as `pinky rules`.
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["install"])
+    assert calls == [["--rules"]]
+
+
+def test_install_dispatch_yes(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["install", "--yes"])
+    assert calls == [["--rules", "--yes"]]
 
 
 def test_rules_dispatch_default_workspace(monkeypatch):

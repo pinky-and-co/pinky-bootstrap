@@ -12,6 +12,7 @@ touched shim, never the place logic accumulates.
 Usage:
     python cli_pinky.py new-repo pluto-poc-x --scaffold --type web
     python cli_pinky.py distribute --repo pinky-core
+    python cli_pinky.py install
     python cli_pinky.py rules
     python cli_pinky.py drift
     python cli_pinky.py check-public

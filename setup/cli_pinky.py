@@ -14,6 +14,7 @@ the test suite and a third-party machine call the engine directly, this is a fac
 Usage:
     python cli_pinky.py new-repo pluto-poc-x --scaffold --type web
     python cli_pinky.py distribute --repo pinky-core
+    python cli_pinky.py install
     python cli_pinky.py rules
     python cli_pinky.py drift
     python cli_pinky.py check-public
@@ -115,6 +116,22 @@ def cmd_check_public(args: argparse.Namespace) -> None:
     setup_main(argv)
 
 
+def cmd_install(args: argparse.Namespace) -> None:
+    """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
+
+    Phase 1 only: orchestrates the one step that already has its own convergence mechanism today
+    (`rules` — idempotent via `distribute_rules`, no state-file entry needed, the files themselves
+    are the source of truth). statusline/marketplaces/output-styles land in later phases, each
+    behind its own `setup.state_file` ledger entry once wired (see kanban card
+    `installeur-state-file-entree-4-cli-setup.md`) — no stub steps added ahead of the code that
+    would actually run them.
+    """
+    argv = ["--rules"]
+    if args.yes:
+        argv.append("--yes")
+    setup_main(argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         # NO hardcoded `prog`: this module has two legitimate entry points — the installed console
@@ -144,6 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--commit", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_distribute)
+
+    p = sub.add_parser(
+        "install", help="🚀 replayable installer — converges this machine's setup"
+    )
+    p.add_argument("--yes", "-y", action="store_true")
+    p.set_defaults(func=cmd_install)
 
     p = sub.add_parser(
         "rules", help="📐 distribute rules/core/ into <workspace>/.claude/rules/"
