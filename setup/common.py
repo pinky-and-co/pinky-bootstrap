@@ -27,48 +27,34 @@ SCRIPT_DIR = PACKAGE_DIR.parent
 # points at the install prefix — and discover_repos(), which globs WORKSPACE_ROOT, then scans
 # site-packages and finds zero repos. Nothing failed loudly; the distribution simply became a no-op.
 #
-# So the workspace announces ITSELF, with a `.pinky/` marker directory at its root, and the moteur
-# finds it by walking up from the CURRENT DIRECTORY — the one place that reliably says which
-# workspace the operator means. Same resolver shape as declared_kanbans() in
-# agentic-harness/status-lines/stop_handoff.py (`[start, *start.parents]`, env > pointer > default): one
-# mechanism, two consumers, ported here rather than re-invented.
+# So the workspace announces ITSELF — by the nearest `*.code-workspace` file above the CURRENT
+# DIRECTORY, the VSCode multi-root convention that already exists wherever this moteur runs — and
+# the moteur finds it by walking up. No bespoke marker to create or maintain.
 WORKSPACE_ROOT_ENV = "PINKY_WORKSPACE_ROOT"
-MARKER_DIR_NAME = ".pinky"
 
 
 def find_workspace_root(start: Path) -> Path:
-    """Workspace root — env ``PINKY_WORKSPACE_ROOT`` > nearest ``.pinky/config.txt`` above `start` > legacy.
+    """Workspace root — env ``PINKY_WORKSPACE_ROOT`` > nearest ``*.code-workspace`` above `start` > legacy.
 
     Args:
         start: Directory to walk up from — the caller's current directory in practice.
 
     Returns:
         The resolved workspace root. Falls back to ``SCRIPT_DIR.parent`` (the pre-ADR-0065
-        behaviour) when no marker is found, so a moteur cloned inside its workspace keeps working
-        with nothing configured — including this repo before its own marker was created.
-
-    The check is for ``config.txt`` INSIDE the marker directory, not just the bare ``.pinky/``
-    directory's presence — found live 2026-08-07 redistributing to ``pinky-provider``, which has
-    carried its own unrelated ``.pinky/schemas/`` (a product config dir, since its very first
-    commit) since before this marker convention existed. Walking up from inside that repo matched
-    the bare directory and treated `pinky-provider` itself as the workspace root, so
-    `discover_repos()` found zero repos — the exact silent-no-op failure ADR-0065 exists to kill,
-    reintroduced by too loose a marker check. ``config.txt`` is unconditionally written by
-    ``init_workspace()`` (see below), so it is what actually distinguishes a real marker from an
-    unrelated directory that happens to share the name.
+        behaviour) when no ``*.code-workspace`` file is found, so a moteur cloned inside its
+        workspace keeps working with nothing configured.
     """
     env = os.environ.get(WORKSPACE_ROOT_ENV)
     if env:
         return Path(env).expanduser().resolve()
     start = start.resolve()
     for base in [start, *start.parents]:
-        if (base / MARKER_DIR_NAME / "config.txt").is_file():
+        if any(p.is_file() for p in base.glob("*.code-workspace")):
             return base
     return SCRIPT_DIR.parent
 
 
 WORKSPACE_ROOT = find_workspace_root(Path.cwd())
-MARKER_DIR = WORKSPACE_ROOT / MARKER_DIR_NAME
 
 # Two source roots, split by what they are — not one `core/` mixing both (2026-08-20 reorg):
 # agentic-harness/ = content a Claude Code session loads (rules, status-lines) ; hygiene/ = non-
@@ -115,102 +101,6 @@ def engine_version() -> str:
         return data["project"]["version"]
 
 
-# ── Instance config — ONE gitignored file, inside the marker directory ────────────────────────
-# The moteur carries no instance-shaped literal (which profile is "default", which is the "public"
-# one --check-public scans, which repo-naming convention to distribute to, which package prefix is
-# "mine" for the mypy hook, who this machine is in the journal) — a fork/clone sets its own values
-# in `.pinky/config.txt` instead of editing this source. Absent file/key → graceful no-op default
-# (empty tuple / None), never a crash: a fresh clone with nothing configured still runs, it just
-# distributes to zero repos and requires an explicit --profile — see the callers of DEFAULT_PROFILE /
-# DEFAULT_PUBLIC_PROFILE / REPO_GLOBS / INTERNAL_DEP_PREFIX.
-#
-# It lives in `.pinky/` and not next to this file because SCRIPT_DIR is the INSTALL path (ADR-0065):
-# a packaged moteur would have written its config inside site-packages, where it is neither
-# writable nor found again. Config belongs to the workspace, code belongs to the install.
-#
-# ── Why exactly ONE config file, and what is NOT in it ────────────────────────────────────────
-# The moteur's config was spread over three files, then two, now one (ADR-0069). The criterion that
-# collapsed them is not "what subject does it cover", nor even "is it committed" — it is:
-#
-#     what NEVER VARIES between instances is a property of the CODE, never a configuration line.
-#     What varies by instance lives in ONE gitignored file.
-#
-# `corpus-roots.txt` (tracked) held two entries of different natures: `corpus-public`, whose position
-# is fixed by this repository, and `../_corpus-pinky`, a private corpus root exactly like the
-# `_corpus-pluto` that already lived in this file's `corpus_roots_local` key. The same kind of thing
-# in two files, with no decision behind it. The first is now DEFAULT_CORPUS_ROOTS (below), the second
-# joined the key.
-#
-# ADR-0065 § Amendement had settled on "a file is separate because it is COMMITTED" — a real
-# boundary, checkable with `git ls-files`, and better than the by-subject split it replaced. It just
-# answers where to put what is committed without ever asking why anything should be.
-INSTANCE_CONFIG_FILE = MARKER_DIR / "config.txt"
-
-
-def _read_config(path: Path) -> dict[str, str]:
-    """Parse `key = value` lines from a config file; skip blanks/`#` comments.
-
-    Args:
-        path: File to read. A missing file is not an error.
-
-    Returns:
-        The parsed keys, or an empty dict when the file does not exist.
-    """
-    if not path.exists():
-        return {}
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        key, sep, value = line.partition("=")
-        if sep:
-            values[key.strip()] = value.strip()
-    return values
-
-
-_WORKSPACE_DEFAULTS = _read_config(INSTANCE_CONFIG_FILE)
-
-# The default profile the `claude` provider (and the interactive flow) renders from.
-# `--provider claude` is an alias for `--profile <default_profile>` — one rendering path only.
-# None when unconfigured — callers that need it fail loud with a clear message at point of use.
-DEFAULT_PROFILE: str | None = os.environ.get(
-    "DEFAULT_PROFILE"
-) or _WORKSPACE_DEFAULTS.get("default_profile")
-
-# Repos receiving the distribution — comma-separated globs under WORKSPACE_ROOT.
-# Empty when unconfigured — discover_repos() then finds zero repos (safe no-op), not a crash.
-_repo_globs_raw = os.environ.get("REPO_GLOBS") or _WORKSPACE_DEFAULTS.get(
-    "repo_globs", ""
-)
-REPO_GLOBS: tuple[str, ...] = tuple(
-    g.strip() for g in _repo_globs_raw.split(",") if g.strip()
-)
-
-# Tools the OPERATOR runs — comma-separated. Second subject of the same "capability" idea as
-# resolve_extras(): that one derives what a REPO *is* from its layout, this one carries what the
-# person *runs* (a second agent, a local model runtime, a provider account). Undetectable by
-# construction for most of them — Cortex Code is a web UI in Snowsight, there is nothing local to
-# probe — hence declared rather than sniffed.
-# Empty when unconfigured, and that is the load-bearing default: a third-party machine (targets #2
-# and #3 of chantier 0001) then receives NO machine-scoped command at all. The failure mode we
-# refuse is the opposite one — a command silently landing on someone else's machine because they
-# forgot to opt out.
-_machine_caps_raw = os.environ.get("MACHINE_CAPABILITIES") or _WORKSPACE_DEFAULTS.get(
-    "machine_capabilities", ""
-)
-MACHINE_CAPABILITIES: frozenset[str] = frozenset(
-    c.strip() for c in _machine_caps_raw.split(",") if c.strip()
-)
-
-# The PUBLIC profile --check-public scans by default (no --profile). Distinct from DEFAULT_PROFILE
-# (which is the author's own, PRIVATE, everyday profile): the leak guard scans the shipped-public
-# profile instead. None when unconfigured — the guard then no-ops with a clear message rather than
-# scanning a wrong target (see leak_guard.check_public).
-DEFAULT_PUBLIC_PROFILE: str | None = os.environ.get(
-    "DEFAULT_PUBLIC_PROFILE"
-) or _WORKSPACE_DEFAULTS.get("default_public_profile")
-
 # Each <corpus root>/profiles/<name>/profile.yaml carries the rigor dial (layers.agent /
 # layers.hooks) plus knowledge / model / multi-agent config. A profile is resolved by name
 # across the corpus roots (see load_profile + corpus_roots), so it travels with its corpus.
@@ -223,10 +113,9 @@ DEFAULT_PUBLIC_PROFILE: str | None = os.environ.get(
 # and the profiles/<name>/ that select it. The corpus is resolved through an ORDERED list of
 # "corpus roots", each a directory that may hold `knowledge/` and/or `profiles/<name>/`.
 #
-# Resolution (ADR-0069):
+# Resolution:
 #   env CORPUS_ROOT  — REPLACES everything. os.pathsep-joined dirs, absolute or SCRIPT_DIR-relative.
-#   otherwise        — DEFAULT_CORPUS_ROOTS (the code's own, always first) + the instance's
-#                      `corpus_roots_local` key, appended.
+#   otherwise        — DEFAULT_CORPUS_ROOTS (the code's own, unconditional).
 #
 # `corpus-public` is a CONSTANT, not a configuration line: its position relative to the moteur is
 # fixed by the repository itself. It used to be declared in a committed `corpus-roots.txt`, which was
@@ -251,30 +140,18 @@ CORPUS_ROOT_ENV = "CORPUS_ROOT"
 DEFAULT_CORPUS_ROOTS = [SCRIPT_DIR / "corpus-public"]
 
 
-def _parse_root_list(raw_items: list[str], base: Path | None = None) -> list[Path]:
-    """Parse path entries (env-split or file lines) into resolved dirs; skip blanks/`#`.
+def _parse_root_list(raw_items: list[str]) -> list[Path]:
+    """Parse path entries (env-split) into resolved dirs; skip blanks/`#`.
 
     Args:
-        raw_items: Path entries, one per element.
-        base: Directory a RELATIVE entry resolves against. ``None`` means SCRIPT_DIR, which is
-            right for the ``CORPUS_ROOT`` env var — an explicit override, typed by someone who
-            knows where the code is. Instance config passes WORKSPACE_ROOT instead: its entries
-            describe the workspace, which no longer sits at a fixed offset from the code.
-
-            It passed MARKER_DIR until ADR-0069, while this docstring already claimed "the
-            workspace" — so a relative entry landed one level too deep, inside ``.pinky/``. Nothing
-            caught it because the only relative entries were in the tracked file (SCRIPT_DIR-based)
-            and the only instance entry was absolute. Moving ``_corpus-pinky`` into the instance key
-            is exactly what would have surfaced it.
-
-            The default is resolved HERE and not in the signature: a default argument binds once at
-            import, which would freeze SCRIPT_DIR past any later reassignment (the test suite's, and
-            `find_workspace_root()`'s own — see `WORKSPACE_ROOT` above).
+        raw_items: Path entries, one per element. A relative entry resolves against SCRIPT_DIR —
+            right for the ``CORPUS_ROOT`` env var, an explicit override typed by someone who knows
+            where the code is.
 
     Returns:
         Resolved directories, in input order, blanks and comments dropped.
     """
-    base = base or SCRIPT_DIR
+    base = SCRIPT_DIR
     roots: list[Path] = []
     for item in raw_items:
         item = item.strip()
@@ -286,29 +163,16 @@ def _parse_root_list(raw_items: list[str], base: Path | None = None) -> list[Pat
 
 
 def corpus_roots() -> list[Path]:
-    """Ordered corpus search roots — env CORPUS_ROOT, else DEFAULT_CORPUS_ROOTS + `corpus_roots_local`.
+    """Ordered corpus search roots — env CORPUS_ROOT, else DEFAULT_CORPUS_ROOTS.
 
-    The base (``DEFAULT_CORPUS_ROOTS``) comes first and is **unconditional** — it is the code's own
-    property, not something an instance declares. What an instance adds is the
-    ``corpus_roots_local`` key of ``<workspace root>/.pinky/config.txt``: gitignored, so it may hold
-    the absolute, machine-specific paths a shared drive's mount point requires (different on every
-    machine, which nothing versioned can express).
-
-    ``CORPUS_ROOT`` (env) *replaces* the whole thing, base included: an explicit override means "use
-    exactly this", and it is now the only way to relocate the public corpus, which is no longer
-    declarative.
+    ``CORPUS_ROOT`` (env) *replaces* the whole thing: an explicit override means "use exactly this".
     """
     env = os.environ.get(CORPUS_ROOT_ENV)
     if env:
         roots = _parse_root_list(env.split(os.pathsep))
         if roots:
             return roots
-    roots = [p.resolve() for p in DEFAULT_CORPUS_ROOTS]
-    roots += _parse_root_list(
-        _WORKSPACE_DEFAULTS.get("corpus_roots_local", "").split(","),
-        base=WORKSPACE_ROOT,
-    )
-    return list(dict.fromkeys(roots))  # de-dup, first occurrence wins the order
+    return list(dict.fromkeys(p.resolve() for p in DEFAULT_CORPUS_ROOTS))
 
 
 def owning_corpus_root(profile_path: Path) -> Path | None:
@@ -330,74 +194,6 @@ def owning_corpus_root(profile_path: Path) -> Path | None:
     if len(parents) < 3 or parents[1].name != "profiles":
         return None
     return parents[2]
-
-
-# Shipped as a commented skeleton, with NO value filled in: the moteur carries no instance-shaped
-# literal (that is the whole point of the file), and an example value that happens to work is worse
-# than a blank — it gets kept by accident. Every key is optional; each one's absent-default is
-# documented at its reader in this module.
-_CONFIG_TEMPLATE = """\
-# pinky instance config — this machine's workspace. NEVER versioned (see .gitignore).
-# Created by `pinky init-workspace` (packaged install) or `setup.py --init-workspace` (source
-# checkout). Every key is optional; an absent key degrades to a documented no-op default, never
-# a crash.
-
-# Profile `--provider claude` (and the bare interactive flow) renders from.
-# default_profile =
-
-# The PUBLIC profile `--check-public` scans when no --profile is passed.
-# default_public_profile =
-
-# Comma-separated globs, relative to this workspace root — which sibling repos receive the hooks
-# distribution (--repo / --all / --check-drift). Absent = zero repos, a safe no-op.
-# repo_globs =
-
-# Package-name prefix excluded from the hermetic mypy hook's additional_dependencies (internal,
-# pre-release libs absent from PyPI). Absent = no filtering.
-# internal_dep_prefix =
-
-# Who this machine is in the cross-agent journal — names `_AGENT_LOG/YYYY-MM-DD_claude-code-<id>.md`
-# so two machines mounting one shared root never write the same path on the same day.
-# agent_identity =
-
-# Tools this OPERATOR runs, comma-separated (the `machine:` axis of command routing). Undetectable
-# for most — Cortex Code is a web UI, nothing local to probe — hence declared. Absent = none, which
-# is the right default for a third-party machine.
-# machine_capabilities =
-
-# Extra corpus roots, comma-separated, this machine only — absolute paths welcome (a synced drive's
-# mount point differs per machine). A relative entry resolves against THIS workspace root. Read IN
-# ADDITION to the moteur's own corpus-public, which is code-side and needs no declaration.
-# corpus_roots_local =
-
-# Kanban roots this machine mounts, comma-separated — the shared board(s) of ADR-0015, whose mount
-# point differs per machine. Read by the `stop_handoff.py` harness hook; the board nearest the
-# session is always found by proximity and never needs listing here. Absent = local board only.
-# kanban_roots_local =
-"""
-
-
-def init_workspace(target: Path) -> bool:
-    """Create the `.pinky/` marker that defines `target` as a workspace.
-
-    Args:
-        target: Directory to mark. Created if missing, along with its parents.
-
-    Returns:
-        True on success. Idempotent by design — an existing ``config.txt`` is left untouched so
-        re-running never destroys a configured machine. Exposed as `pinky init-workspace`
-        (cli_pinky.py) once packaged; run once per workspace, never as part of an upgrade.
-    """
-    marker = target.expanduser().resolve() / MARKER_DIR_NAME
-    marker.mkdir(parents=True, exist_ok=True)
-    config = marker / "config.txt"
-    if config.exists():
-        print(f"✓ workspace already initialised: {marker}  (config.txt kept as-is)")
-        return True
-    config.write_text(_CONFIG_TEMPLATE, encoding="utf-8")
-    print(f"✓ workspace initialised: {marker}")
-    print(f"  edit {config} — every key is optional and commented in place")
-    return True
 
 
 def _display_path(resolved: Path) -> str:
@@ -486,8 +282,6 @@ __all__ = [
     "SCRIPT_DIR",
     "WORKSPACE_ROOT",
     "WORKSPACE_ROOT_ENV",
-    "MARKER_DIR",
-    "MARKER_DIR_NAME",
     "find_workspace_root",
     "AGENTIC_HARNESS_DIR",
     "HYGIENE_DIR",
@@ -501,13 +295,6 @@ __all__ = [
     "has_generated_index",
     "render_index_home",
     "render_readme_why",
-    "INSTANCE_CONFIG_FILE",
-    "_read_config",
-    "init_workspace",
-    "DEFAULT_PROFILE",
-    "DEFAULT_PUBLIC_PROFILE",
-    "REPO_GLOBS",
-    "MACHINE_CAPABILITIES",
     "CORPUS_ROOT_ENV",
     "DEFAULT_CORPUS_ROOTS",
     "_parse_root_list",

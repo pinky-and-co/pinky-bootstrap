@@ -10,23 +10,10 @@ import sys
 import tomllib
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import setup  # noqa: E402
 from setup.common import SuiteIdentity  # noqa: E402
 from setup.precommit import inject_readme_sections_local  # noqa: E402
-
-
-@pytest.fixture(autouse=True)
-def _pin_repo_globs(monkeypatch):
-    """Pin `REPO_GLOBS` instead of inheriting the author's machine config.
-
-    Its real source is `.pinky/config.txt` — a GITIGNORED per-machine file, absent from
-    any CI checkout, where it degrades to an empty tuple and `new_repo` rejects every name. The
-    test must supply the precondition it needs, not borrow it from the machine it runs on.
-    """
-    monkeypatch.setattr(setup.precommit, "REPO_GLOBS", ("pinky-*", "pluto-*"))
 
 
 # ── scaffold_product — pure unit, tmp_path only ────────────────────────────────

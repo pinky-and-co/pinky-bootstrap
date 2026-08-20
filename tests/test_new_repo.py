@@ -7,12 +7,9 @@ The git-skeleton is tested here in isolation (tmp_path); the distribution it del
 (run_distribution) is already covered elsewhere and must NOT run against the real WORKSPACE_ROOT.
 """
 
-import argparse
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import setup  # noqa: E402
@@ -45,24 +42,6 @@ def test_init_repo_skeleton_idempotent(tmp_path):
     # Second call on an existing git repo: no re-init, returns False, never raises.
     assert setup._init_repo_skeleton(target) is False
     assert _current_branch(target) == "develop"
-
-
-# ── new_repo — name guard (delegates to run_distribution, not exercised here) ──
-
-
-def test_new_repo_rejects_name_outside_repo_globs():
-    # A name not matching REPO_GLOBS would never be found by discover_repos() → distribution
-    # would be a silent no-op. Fail fast, before touching git.
-    args = argparse.Namespace(
-        profile=None,
-        repo=None,
-        all=False,
-        dry_run=True,
-        check_drift=False,
-        commit=False,
-    )
-    with pytest.raises(SystemExit):
-        setup.new_repo("notpinky", args)
 
 
 # ── distribute() → check_drift() must be stable on a bare new repo ────────────

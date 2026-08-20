@@ -12,12 +12,10 @@ rule that lands here instead is a bug. `setup.py` itself stays fully usable with
 the test suite and a third-party machine call the engine directly, this is a facade over it.
 
 Usage:
-    python cli_pinky.py init-workspace [DIR]
     python cli_pinky.py new-repo pluto-poc-x --scaffold --type web
     python cli_pinky.py distribute --repo pinky-core
     python cli_pinky.py drift
     python cli_pinky.py check-public
-    python cli_pinky.py check-machine
 """
 
 import argparse
@@ -67,11 +65,6 @@ def _epilog() -> str:
     return "\n\n".join(f"{title}\n{body}" for title, body in sections if body)
 
 
-def cmd_init_workspace(args: argparse.Namespace) -> None:
-    argv = ["--init-workspace", args.dir]
-    setup_main(argv)
-
-
 def cmd_new_repo(args: argparse.Namespace) -> None:
     argv = ["--new-repo", args.name]
     if args.scaffold or args.type:
@@ -110,10 +103,6 @@ def cmd_check_public(args: argparse.Namespace) -> None:
     setup_main(argv)
 
 
-def cmd_check_machine(_args: argparse.Namespace) -> None:
-    setup_main(["--check-machine"])
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         # NO hardcoded `prog`: this module has two legitimate entry points — the installed console
@@ -127,13 +116,6 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser(
-        "init-workspace",
-        help="🏁 create the `.pinky/` marker that DEFINES a directory as a pinky workspace",
-    )
-    p.add_argument("dir", nargs="?", default=".")
-    p.set_defaults(func=cmd_init_workspace)
 
     p = sub.add_parser(
         "new-repo", help="🌱 create a new (pinky-*/pluto-*) repo, already governed"
@@ -158,12 +140,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check-public", help="🔒 scan the public profile for leaks")
     p.add_argument("--profile", default=None)
     p.set_defaults(func=cmd_check_public)
-
-    p = sub.add_parser(
-        "check-machine",
-        help="🔎 report locally installed skills/plugins the moteur has no record of",
-    )
-    p.set_defaults(func=cmd_check_machine)
 
     return parser
 

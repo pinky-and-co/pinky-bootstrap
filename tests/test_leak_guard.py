@@ -71,9 +71,8 @@ def test_check_public_refuses_private_target(tmp_path, monkeypatch, capsys):
     assert "refuses private profile" in capsys.readouterr().out
 
 
-def test_check_public_no_target_is_clean_noop(monkeypatch, capsys):
-    # No --profile and no configured default → nothing to scan, return 0 (not a failure).
-    monkeypatch.setattr(setup.leak_guard, "DEFAULT_PUBLIC_PROFILE", None)
+def test_check_public_no_target_is_clean_noop(capsys):
+    # No --profile → nothing to scan, return 0 (not a failure).
     assert setup.check_public(None) == 0
     assert "no public profile to scan" in capsys.readouterr().out.lower()
 

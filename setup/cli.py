@@ -4,9 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .common import DEFAULT_PUBLIC_PROFILE, WORKSPACE_ROOT, init_workspace
+from .common import WORKSPACE_ROOT
 from .leak_guard import check_public
-from .machine_check import check_machine
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
 from .rules import distribute_rules, print_rules_report
@@ -55,16 +54,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--all", action="store_true", help="distribute to all repos")
     parser.add_argument(
-        "--init-workspace",
-        nargs="?",
-        const=".",
-        default=None,
-        metavar="DIR",
-        help="create the `.pinky/` marker (+ a commented config.txt) that DEFINES a directory as a "
-        "pinky workspace. Defaults to the current directory. Idempotent: an existing config.txt is "
-        "never overwritten. Exposed as `pinky init-workspace` (cli_pinky.py) once packaged.",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="print actions, write nothing. With --rules: print the plan and stop, never ask",
@@ -83,15 +72,7 @@ def main(argv: list[str] | None = None) -> None:
         "--check-public",
         action="store_true",
         help="scan the public profile's shipped corpus for product/private-doc leaks "
-        f"(default profile: {DEFAULT_PUBLIC_PROFILE or 'unset — pass --profile'}; "
-        "never scans private profiles)",
-    )
-    parser.add_argument(
-        "--check-machine",
-        action="store_true",
-        help="report locally installed Claude Code skills/plugins the moteur has no record of "
-        "(machine_capabilities is declared, not sniffed — this makes the one probeable class of "
-        "ambient capability visible). Advisory only, always exits 0.",
+        "(requires --profile; never scans private profiles)",
     )
     parser.add_argument(
         "--commit",
@@ -112,8 +93,6 @@ def main(argv: list[str] | None = None) -> None:
     )
     args, _ = parser.parse_known_args(argv)
 
-    # Workspace bootstrap (ADR-0065): creates the marker that DEFINES the workspace. Runs before
-    # every other mode because they all resolve WORKSPACE_ROOT through it.
     if args.rules is not None:
         workspace = Path(args.rules)
         plan = distribute_rules(workspace, apply=False)
@@ -131,18 +110,9 @@ def main(argv: list[str] | None = None) -> None:
         print("\nApplied.")
         return
 
-    if args.init_workspace:
-        raise SystemExit(0 if init_workspace(Path(args.init_workspace)) else 1)
-
     # Public-corpus leak guard (Phase 4): scans the public profile only, never distributes.
     if args.check_public:
         raise SystemExit(1 if check_public(args.profile) else 0)
-
-    # Ambient-capability visibility (card `capacites-ambiantes-non-declarees`): advisory only,
-    # never a gate — see machine_check.py's own module docstring for why.
-    if args.check_machine:
-        check_machine()
-        raise SystemExit(0)
 
     # From-zero mode: create a new repo already governed (git init + develop, then distribute).
     if args.new_repo:
@@ -166,7 +136,7 @@ def main(argv: list[str] | None = None) -> None:
     print("pinky workspace setup — no mode flag given.")
     print(
         "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
-        "--init-workspace, --new-repo, --repo/--all (distribute), --rules (workspace rules), "
-        "--check-drift, --check-public, --check-machine."
+        "--new-repo, --repo/--all (distribute), --rules (workspace rules), "
+        "--check-drift, --check-public."
     )
     raise SystemExit(1)
