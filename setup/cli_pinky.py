@@ -14,6 +14,7 @@ the test suite and a third-party machine call the engine directly, this is a fac
 Usage:
     python cli_pinky.py new-repo pluto-poc-x --scaffold --type web
     python cli_pinky.py distribute --repo pinky-core
+    python cli_pinky.py rules
     python cli_pinky.py drift
     python cli_pinky.py check-public
 """
@@ -89,6 +90,17 @@ def cmd_distribute(args: argparse.Namespace) -> None:
     setup_main(argv)
 
 
+def cmd_rules(args: argparse.Namespace) -> None:
+    argv = ["--rules"]
+    if args.workspace:
+        argv.append(args.workspace)
+    if args.dry_run:
+        argv.append("--dry-run")
+    if args.yes:
+        argv.append("--yes")
+    setup_main(argv)
+
+
 def cmd_drift(args: argparse.Namespace) -> None:
     argv = ["--check-drift"]
     if args.profile:
@@ -132,6 +144,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--commit", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_distribute)
+
+    p = sub.add_parser(
+        "rules", help="📐 distribute rules/core/ into <workspace>/.claude/rules/"
+    )
+    p.add_argument("workspace", nargs="?", default=None)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--yes", "-y", action="store_true")
+    p.set_defaults(func=cmd_rules)
 
     p = sub.add_parser("drift", help="🧭 report repo vs source drift")
     p.add_argument("--profile", default=None)
