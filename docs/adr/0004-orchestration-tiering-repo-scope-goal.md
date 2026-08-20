@@ -137,11 +137,24 @@ de ses propres angles morts. Ordre de préférence, jamais `haiku` quel que soit
    1. `adversarial` (MCP `pc-core`, natif) — modèle réellement d'une autre famille (Mistral
       aujourd'hui), le vrai changement de perspective, pas juste moins cher.
    2. `Agent(subagent_type: "reviewer")` — agent maison de `pc-core`
-      (`plugins/pc-core/agents/reviewer.md`, persona adaptée du `code-reviewer` de `feature-dev`,
-      Apache-2.0, `docs/ATTRIBUTIONS-WIP.md`), zéro dépendance à un plugin externe installé. Même
-      famille que la session génératrice, mais contexte frais (ne voit jamais son raisonnement
-      auto-justificatif), `model: sonnet` réel dans sa propre définition.
+      (`plugins/pc-core/agents/reviewer.md`, préchargeant la skill `review-guidelines` — méthodologie
+      distillée de l'ancien `review_brief`, pas de `feature-dev`, corrigé après un premier essai
+      dans l'autre sens), zéro dépendance à un plugin externe installé. Même famille que la session
+      génératrice, mais contexte frais (ne voit jamais son raisonnement auto-justificatif),
+      `model: sonnet` réel dans sa propre définition.
    3. Review par la session elle-même — dernier recours, annoncé explicitement comme dégradé.
+
+**6. `--advisor opus` au cadrage : câblé pour de vrai, `code-explorer`/`code-architect` refusés.**
+Amendement du 2026-08-20 (`pinky-agentic-plugins` PR #15) — la décision 4 ci-dessus affirmait déjà
+« `--advisor opus` au cadrage se mécanise dans la skill kanban », **faux tel qu'écrit** : jamais
+câblé, trouvé en réconciliant la card idée d'origine
+(`kanban-workflow-agentique-orchestrateur-sans-execution`) contre ce qui avait réellement été
+livré, pas en le supposant depuis le texte de cette ADR. Corrigé : `/chantier` appelle l'outil
+`advisor` une fois, au cadrage, quand `model: opus` sur la card — avant toute écriture, pendant que
+le plan ne coûte encore rien à changer. `code-explorer`/`code-architect` (`feature-dev`) pour le
+cadrage : **refusés** — les forcer retirerait à la session l'interactivité que la décision 1
+ci-dessus a justement préservée ; `advisor` ajoute un second avis sans sortir la session de la
+boucle.
 
 ## Consequences
 
