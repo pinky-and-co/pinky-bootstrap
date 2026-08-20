@@ -59,7 +59,7 @@ def test_render_docs_identity_pins_the_whole_file_with_the_profile(monkeypatch):
 
 
 def test_render_docs_identity_without_profile_still_carries_engine_version(monkeypatch):
-    """No profile to record (no `--profile`, no default_profile) → no `profile` key, not a `null`.
+    """No profile to record (no `--profile`) → no `profile` key, not a `null`.
     `engine_version` stays: the moteur always has one, unlike the profile."""
     monkeypatch.setattr(setup.precommit, "engine_version", lambda: "0.1.0.dev1")
     assert setup.render_docs_identity(IDENTITY, None) == (

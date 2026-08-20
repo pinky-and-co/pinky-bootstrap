@@ -7,9 +7,7 @@ identity (GitHub org / asset host) declared by the PRIVATE profiles, while letti
 brand token `pinky` pass — the identity check catches the `pinky`-shaped strings the codename hunt
 lets through (org `pinky-and-co`, asset host), the gap that let a render_docs.py leak pass in 2026-07.
 
-De-leak (2026-07-11): this module carries NO instance literal anymore. The three former hardcodes
-(`DEFAULT_PUBLIC_PROFILE`, `PRIVATE_PROFILES`, `PUBLIC_LEAK_PATTERNS`) are now data-driven:
-  - which profile is scanned by default → `DEFAULT_PUBLIC_PROFILE` in common.py (.pinky/config.txt);
+This module carries NO instance literal. `--profile <name>` is mandatory (no configured default):
   - which profiles are refused as a target → any profile marked `visibility: private` (fail-safe);
   - what codenames to hunt → the UNION of every private profile's `leak_patterns` / `leak_patterns_file`
     (mirrors the pinky profile's forbidden_keywords / forbidden_keywords_file split).
@@ -29,7 +27,6 @@ from urllib.parse import urlparse
 from .common import (
     AGENTIC_HARNESS_DIR,
     HYGIENE_DIR,
-    DEFAULT_PUBLIC_PROFILE,
     _display_path,
     iter_profiles,
     load_profile,
@@ -137,19 +134,18 @@ def _scan_text_for_leaks(label: str, text: str, patterns: tuple[str, ...]) -> li
 def check_public(profile_arg: str | None) -> int:
     """Scan the public profile's shipped surfaces for product/private-doc leaks.
 
-    Loads the designated public profile (arg, else DEFAULT_PUBLIC_PROFILE) and scans: every
-    resolved knowledge agent file, and agentic-harness/rules/* (etc., PUBLIC_SCAN_SUBDIRS). Returns the
-    total hit count (0 = clean). Refuses to run against a profile marked `visibility: private`.
-    No configured target, or no private profile declaring patterns → clean no-op with a clear
-    message (a fork that hasn't set anything up is not a failure).
+    Loads the designated public profile and scans: every resolved knowledge agent file, and
+    agentic-harness/rules/* (etc., PUBLIC_SCAN_SUBDIRS). Returns the total hit count (0 = clean).
+    Refuses to run against a profile marked `visibility: private`. No target, or no private profile
+    declaring patterns → clean no-op with a clear message (a fork that hasn't set anything up is
+    not a failure).
     """
-    target = profile_arg or DEFAULT_PUBLIC_PROFILE
-    if not target:
+    if not profile_arg:
         print(
-            "--check-public: no public profile to scan. Pass --profile <name> or set "
-            "`default_public_profile` in .pinky/config.txt. Nothing scanned."
+            "--check-public: no public profile to scan. Pass --profile <name>. Nothing scanned."
         )
         return 0
+    target = profile_arg
 
     profile, profile_path = load_profile(target)
     name = profile.get("name", target)

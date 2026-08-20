@@ -38,7 +38,6 @@ import setup  # doit passer sans pyyaml
 
 # Le chemin sans profil ne doit toucher aucune fonction qui parse du YAML.
 setup.discover_repos()
-setup._scaffolding_sources("commands", None)
 print("OK")
 """
 

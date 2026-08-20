@@ -49,7 +49,7 @@ def test_the_cli_prints_no_hardcoded_repo_or_org_name():
 
     assert not hits, (
         "littéral d'instance dans la sortie du CLI :\n  " + "\n  ".join(hits) + "\n"
-        "→ Dériver du workspace (`REPO_GLOBS`, `discover_repos()`), jamais nommer un repo ou une org."
+        "→ Dériver du workspace (`discover_repos()`), jamais nommer un repo ou une org."
     )
 
 

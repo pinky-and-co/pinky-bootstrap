@@ -10,16 +10,8 @@ import re
 import sys
 from pathlib import Path
 
-from .common import (
-    AGENTIC_HARNESS_DIR,
-    MACHINE_CAPABILITIES,
-    corpus_roots,
-)
+from .common import corpus_roots
 
-# One-way edge: precommit imports common + product_scaffold, neither of which imports this module,
-# so there is no cycle. The capability DETECTOR lives next to the hook extras it was written for —
-# duplicating it here to avoid the import would give the two axes two answers.
-from .precommit import resolve_scope_capabilities
 
 REQUIRED_PROFILE_KEYS = ("name", "knowledge_agents", "knowledge_roots", "model_routing")
 
@@ -70,61 +62,6 @@ def _command_description(path: Path) -> str:
             if m:
                 return m.group(1).strip()
     return ""
-
-
-def _command_requirements(path: Path) -> tuple[str | None, str | None]:
-    """A command's ``(capability, machine)`` frontmatter — ``(None, None)`` when both are absent.
-
-    Two axes because there are two subjects. ``capability:`` is what the REPO must be (snowflake,
-    python, web — derived from its layout by ``resolve_extras``); ``machine:`` is what the OPERATOR
-    must run (cortex, local-model — declared in ``.pinky/config.txt``, undetectable). A command
-    may require one, the other, both, or neither.
-
-    Both absent = **socle**, installed everywhere. That default is deliberate in this direction:
-    forgetting a key can only make a command more available, never silently narrower — a command
-    that vanishes without explanation is far harder to diagnose than one that shows up unused.
-    """
-    return (
-        _frontmatter_field(path, "capability"),
-        _frontmatter_field(path, "machine"),
-    )
-
-
-def _frontmatter_field(path: Path, key: str) -> str | None:
-    """A single YAML-frontmatter scalar, or None when the block or the key is absent.
-
-    Regex, never ``pyyaml``: the default distribution path is dependency-free (see
-    ``setup/common.py``). Only a ``---`` on the FIRST line opens a frontmatter — a file without one
-    would otherwise have its BODY scanned, and `---` is ordinary markdown (a horizontal rule, a
-    section break). Knowledge agents are full of them, so this is not a theoretical concern.
-    """
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return None
-    if not lines or lines[0].strip() != "---":
-        return None
-    pattern = re.compile(rf"^{re.escape(key)}:\s*(.+)$")
-    for line in lines[1:]:
-        if line.strip() == "---":
-            return None
-        if m := pattern.match(line):
-            return m.group(1).strip()
-    return None
-
-
-def _meets_requirements(path: Path, scope_caps: frozenset[str]) -> bool:
-    """Whether an artefact's declared requirements are met by this scope and this machine.
-
-    Serves commands AND rules (ADR-0060): both carry the same two frontmatter keys, so one predicate
-    rather than one per artefact type — a second copy would drift the day only one of them is fixed.
-    """
-    capability, machine = _command_requirements(path)
-    if capability is not None and capability not in scope_caps:
-        return False
-    if machine is not None and machine not in MACHINE_CAPABILITIES:
-        return False
-    return True
 
 
 # Canonical language axes (ordered) — the override vocabulary for a profile's `languages:` block.
@@ -278,21 +215,15 @@ def validate_profile(profile: dict, profile_path: Path) -> None:
     # discover_repos() globs the workspace ROOT. Fail rather than ignore, same reasoning as below.
     if profile.get("domain_layer_subdir") is not None:
         errors.append(
-            "domain_layer_subdir: key removed (ADR-0060) — domain rules now declare "
-            "`capability:` and land in the workspace .claude/rules/ like every other rule. "
-            "Delete the key."
+            "domain_layer_subdir: key removed (ADR-0060). Delete the key; it has no effect."
         )
 
-    # `commands:` was REMOVED (2026-08-05) — a command's requirements now travel in its own
-    # frontmatter (`capability:` / `machine:`) and are answered by the repo's layout and the
-    # machine's declared tooling. Fail rather than ignore: a profile still carrying the key would
-    # otherwise keep looking authoritative while having no effect at all, and the author would only
-    # find out by noticing an unexpected command months later.
+    # `commands:` was REMOVED (2026-08-05, its `capability:`/`machine:` replacement removed in
+    # turn once commands/rules distribution stopped calling it). Fail rather than ignore: a profile
+    # still carrying the key would otherwise keep looking authoritative while having no effect.
     if profile.get("commands") is not None:
         errors.append(
-            "commands: key removed (2026-08-05) — a command now declares its own "
-            "`capability:` / `machine:` requirement. Delete the key; commands whose "
-            "requirement this machine cannot meet are dropped automatically."
+            "commands: key removed (2026-08-05). Delete the key; it has no effect."
         )
 
     # Language policy (ADR-0011) — strict: an unknown override axis is a profile typo the renderer
@@ -345,69 +276,5 @@ def validate_profile(profile: dict, profile_path: Path) -> None:
         if unresolved_agents:
             searched = ", ".join(str(r) for r in corpus_roots())
             print(f"\n  → Corpus roots searched: {searched}")
-            print(
-                "  → Add the missing root to `corpus_roots_local` in .pinky/config.txt, "
-                "or set the CORPUS_ROOT env var."
-            )
+            print("  → Set the CORPUS_ROOT env var to the root that carries it.")
         sys.exit(1)
-
-
-def _scaffolding_sources(
-    subfolder: str,
-    profile_path: Path | None,
-    *,
-    filtered: bool = True,
-    scope_caps: frozenset[str] | None = None,
-) -> dict[str, Path]:
-    """Resolve the source files for a scaffolding subfolder, by filename (last writer wins).
-
-    Commands and agents layer the PUBLIC moteur set (``core/<subfolder>/``) with the active
-    profile's PRIVATE set (``<profile dir>/<subfolder>/``) — same public/private split as the
-    knowledge agents. A profile file overrides a core file of the same name. ``rules`` layers the
-    PUBLIC base set (``agentic-harness/rules/base/``) with the profile's PRIVATE ``<profile dir>/rules/`` —
-    instance-specific, leaky rules (e.g. "reuse the pinky libs", which names product libraries)
-    live in the private corpus, never in the public base. They land in the workspace-root base
-    layer so they load under every sibling repo. Domain rules (``agentic-harness/rules/domain-<x>/``) land in
-    the SAME set, gated by the capability each declares (ADR-0060, superseding ADR-0014's subtree).
-    """
-    if subfolder == "rules":
-        # base = always; domain-<x>/ = gated by the capability each rule declares (ADR-0060).
-        # They land in the SAME .claude/rules/ as the base ones: the workspace has one rule
-        # surface, not one per subtree. The `paths:` frontmatter is what keeps a domain rule from
-        # costing context on unrelated work — capability decides PRESENCE, paths decides LOADING.
-        src_dirs = [AGENTIC_HARNESS_DIR / "rules" / "base"]
-        src_dirs += sorted(
-            d for d in (AGENTIC_HARNESS_DIR / "rules").glob("domain-*") if d.is_dir()
-        )
-        if profile_path is not None:
-            src_dirs.append(profile_path.parent / "rules")
-    else:
-        src_dirs = [AGENTIC_HARNESS_DIR / subfolder]
-        if profile_path is not None:
-            src_dirs.append(profile_path.parent / subfolder)
-    sources: dict[str, Path] = {}
-    for sd in src_dirs:
-        if sd.is_dir():
-            for f in sorted(sd.rglob("*")):
-                if f.is_file():
-                    sources[f.name] = f
-    # Commands only: keep those whose frontmatter requirements this scope satisfies. Applied HERE
-    # rather than at each call site so the two consumers stay in sync by construction — the files
-    # copied into `.claude/commands/` and the `{{commands_index}}` table rendered into CLAUDE.md. A
-    # table that advertises a command the machine does not have is the same class of drift
-    # build_commands_index was written to kill. `filtered=False` is for validate_profile, which
-    # needs the full set.
-    #
-    # Replaced the profile's `commands:` allowlist (2026-07-31 → 2026-08-05). That key made the
-    # answer depend on which PROFILE the machine had selected, so the same repo was governed
-    # differently depending on the laptop it sat on. The requirement now travels with the command
-    # itself and is answered by the repo's layout + the machine's declared tooling — nobody declares
-    # anything per profile, and a command added to core/ later cannot silently land on a machine
-    # that cannot run it.
-    if filtered and subfolder in ("commands", "rules"):
-        if scope_caps is None:
-            scope_caps = resolve_scope_capabilities()
-        sources = {
-            n: f for n, f in sources.items() if _meets_requirements(f, scope_caps)
-        }
-    return sources

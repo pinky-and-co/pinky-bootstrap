@@ -9,27 +9,21 @@
 
 import filecmp
 import json
-import os
 import re
 import shutil
 import subprocess
 import sys
 import tomllib
-from fnmatch import fnmatch
 from pathlib import Path
 
 from .common import (
     CORE_CI_DIR,
     CORE_HOOKS_DIR,
     CORE_PRECOMMIT_DIR,
-    DEFAULT_PROFILE,
-    REPO_GLOBS,
     SCRIPT_DIR,
     WORKSPACE_ROOT,
     SuiteIdentity,
     engine_version,
-    INSTANCE_CONFIG_FILE,
-    _read_config,
     corpus_roots,
     has_generated_index,
     inject_readme_sections_local,
@@ -168,12 +162,22 @@ def profile_hooks_enabled(profile: dict) -> bool:
 
 
 def discover_repos() -> list[Path]:
-    """Sibling repos under WORKSPACE_ROOT matching REPO_GLOBS (git repos only)."""
+    """Every git repo under WORKSPACE_ROOT, up to one directory deep (dot-dirs excluded).
+
+    No glob to configure: a workspace has no untracked-yet regime, every clone found is onboarded.
+    One level deep covers a repo nested under an org-like folder (e.g. `bootstrap/pinky-core`)
+    without recursing INTO a repo looking for nested ones.
+    """
     seen: dict[str, Path] = {}
-    for pattern in REPO_GLOBS:
-        for path in sorted(WORKSPACE_ROOT.glob(pattern)):
-            if path.is_dir() and (path / ".git").exists():
-                seen[path.name] = path
+    for path in sorted(WORKSPACE_ROOT.iterdir()):
+        if not path.is_dir() or path.name.startswith("."):
+            continue
+        if (path / ".git").exists():
+            seen[path.name] = path
+            continue
+        for nested in sorted(path.iterdir()):
+            if nested.is_dir() and (nested / ".git").exists():
+                seen[nested.name] = nested
     return list(seen.values())
 
 
@@ -201,15 +205,6 @@ def _report_unonboarded(repos: list[Path]) -> None:
 # hermetic hooks — mdformat/interrogate/darglint — see ADR-0023). Bump here only.
 MYPY_PIN = "2.0.0"
 MYPY_DEPS_PLACEHOLDER = "__MYPY_ADDITIONAL_DEPENDENCIES__"
-# Internal libs are pre-release, not published on PyPI — `pip install` would fail inside the
-# hook's isolated venv. Excluded from the derivation; --ignore-missing-imports (kept in the
-# fragment) is the residual fallback for these specific imports. No instance-shaped default here
-# (unlike DEFAULT_PROFILE/REPO_GLOBS, this one graceful-degrades to "no filtering" when unset —
-# see .pinky/config.txt): a fork names its own internal-package prefix there, or leaves it
-# unset and accepts every runtime dep unfiltered (mypy just needs a real PyPI resolve for it).
-INTERNAL_DEP_PREFIX: str | None = os.environ.get("INTERNAL_DEP_PREFIX") or _read_config(
-    INSTANCE_CONFIG_FILE
-).get("internal_dep_prefix")
 
 
 def _repo_runtime_dependencies(repo: Path) -> list[str]:
@@ -257,13 +252,9 @@ def mypy_additional_dependencies(repo: Path) -> list[str]:
     mypy pin + the repo's own runtime deps, so mypy resolves real third-party types instead of
     falling back to `--ignore-missing-imports` Any. The two known pre-hermetic failures (pinky-core
     `pydantic.BaseModel`, pinky-provider `jinja2`/`snowflake.core`) were confirmed fixed by this set.
+    No filtering: every declared dep, including `pinky-*`, is public on PyPI and pip-installable.
     """
-    deps = [
-        dep
-        for dep in _repo_runtime_dependencies(repo)
-        if not (INTERNAL_DEP_PREFIX and dep.lstrip().startswith(INTERNAL_DEP_PREFIX))
-    ]
-    return [f"mypy=={MYPY_PIN}", *deps]
+    return [f"mypy=={MYPY_PIN}", *_repo_runtime_dependencies(repo)]
 
 
 def resolve_extras(repo: Path) -> list[str]:
@@ -315,33 +306,6 @@ def resolve_extras(repo: Path) -> list[str]:
     if (repo / ".claude-plugin").is_dir():
         extras.append("plugin-repo")
     return extras
-
-
-def resolve_scope_capabilities(repo: Path | None = None) -> frozenset[str]:
-    """Repo capabilities of an INSTALL SCOPE — one repo, or the whole machine.
-
-    The scaffolding (commands/agents/rules) has ONE install point per scope, never one per repo:
-    ``--provider claude`` writes a single ``<workspace>/.claude/`` that serves every sibling repo,
-    ``--into`` writes one inside a standalone repo. So "this repo's capabilities" is not an
-    available routing key in the general case — the key is the capabilities of whatever the install
-    actually covers:
-
-    - ``repo`` given (``--into``) → that repo alone, so the routing is exact.
-    - ``repo`` None (workspace)  → the UNION over ``discover_repos()``, because one ``.claude/``
-      serves them all and a command absent from it is absent everywhere.
-
-    The union is coarser than per-repo routing, deliberately: it still answers the case that
-    motivated this — a machine with no Snowflake repo never receives ``snowpark_to_sql``, which is
-    what the profile's ``commands:`` allowlist was patching by hand — while anything finer would
-    need a per-repo install point that does not exist. Do not "fix" the coarseness by reading the
-    cwd: the files are written once, at a moment that has no current repo.
-    """
-    if repo is not None:
-        return frozenset(resolve_extras(repo))
-    caps: set[str] = set()
-    for sibling in discover_repos():
-        caps.update(resolve_extras(sibling))
-    return frozenset(caps)
 
 
 def build_precommit_config(
@@ -580,13 +544,10 @@ def _hook_files(repo: Path, selected_hooks: set[str] | None = None) -> list[Path
 def _load_docs_identity(profile_arg: str | None) -> SuiteIdentity:
     """The active profile's docs_identity.json → SuiteIdentity (instance identity for generated
     docs). JSON, not the profile.yaml, so the dependency-free distribution path loads it with stdlib
-    only (no pyyaml). Mirrors load_profile's name-or-path resolution; DEFAULT_PROFILE when absent."""
-    name = profile_arg or DEFAULT_PROFILE
+    only (no pyyaml). Mirrors load_profile's name-or-path resolution."""
+    name = profile_arg
     if name is None:
-        sys.exit(
-            "✗ no --profile given and no default_profile configured (.pinky/config.txt or "
-            "the DEFAULT_PROFILE env var) — docs generation needs one or the other."
-        )
+        sys.exit("✗ no --profile given — docs generation needs one.")
     candidate = Path(name)
     if (
         candidate.is_file()
@@ -615,9 +576,9 @@ def resolve_profile_name(profile_arg: str | None) -> str | None:
     Same name-or-path resolution as ``_load_docs_identity``, reduced to the identifier: ``--profile``
     accepts a path to a profile.yaml, and a repo distributed by path must compare equal to one
     distributed by name — otherwise the downgrade guard would fire on two spellings of one regime.
-    ``None`` (no ``--profile``, no ``default_profile``) means "nothing to record", never a default.
+    ``None`` (no ``--profile``) means "nothing to record".
     """
-    name = profile_arg or DEFAULT_PROFILE
+    name = profile_arg
     if name is None:
         return None
     candidate = Path(name)
@@ -1321,11 +1282,6 @@ def new_repo(name: str, args) -> None:
     Idempotent end to end: an existing repo is not re-init'd, ``scaffold_product`` never overwrites
     an existing file, and ``distribute()`` converges.
     """
-    if not any(fnmatch(name, pat) for pat in REPO_GLOBS):
-        sys.exit(
-            f"✗ --new-repo name '{name}' must match one of {list(REPO_GLOBS)} — "
-            "discover_repos() only governs those, so any other name would distribute to nothing."
-        )
     target = WORKSPACE_ROOT / name
     created = _init_repo_skeleton(target)
     print(
