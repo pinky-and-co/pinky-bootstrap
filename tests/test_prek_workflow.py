@@ -215,7 +215,8 @@ def test_install_walkthrough_job_only_lands_on_the_engine(tmp_path):
 
 
 def test_install_walkthrough_covers_the_real_sequence(tmp_path):
-    """Le job doit couvrir `init-workspace → distribute → drift` — la séquence qu'un adoptant joue.
+    """Le job doit couvrir `bootstrap (*.code-workspace) → distribute → drift` — la séquence qu'un
+    adoptant joue.
 
     La vérification du lanceur (`py -3` dans `.claude/settings.json`) a été retirée 2026-08-17 avec
     le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/`, rien à figer.
@@ -224,6 +225,6 @@ def test_install_walkthrough_covers_the_real_sequence(tmp_path):
         precommit_mod.CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
     ).read_text(encoding="utf-8")
 
-    assert "pinky init-workspace" in fragment
+    assert ".code-workspace" in fragment
     assert "pinky distribute" in fragment
     assert "pinky drift" in fragment

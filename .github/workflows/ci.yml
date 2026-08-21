@@ -101,8 +101,6 @@ jobs:
     # La vérification du lanceur de hook (`py -3` vs `python3` dans settings.json) a été retirée
     # 2026-08-17 avec le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/` du
     # tout, prek provisionne son propre interpréteur (`language: python`) — plus rien à figer.
-    #
-    # Profil `example` : le seul public, donc le seul disponible dans un checkout CI.
     runs-on: windows-latest
     permissions:
       contents: read

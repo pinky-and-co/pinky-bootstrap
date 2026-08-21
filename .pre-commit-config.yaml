@@ -177,7 +177,7 @@ repos:
         # pinky-* packages (pre-release, not on PyPI, excluded from the derivation).
         # --ignore-missing-imports stays as the residual fallback for those excluded imports only.
         language: python
-        additional_dependencies: ["mypy==2.0.0", "pyyaml>=6.0"]
+        additional_dependencies: ["mypy==2.0.0"]
         types: [python]
         args: [--ignore-missing-imports]
         files: ^src/
