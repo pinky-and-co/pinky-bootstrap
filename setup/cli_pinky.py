@@ -21,7 +21,9 @@ Usage:
 """
 
 import argparse
+import sys
 
+from . import agentic_assets
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .product_scaffold import REPO_TYPES
@@ -54,6 +56,28 @@ def _scripts_index() -> str:
         if path.is_file()
     ]
     return "\n".join(lines)
+
+
+def _assets_epilog() -> str:
+    """`<name> — description` for every installable output-style and theme — the answer to "what
+    does --output-style/--theme NAME actually do", without leaving the terminal."""
+    sections = [
+        (
+            "🎨 Available output-styles (pinky install --output-style NAME):",
+            "\n".join(
+                f"  {a.name:<12} {a.description}"
+                for a in agentic_assets.discover_output_styles()
+            ),
+        ),
+        (
+            "🖌️  Available themes (pinky install --theme NAME):",
+            "\n".join(
+                f"  {a.name:<12} {a.description}"
+                for a in agentic_assets.discover_themes()
+            ),
+        ),
+    ]
+    return "\n\n".join(f"{title}\n{body}" for title, body in sections if body)
 
 
 def _epilog() -> str:
@@ -119,17 +143,23 @@ def cmd_check_public(args: argparse.Namespace) -> None:
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
-    `--plugin` runs the scope wizard (user/project, depth, target) instead of the default rules
-    step — a different concern (one plugin, one chosen scope) from the base convergence. statusline/
-    output-styles land in later phases, each behind its own `setup.state_file` ledger entry once
-    wired (see kanban card `installeur-state-file-entree-4-cli-setup.md`) — no stub steps added
-    ahead of the code that would actually run them.
+    `--plugin` runs the scope wizard (user/project, depth, target); `--output-style`/`--theme`
+    install one named asset (`setup.agentic_assets`) — each a different concern from the default
+    rules step, each behind its own `setup.state_file` ledger entry. statusline still lands in a
+    later phase (see kanban card `factoriser-et-extraire-statusline.md`) — no stub step added
+    ahead of the code that would actually run it.
     """
     if args.plugin:
         argv = ["--plugin", args.plugin]
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
         setup_main(argv)
+        return
+    if args.output_style:
+        setup_main(["--output-style", args.output_style])
+        return
+    if args.theme:
+        setup_main(["--theme", args.theme])
         return
     argv = ["--rules"]
     if args.yes:
@@ -149,7 +179,11 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    # Not required: a bare `pinky` prints full help (below) instead of argparse's terse
+    # "arguments are required: command" — the standard a CLI-literate user expects (git, npm,
+    # docker all do this), and setup.py's own bare-invocation message already does the same for
+    # its non-human callers.
+    sub = parser.add_subparsers(dest="command", required=False)
 
     p = sub.add_parser(
         "new-repo", help="🌱 create a new (pinky-*/pluto-*) repo, already governed"
@@ -168,7 +202,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_distribute)
 
     p = sub.add_parser(
-        "install", help="🚀 replayable installer — converges this machine's setup"
+        "install",
+        help="🚀 replayable installer — converges this machine's setup",
+        epilog=_assets_epilog(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--yes", "-y", action="store_true")
     p.add_argument(
@@ -182,10 +219,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="with --plugin: the marketplace it comes from",
     )
+    p.add_argument(
+        "--output-style",
+        default=None,
+        metavar="NAME",
+        help="install this output-style (see the list below)",
+    )
+    p.add_argument(
+        "--theme",
+        default=None,
+        metavar="NAME",
+        help="install this theme (see the list below)",
+    )
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser(
-        "rules", help="📐 distribute rules/pc-core/ into <workspace>/.claude/rules/"
+        "rules",
+        help=(
+            "📐 distribute each plugin's rules to the same scope its plugin is installed at"
+        ),
     )
     p.add_argument("workspace", nargs="?", default=None)
     p.add_argument("--dry-run", action="store_true")
@@ -206,4 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command is None:
+        parser.print_help()
+        sys.exit(1)
     args.func(args)

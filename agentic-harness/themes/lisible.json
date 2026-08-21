@@ -1,5 +1,6 @@
 {
   "name": "lisible",
+  "description": "High-contrast light theme — darker text, clearer message borders, built for readability over polish",
   "base": "light",
   "overrides": {
     "userMessageBackground": "#e4e4e4",

@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import agentic_assets
 from .common import WORKSPACE_ROOT
 from .leak_guard import check_public
 from .plugin_scope import run_marketplace_wizard
@@ -17,17 +18,18 @@ def main(argv: list[str] | None = None) -> None:
     invoke a mode programmatically without touching ``sys.argv`` — ``None`` (the CLI entry point)
     keeps today's behavior, delegating to argparse's own ``sys.argv[1:]`` default."""
     parser = argparse.ArgumentParser(add_help=False)
-    # Rules distribution — targets the WORKSPACE (.claude/rules/), not a repo, which is why it is
-    # its own mode rather than a flag on --repo/--all.
+    # Rules distribution — resolved per plugin (each rules/<plugin>/ ships to wherever that
+    # plugin is actually installed: user scope or a specific project path), not a single fixed
+    # repo target, which is why it is its own mode rather than a flag on --repo/--all.
     parser.add_argument(
         "--rules",
         nargs="?",
         const=str(WORKSPACE_ROOT),
         default=None,
         metavar="WORKSPACE",
-        help="distribute rules/pc-core/ into <workspace>/.claude/rules/ "
-        "(default: the detected workspace root). Shows the plan, asks for confirmation before "
-        "applying — see --dry-run and --yes.",
+        help="distribute each plugin's rules/<plugin>/ to the scope its plugin is installed at "
+        "(default: the detected workspace root, used to resolve install scopes from). Shows the "
+        "plan, asks for confirmation before applying — see --dry-run and --yes.",
     )
     # Hooks distribution
     parser.add_argument("--repo", default=None, help="distribute to a single repo")
@@ -105,10 +107,42 @@ def main(argv: list[str] | None = None) -> None:
         help="with --plugin: the marketplace the plugin comes from (renders as PLUGIN@MARKETPLACE "
         "in enabledPlugins)",
     )
+    parser.add_argument(
+        "--output-style",
+        default=None,
+        metavar="NAME",
+        help="install this output-style — copies it to ~/.claude/output-styles/ and sets "
+        "outputStyle in ~/.claude/settings.json. See `pinky install --help` for the list.",
+    )
+    parser.add_argument(
+        "--theme",
+        default=None,
+        metavar="NAME",
+        help="install this theme — copies it to ~/.claude/themes/ and sets theme in "
+        "~/.claude/settings.json. See `pinky install --help` for the list.",
+    )
     args, _ = parser.parse_known_args(argv)
 
     if args.plugin is not None:
         run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
+        return
+
+    if args.output_style is not None:
+        try:
+            target = agentic_assets.install_output_style(args.output_style)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"output-style {args.output_style!r} installed → {target}")
+        return
+
+    if args.theme is not None:
+        try:
+            target = agentic_assets.install_theme(args.theme)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"theme {args.theme!r} installed → {target}")
         return
 
     if args.rules is not None:
