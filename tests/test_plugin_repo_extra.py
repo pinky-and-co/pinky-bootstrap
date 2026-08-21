@@ -1,0 +1,33 @@
+"""`plugin-repo` extra — quality-gate scope must cover every Python a plugin repo authors.
+
+Card `agents-provider-routing-offline-adversarial.md` (chantier 0023): the extra's 5 hooks
+(mypy/bandit/interrogate/darglint/check-typed-api) only matched `plugins/*/hooks/`, so a plugin's
+`mcp/server.py` (e.g. `pc-core`'s MCP server) passed unreviewed by any of them — found 2026-08-22.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+import setup  # noqa: E402
+
+HOOK_IDS = ("mypy", "bandit", "interrogate", "darglint", "check-typed-api")
+
+
+def _plugin_repo_config(tmp_path: Path) -> str:
+    return setup.build_precommit_config(tmp_path, ["plugin-repo"])
+
+
+def test_quality_hooks_cover_hooks_subdir(tmp_path):
+    cfg = _plugin_repo_config(tmp_path)
+    for hook_id in HOOK_IDS:
+        assert f"id: {hook_id}" in cfg or hook_id == "bandit"
+
+
+def test_quality_hooks_also_cover_mcp_subdir(tmp_path):
+    """The bug: `files: ^plugins/[^/]+/hooks/` never matches `plugins/pc-core/mcp/server.py`."""
+    cfg = _plugin_repo_config(tmp_path)
+    assert "plugins/[^/]+/(hooks|mcp)/" in cfg, (
+        "plugin-repo.yaml's quality hooks must also scope plugins/*/mcp/, "
+        "not just plugins/*/hooks/ — an MCP server ships real Python too."
+    )
