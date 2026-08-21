@@ -43,7 +43,7 @@ def test_distribute_writes_generated_index_when_site_present(tmp_path):
         '[project]\nname = "pinky-thing"\ndescription = "A thing."\n', encoding="utf-8"
     )
 
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     index = (repo / "docs" / "index.md").read_text(encoding="utf-8")
     assert "title: Home" in index
@@ -58,7 +58,7 @@ def test_distribute_leaves_hand_maintained_index_alone_with_marker(tmp_path):
     hand_written = "# Agent entry point\n\nOne line per doc file.\n"
     (repo / "docs" / "index.md").write_text(hand_written, encoding="utf-8")
 
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     assert (repo / "docs" / "index.md").read_text(encoding="utf-8") == hand_written
 
@@ -71,6 +71,6 @@ def test_distribute_leaves_agent_index_alone_without_mkdocs_yml(tmp_path):
     hand_written = "# Agent entry point\n\nOne line per doc file.\n"
     (repo / "docs" / "index.md").write_text(hand_written, encoding="utf-8")
 
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     assert (repo / "docs" / "index.md").read_text(encoding="utf-8") == hand_written

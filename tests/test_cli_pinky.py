@@ -39,7 +39,6 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
         "install",
         "rules",
         "drift",
-        "check-public",
     ):
         assert name in out
     assert list(tmp_path.iterdir()) == []
@@ -108,8 +107,8 @@ def test_distribute_dispatch_repo(monkeypatch):
 
 def test_distribute_dispatch_all(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["distribute", "--all", "--profile", "pluto"])
-    assert calls == [["--all", "--profile", "pluto"]]
+    cli_pinky.main(["distribute", "--all"])
+    assert calls == [["--all"]]
 
 
 def test_distribute_dispatch_agents_md(monkeypatch):
@@ -180,14 +179,10 @@ def test_drift_dispatch(monkeypatch):
     assert calls == [["--check-drift"]]
 
 
-def test_check_public_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["check-public"])
-    assert calls == [["--check-public"]]
-
-
 # `render`/`into`/`install` sub-commands (the dead CLAUDE.md render engine's CLI surface) were
 # removed 2026-08-17 along with `install_from_profile`/`install_into_repo`/`install_provider`.
+# `check-public` (the public-corpus leak guard's CLI surface) was removed with the profile/corpus
+# mechanism it depended on.
 
 # ── setup.cli.main(argv) — the programmatic entry point cli_pinky.py relies on ─
 
@@ -196,18 +191,18 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
     import setup.cli
 
     # sys.argv carries something main(argv) must NOT read — proof argv, not sys.argv, drove parsing.
+    monkeypatch.setattr(sys, "argv", ["setup.py", "--rules", "/from-sys-argv"])
+    seen: list = []
     monkeypatch.setattr(
-        sys, "argv", ["setup.py", "--check-public", "--profile", "from-sys-argv"]
+        setup.cli,
+        "distribute_all_plugin_rules",
+        lambda workspace, apply: seen.append((workspace, apply)) or {},
     )
-    seen: list[str | None] = []
-    monkeypatch.setattr(
-        setup.cli, "check_public", lambda profile: seen.append(profile) or True
-    )
+    monkeypatch.setattr(setup.cli, "print_all_plugin_rules_report", lambda plan: None)
 
-    with pytest.raises(SystemExit):
-        setup.cli.main(["--check-public", "--profile", "from-explicit-argv"])
+    setup.cli.main(["--rules", "/from-explicit-argv"])
 
-    assert seen == ["from-explicit-argv"]
+    assert [str(workspace) for workspace, _ in seen] == ["/from-explicit-argv"]
 
 
 # ── the root shim must stay a re-export, never a second copy ──────────────────

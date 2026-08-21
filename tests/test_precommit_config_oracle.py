@@ -207,17 +207,5 @@ def test_assembled_config_matches_the_precommit_grammar(tmp_path, extras):
                     )
 
 
-def test_moteur_config_appends_the_self_lint_and_still_parses():
-    """The moteur's own config gets `workspace-self.yaml` appended AFTER the à-la-carte filter —
-    an append that must not break the document either (same concat risk, one more fragment)."""
-    cfg_text = setup.build_precommit_config(
-        precommit_mod.SCRIPT_DIR, ["python-lint"], selected_hooks=set()
-    )
-    cfg = yaml.safe_load(cfg_text)
-    ids = {h["id"] for entry in cfg["repos"] for h in entry["hooks"]}
-    assert "check-public-leak" in ids  # the leak guard the filter can never drop
-    assert set(cfg) <= TOP_LEVEL_KEYS
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

@@ -284,13 +284,11 @@ def test_write_standalone_agents_md_is_idempotent_on_hand_authored_body(tmp_path
 
 def _distribution_args(**over) -> argparse.Namespace:
     base = dict(
-        profile=None,
         repo=None,
         all=False,
         dry_run=False,
         check_drift=False,
         commit=False,
-        force=False,
         agents_md=False,
         standalone=False,
     )

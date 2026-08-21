@@ -61,7 +61,7 @@ def _python_repo_with_a_baseline_commit(tmp_path: Path, monkeypatch) -> Path:
     setup._init_repo_skeleton(repo)
     _git(repo, "config", "user.email", "test@example.test")
     _git(repo, "config", "user.name", "test")
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
     _git(repo, "add", "-A")
     _git(repo, "commit", "-m", "🎉 feat: initial commit", "--no-verify")
     return repo

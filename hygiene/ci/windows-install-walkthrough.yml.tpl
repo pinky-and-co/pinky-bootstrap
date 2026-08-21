@@ -13,8 +13,6 @@
     # La vérification du lanceur de hook (`py -3` vs `python3` dans settings.json) a été retirée
     # 2026-08-17 avec le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/` du
     # tout, prek provisionne son propre interpréteur (`language: python`) — plus rien à figer.
-    #
-    # Profil `example` : le seul public, donc le seul disponible dans un checkout CI.
     runs-on: windows-latest
     permissions:
       contents: read
@@ -47,7 +45,7 @@
           # Le marqueur doit exister ET porter config.txt — c'est lui qui DÉFINIT la racine
           # (ADR-0065), et un `.pinky/` nu ne suffit pas (défaut trouvé sur pinky-provider).
           if (-not (Test-Path .pinky\config.txt)) { throw "init-workspace n'a pas écrit .pinky/config.txt" }
-          "default_profile = example`nrepo_globs = pinky-demo-*" | Set-Content .pinky\config.txt
+          "repo_globs = pinky-demo-*" | Set-Content .pinky\config.txt
           Set-Location pinky-demo-repo
           git init -q -b main .
           New-Item -ItemType File -Path README.md -Force | Out-Null
@@ -63,9 +61,9 @@
           # distribution en échec passe inaperçue et les assertions suivantes mesurent un état
           # qu'aucune commande n'a produit. Constaté au premier run de ce job (2026-08-09).
           $ErrorActionPreference = 'Stop'
-          pinky distribute --repo pinky-demo-repo --profile example --dry-run
+          pinky distribute --repo pinky-demo-repo --dry-run
           if ($LASTEXITCODE -ne 0) { throw "distribute --dry-run a échoué ($LASTEXITCODE)" }
-          pinky distribute --repo pinky-demo-repo --profile example
+          pinky distribute --repo pinky-demo-repo
           if ($LASTEXITCODE -ne 0) { throw "distribute a échoué ($LASTEXITCODE)" }
           # `drift` sort 0 même quand il ne trouve AUCUN repo : c'est le no-op silencieux
           # d'ADR-0065. On exige donc que le repo soit nommé dans la sortie, pas juste un code 0.

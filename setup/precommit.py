@@ -24,142 +24,22 @@ from .common import (
     WORKSPACE_ROOT,
     SuiteIdentity,
     engine_version,
-    corpus_roots,
     has_generated_index,
     inject_readme_sections_local,
-    load_profile,
     render_index_home,
 )
 from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
 from .product_scaffold import scaffold_product
 
-# ── Security/integrity socle — the universal floor (chantier-0001, ADR-0062) ──────────────────
-# These base.yaml hooks are the "plancher universel" the à-la-carte filter can NEVER drop: whatever
-# a profile's `hooks:` list says (even `[]`), every distributed repo keeps secret scanning, a
-# readable commit-message format, and the invisible-character guard. They live HERE, out of
-# HOOK_MANIFEST, so _drop_pcids/_drop_scripts structurally cannot select them for removal — the
-# guarantee is the absence, not a special case. Their keys stay RECOGNISED (listing one is a
-# redundant no-op, never an "unknown hook" error). Shape mirrors HOOK_MANIFEST for the invariant test.
-#
-# Why check_zws is a floor and not a choice: it was born from an invisible character introduced while
+# Why check_zws is a floor, not a choice: it was born from an invisible character introduced while
 # replacing an email address across several .yml config files, which corrupted the DAGs those files
-# drove. Cheap corruption, expensive consequence, and invisible to review by construction — nobody
-# opts out of that on purpose. It has no `files:` filter in base.yaml either, so it already covered
-# every staged file, not just prose. It ALSO intersects one channel of invisible-text prompt
-# injection (a payload encoded in zero-width characters) — but only that one: the tag block
-# (U+E0000-U+E007F), variation selectors and bidi controls all pass through it untouched. Do not read
-# this hook as an anti-injection guard; widening its alphabet is its own card, and its own arbitration
-# (U+200D is the emoji ZWJ joiner, and U+200C/U+200D are required in Persian/Arabic/Indic scripts).
-SOCLE_HOOKS: dict[str, tuple[str, str | None]] = {
-    # profile key       (pre-commit id,      distributed script | None)
-    "gitleaks": ("gitleaks", None),
-    "detect-secrets": ("detect-secrets", None),
-    "commit-msg": ("commit-msg-format", "commit-msg"),
-    "check_zws": ("check-zws", "check_zws.py"),
-}
-
-# ── The single selectable hook (ADR-0008, emptied by ADR-0062) ────────────────
-# `hooks:` used to carry eight keys, back when the profile was the ONLY router. It is not: a hook's
-# presence follows from the repo's LAYOUT, which resolve_extras() reads directly — check_snowpark_api
-# ships with extras/snowflake.yaml, check_typed_api and check_weak_assertions with the python extras,
-# the four js_* with extras/web.yaml. Listing them here as well made the profile a second, competing
-# router that could only ever drift from the first — and did, twice: `pinky` named a
-# check_weak_assertions key that exists in no registry (hard-failing every --profile pinky run), and
-# omitted the js_* keys while claiming to be the identity filter (which would have stripped
-# pinky-studio's js_engine_sync hard block).
-#
-# check_forbidden_keywords is the one hook no layout can predict — it guards against leaking employer
-# material into what the author writes, so it depends on WHO is at the keyboard, not on what the repo
-# contains. It stays DECLARATIVE on purpose rather than keying off the presence of a keywords file:
-# auto-detection would make an anti-leak guard vanish silently on a machine where that file is
-# missing, and a guard that disappears without a word is the worst failure mode it has.
-#
-# Anything NOT in this manifest is socle or capability-routed → never filtered.
-#
-# Structural invariant (verified against hygiene/pre-commit/{base,extras/*}.yaml): every selectable
-# hook is the SOLE hook of its own `- repo:` block, so filtering removes whole repo blocks — never
-# a partial edit, never a dangling external-repo stub.
-HOOK_MANIFEST: dict[str, tuple[str, str | None]] = {
-    # profile key               (pre-commit id,            distributed script | None)
-    "check_forbidden_keywords": (
-        "check-forbidden-keywords",
-        "check_forbidden_keywords.py",
-    ),
-}
-
-# Keys a profile's `hooks:` list may legitimately name: the selectable manifest + the always-on
-# socle (listing a socle key is a redundant no-op, never an "unknown hook" error).
-KNOWN_HOOK_KEYS: frozenset[str] = frozenset(HOOK_MANIFEST) | frozenset(SOCLE_HOOKS)
-
-
-def profile_selected_hooks(profile: dict) -> set[str] | None:
-    """Translate a profile's `hooks:` list into a selected-keys set, or None for 'no filter'.
-
-    None (key absent / null) = framework default = every hook ships (identity, the no-profile
-    behaviour). An explicit list — including `[]` — enables à-la-carte filtering: only the named
-    selectable hooks survive (the hygiene socle is never touched). Unknown keys are reported by
-    the caller; they are inert here (they simply select nothing).
-    """
-    if "hooks" not in profile or profile["hooks"] is None:
-        return None
-    return set(profile["hooks"])
-
-
-def _drop_pcids(selected: set[str]) -> set[str]:
-    """Pre-commit ids to remove: every selectable hook whose key is NOT selected."""
-    return {
-        pcid for key, (pcid, _script) in HOOK_MANIFEST.items() if key not in selected
-    }
-
-
-def _drop_scripts(selected: set[str]) -> set[str]:
-    """Distributed script filenames to skip: selectable scripts whose key is NOT selected."""
-    return {
-        script
-        for key, (_pcid, script) in HOOK_MANIFEST.items()
-        if script is not None and key not in selected
-    }
-
-
-def _filter_precommit_config(text: str, drop_pcids: set[str]) -> str:
-    """Remove the `- repo:` block of each deselected hook from an assembled config.
-
-    Operates on whole repo blocks (boundary = a `  - repo:` line). A block is dropped iff it
-    contains a deselected pre-commit id; preceding comment/blank header lines travel with it.
-    A no-op when ``drop_pcids`` is empty → the `pinky`/no-profile path stays byte-identical.
-    """
-    if not drop_pcids:
-        return text
-    lines = text.split("\n")
-    repo_starts = [i for i, ln in enumerate(lines) if re.match(r"^  - repo:", ln)]
-    drop_idx: set[int] = set()
-    for n, start in enumerate(repo_starts):
-        end = repo_starts[n + 1] if n + 1 < len(repo_starts) else len(lines)
-        ids = {
-            m.group(1)
-            for ln in lines[start:end]
-            if (m := re.match(r"^\s+- id:\s*(\S+)", ln))
-        }
-        if not (ids & drop_pcids):
-            continue
-        # Pull the leading comment/blank header into the dropped range (stops at the previous
-        # block's last content line, or `repos:` / the file header before the first block).
-        s = start
-        while s - 1 >= 0 and (
-            lines[s - 1].strip() == "" or lines[s - 1].lstrip().startswith("#")
-        ):
-            s -= 1
-        drop_idx.update(range(s, end))
-    if not drop_idx:
-        return text
-    kept = [ln for i, ln in enumerate(lines) if i not in drop_idx]
-    return "\n".join(kept)
-
-
-def profile_hooks_enabled(profile: dict) -> bool:
-    """Return the rigor dial's hooks layer (default True when the key is absent)."""
-    layers = profile.get("layers") or {}
-    return bool(layers.get("hooks", True))
+# drove. Cheap corruption, expensive consequence, and invisible to review by construction. It has no
+# `files:` filter in base.yaml either, so it already covers every staged file, not just prose. It
+# ALSO intersects one channel of invisible-text prompt injection (a payload encoded in zero-width
+# characters) — but only that one: the tag block (U+E0000-U+E007F), variation selectors and bidi
+# controls all pass through it untouched. Do not read this hook as an anti-injection guard; widening
+# its alphabet is its own card, and its own arbitration (U+200D is the emoji ZWJ joiner, and
+# U+200C/U+200D are required in Persian/Arabic/Indic scripts).
 
 
 def discover_repos() -> list[Path]:
@@ -259,7 +139,7 @@ def mypy_additional_dependencies(repo: Path) -> list[str]:
 
 
 def resolve_extras(repo: Path) -> list[str]:
-    """Pick pre-commit extras for a repo from its layout (per-hook profile deferred).
+    """Pick pre-commit extras for a repo from its layout.
 
     - python      : repo is a Python package (has pyproject.toml). NOT keyed on src/:
                     HTML/JS repos (e.g. pinky-studio) also have a src/ but no pyproject,
@@ -309,25 +189,12 @@ def resolve_extras(repo: Path) -> list[str]:
     return extras
 
 
-def build_precommit_config(
-    repo: Path, extras: list[str], selected_hooks: set[str] | None = None
-) -> str:
+def build_precommit_config(repo: Path, extras: list[str]) -> str:
     """Assemble .pre-commit-config.yaml = base + selected extras (text concat).
-
-    When ``repo`` IS the moteur itself (``repo.resolve() == SCRIPT_DIR.resolve()``),
-    ``hygiene/pre-commit/workspace-self.yaml`` is appended last — the public-corpus leak guard
-    (``--check-public``), which only makes sense here (needs setup.py + corpus-public/ + the
-    private profiles). It is NOT a layout extra (identity axis, not repo-layout), so it lives
-    outside ``extras/`` and never ships to a consumer repo.
 
     ``repo`` is the TARGET repo (not the source workspace) — needed to auto-derive the mypy hook's
     ``additional_dependencies`` from that repo's own pyproject.toml (ADR-0026) when the python
     extra is active; a no-op placeholder substitution otherwise.
-
-    ``selected_hooks`` is the à-la-carte filter (ADR-0008): None = no filtering (identity, the
-    no-profile path). A set drops the `- repo:` block of every selectable hook NOT named in it;
-    the hygiene socle and the python/snowflake extras are never touched. ``pinky`` enumerates all
-    selectable hooks, so filtering by it is a no-op → byte-identical to the no-profile output.
     """
     parts = [
         (CORE_PRECOMMIT_DIR / "base.yaml").read_text(encoding="utf-8").rstrip("\n")
@@ -342,16 +209,6 @@ def build_precommit_config(
             "[" + ", ".join(f'"{d}"' for d in mypy_additional_dependencies(repo)) + "]"
         )
         text = text.replace(MYPY_DEPS_PLACEHOLDER, deps_yaml)
-    if selected_hooks is not None:
-        text = _filter_precommit_config(text, _drop_pcids(selected_hooks))
-    # Moteur-only self-lint: the public-corpus leak guard (--check-public) needs setup.py,
-    # corpus-public/ and the private profiles — all present only here. Appended AFTER the
-    # à-la-carte filter so it is a socle-grade guard the profile selection can never drop.
-    if repo.resolve() == SCRIPT_DIR.resolve():
-        fragment = (CORE_PRECOMMIT_DIR / "workspace-self.yaml").read_text(
-            encoding="utf-8"
-        )
-        text = text.rstrip("\n") + "\n\n" + fragment.rstrip("\n") + "\n"
     return text
 
 
@@ -360,8 +217,7 @@ def build_precommit_config(
 # governance setup.py never touched, so a transverse CI change (the docs-only-deadlock fix) was
 # a manual fan-out to N repos. hygiene/ci/ci.yml.tpl is now the single source; render_ci_yml derives
 # the per-repo file. Two axes vary per repo and are NOT derivable from resolve_extras() (which
-# answers "python" identically for pinky-core and pinky-provider) — explicit override tables,
-# same pattern as SOCLE_HOOKS/HOOK_MANIFEST above.
+# answers "python" identically for pinky-core and pinky-provider) — explicit override tables.
 CI_TPL_PATH = CORE_CI_DIR / "ci.yml.tpl"
 CI_WINDOWS_FRAGMENT_PATH = CORE_CI_DIR / "windows-pilot.yml.tpl"
 CI_WORKER_FRAGMENT_PATH = CORE_CI_DIR / "worker-python.yml.tpl"
@@ -517,7 +373,7 @@ def _referenced_hook_scripts(cfg_text: str) -> set[str]:
     return set(re.findall(r"scripts/hooks/(\S+)", cfg_text))
 
 
-def _hook_files(repo: Path, selected_hooks: set[str] | None = None) -> list[Path]:
+def _hook_files(repo: Path) -> list[Path]:
     """Hook files to distribute to THIS repo (skip __pycache__ and non-files).
 
     Scoped to what the repo's own assembled `.pre-commit-config.yaml` actually references (ADR-0027)
@@ -526,84 +382,55 @@ def _hook_files(repo: Path, selected_hooks: set[str] | None = None) -> list[Path
     the JS/HTML scripts (they'd sit dead, unreferenced by its config). ``generate_ci_badges.py`` has
     no pre-commit id (CI helper invoked from a workflow, not a hook `entry:`) and is always
     distributed — same for ``render_docs.py`` (imported by ``generate-docs``, not textually
-    referenced in the assembled YAML, so the regex scan above can't find it). ``selected_hooks``
-    (ADR-0008) additionally drops the script of every deselected selectable hook. None = no profile
-    filtering.
+    referenced in the assembled YAML, so the regex scan above can't find it).
     """
     files = [f for f in sorted(CORE_HOOKS_DIR.iterdir()) if f.is_file()]
     referenced = _referenced_hook_scripts(
         build_precommit_config(repo, resolve_extras(repo))
     )
     always_on = {"generate_ci_badges.py", "render_docs.py"}
-    files = [f for f in files if f.name in referenced or f.name in always_on]
-    if selected_hooks is None:
-        return files
-    drop = _drop_scripts(selected_hooks)
-    return [f for f in files if f.name not in drop]
+    return [f for f in files if f.name in referenced or f.name in always_on]
 
 
-def _load_docs_identity(profile_arg: str | None) -> SuiteIdentity:
-    """The active profile's docs_identity.json → SuiteIdentity (instance identity for generated
-    docs). JSON, not the profile.yaml, so the dependency-free distribution path loads it with stdlib
-    only (no pyyaml). Mirrors load_profile's name-or-path resolution."""
-    name = profile_arg
-    if name is None:
-        sys.exit("✗ no --profile given — docs generation needs one.")
-    candidate = Path(name)
-    if (
-        candidate.is_file()
-    ):  # --profile given as a path to a profile.yaml → sibling json
-        path: Path | None = candidate.parent / "docs_identity.json"
-    else:  # a profile name → <corpus root>/profiles/<name>/docs_identity.json
-        path = next(
-            (
-                p
-                for cr in corpus_roots()
-                if (p := cr / "profiles" / name / "docs_identity.json").exists()
-            ),
-            None,
-        )
-    if path is None or not path.exists():
-        sys.exit(
-            f"✗ no docs_identity.json for profile '{name}' — required to generate docs "
-            "(instance identity; see hygiene/hooks/render_docs.py, the de-leak)"
-        )
+_EMPTY_IDENTITY = SuiteIdentity(
+    header_image_url="",
+    header_alt="",
+    suite_line="",
+    github_org="",
+    pitch_heading="",
+    pitch_paragraphs=(),
+    pitch_pills=(),
+)
+
+
+def _group_docs_identity(repo: Path, workspace_root: Path) -> SuiteIdentity:
+    """The docs identity ``repo``'s group declares (``<workspace_root>/<group>/docs_identity.json``)
+    — the empty identity (no pitch/org block rendered, `SuiteIdentity._REQUIRED` is the only field
+    that gates anything) when the repo sits directly at workspace depth 1 (no group), or its group
+    has none configured.
+    """
+    try:
+        parts = repo.resolve().relative_to(workspace_root.resolve()).parts
+    except ValueError:
+        return _EMPTY_IDENTITY
+    if len(parts) < 2:
+        return _EMPTY_IDENTITY
+    path = workspace_root / parts[0] / "docs_identity.json"
+    if not path.is_file():
+        return _EMPTY_IDENTITY
     return SuiteIdentity.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
-def resolve_profile_name(profile_arg: str | None) -> str | None:
-    """The profile NAME to record in each repo this run distributes to.
-
-    Same name-or-path resolution as ``_load_docs_identity``, reduced to the identifier: ``--profile``
-    accepts a path to a profile.yaml, and a repo distributed by path must compare equal to one
-    distributed by name — otherwise the downgrade guard would fire on two spellings of one regime.
-    ``None`` (no ``--profile``) means "nothing to record".
-    """
-    name = profile_arg
-    if name is None:
-        return None
-    candidate = Path(name)
-    return candidate.parent.name if candidate.is_file() else name
-
-
-def render_docs_identity(identity: SuiteIdentity, profile_name: str | None) -> str:
+def render_docs_identity(identity: SuiteIdentity) -> str:
     """The ``scripts/hooks/docs_identity.json`` text distributed into one repo.
 
     Wraps ``SuiteIdentity.to_json()`` rather than extending it: ``to_json`` lives in
-    ``hygiene/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay free
-    of routing concerns. The ``profile`` and ``engine_version`` keys are written HERE, by the
-    distributor, and read back by ``repo_profile`` / ``check_drift`` respectively. ``from_dict``
-    reads ``_FIELDS`` only, so the extra keys are invisible to the commit-time hook that consumes
-    this same file.
-
-    ``engine_version`` always present (the moteur always has one); ``profile`` absent (not ``null``)
-    when there is no profile to record — an absent marker reads as "unknown"; a null would be a
-    third state no caller distinguishes. Both come before the identity payload so someone opening a
-    repo's docs_identity.json sees the routing info before the pitch content.
+    ``hygiene/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay
+    free of routing concerns. ``engine_version`` is written HERE, by the distributor, and read back
+    by ``check_drift``. ``from_dict`` reads ``_FIELDS`` only, so the extra key is invisible to the
+    commit-time hook that consumes this same file.
     """
     payload: dict = {"engine_version": engine_version()}
-    if profile_name is not None:
-        payload["profile"] = profile_name
     payload.update(json.loads(identity.to_json()))
     return json.dumps(payload, indent=2) + "\n"
 
@@ -613,9 +440,8 @@ def _read_docs_identity_key(repo: Path, key: str) -> str | None:
 
     Unknown covers three real cases, all of which must degrade rather than raise: a repo never
     distributed (no file), one distributed before the key existed (the whole parc, as of
-    2026-08-07 for ``profile``, 2026-08-08 for ``engine_version``), and a hand-edited or
-    half-written file. ``--check-drift`` walks every repo ``discover_repos()`` finds, so one
-    unreadable repo must not abort the scan.
+    2026-08-08 for ``engine_version``), and a hand-edited or half-written file. ``--check-drift``
+    walks every repo ``discover_repos()`` finds, so one unreadable repo must not abort the scan.
     """
     path = repo / "scripts" / "hooks" / "docs_identity.json"
     try:
@@ -624,11 +450,6 @@ def _read_docs_identity_key(repo: Path, key: str) -> str | None:
         return None
     value = data.get(key) if isinstance(data, dict) else None
     return value if isinstance(value, str) else None
-
-
-def repo_profile(repo: Path) -> str | None:
-    """The profile ``repo`` was last distributed with, or None when unknown."""
-    return _read_docs_identity_key(repo, "profile")
 
 
 def repo_engine_version(repo: Path) -> str | None:
@@ -641,14 +462,10 @@ def distribute(
     *,
     dry_run: bool,
     identity: SuiteIdentity,
-    selected_hooks: set[str] | None = None,
-    profile_name: str | None = None,
 ) -> None:
     """Distribute hooks + config into one repo.
 
-    Copied scripts are scoped to what THIS repo's extras actually reference (ADR-0027). On top of
-    that, ``selected_hooks`` (ADR-0008) applies the profile's à-la-carte hook filter to both the
-    copied scripts and the generated config. None = no profile filtering (identity).
+    Copied scripts are scoped to what THIS repo's extras actually reference (ADR-0027).
 
     Does not touch AGENT.md (2026-07-10): its only generated content was the commit-scopes marker
     block, and the scope concept was dropped from the commit convention entirely — a per-repo
@@ -661,7 +478,7 @@ def distribute(
 
     # 1. hooks
     dst_hooks = repo / "scripts" / "hooks"
-    for src in _hook_files(repo, selected_hooks):
+    for src in _hook_files(repo):
         dst = dst_hooks / src.name
         print(f"  {tag}hook  scripts/hooks/{src.name}")
         if not dry_run:
@@ -671,14 +488,13 @@ def distribute(
                 dst.chmod(0o755)
 
     # 1b. docs_identity.json — the instance identity render_docs.py reads at commit time. Values come
-    #     from the profile (de-leak); never hardcoded in hygiene/hooks/render_docs.py (the generic engine).
-    #     Also carries `profile`: the regime this repo is on, so `--all` and `--check-drift` can
-    #     resolve it per repo instead of imposing the caller's (see render_docs_identity).
+    #     from the repo's group config (never hardcoded in hygiene/hooks/render_docs.py, the generic
+    #     engine) — see `_group_docs_identity`.
     print(f"  {tag}hook  scripts/hooks/docs_identity.json")
     if not dry_run:
         dst_hooks.mkdir(parents=True, exist_ok=True)
         (dst_hooks / "docs_identity.json").write_text(
-            render_docs_identity(identity, profile_name), encoding="utf-8"
+            render_docs_identity(identity), encoding="utf-8"
         )
 
     # 1c. badges.toml — the generic badge catalog render_docs.py reads at commit time (2026-07-11).
@@ -737,7 +553,7 @@ def distribute(
     print(f"  {tag}config  .pre-commit-config.yaml")
     if not dry_run:
         (repo / ".pre-commit-config.yaml").write_text(
-            build_precommit_config(repo, extras, selected_hooks), encoding="utf-8"
+            build_precommit_config(repo, extras), encoding="utf-8"
         )
 
     # 2b. .github/workflows/ci.yml — governance parity with .pre-commit-config.yaml (chantier-0001,
@@ -852,7 +668,7 @@ _MISSING_TOOLS: set[str] = set()
 # socle without this line flagged `concurrent_map` (`DAR401: -r exc`) whose docstring already carries
 # `Raises: Exception:`. Socle rather than per-repo because it is inert on any repo that never does
 # `raise <variable>`, and because `_write_darglint_config` converges: a repo cannot hold a local
-# exception, and the profile-level mechanism its docstring promises does not exist.
+# exception, and no per-repo override mechanism exists.
 _DARGLINT_INI = """[darglint]
 docstring_style = google
 strictness = long
@@ -873,7 +689,7 @@ def _write_darglint_config(repo: Path, extras: list[str], tag: str = "") -> None
     So this file is socle, like `.pre-commit-config.yaml`: distributed and overwritten — divergence
     stops being silent.
 
-    **A repo cannot hold a local exception, and there is no profile-level escape hatch** (an earlier
+    **A repo cannot hold a local exception, and there is no per-repo escape hatch** (an earlier
     version of this docstring said there was; there never has been). A setting a repo genuinely needs
     therefore has to go into `_DARGLINT_INI` itself — which is where `ignore_raise = exc` landed on
     2026-08-07, after converging `pinky-connect` removed it and produced a false `DAR401`. That is
@@ -1007,39 +823,6 @@ def _prek_install(repo: Path) -> None:
         )
 
 
-def _recorded_selected_hooks(repo: Path) -> tuple[set[str] | None, str | None]:
-    """``(selection, note)`` for ``repo``, resolved from the profile the repo itself records.
-
-    ``note`` is a human-readable reason when the selection could NOT be resolved; the caller prints
-    it next to the repo. Saying "compared unfiltered" out loud matters: silently pretending the
-    filter applied would turn a real divergence into a reassuring ✓, which is the failure this whole
-    change exists to remove.
-
-    Two degradations are real cases, not defensive padding. **pyyaml may be absent** — the no-profile
-    distribution path is required to run without it (`test_no_hard_yaml_dependency`; the Windows CI
-    job installs none), and now that every repo records a profile, drift would otherwise demand it
-    everywhere. **The recorded profile may be gone** — `pluto-poc` was a real profile of this parc and
-    no longer exists; `load_profile` exits on both, so the exit is caught rather than propagated.
-    """
-    name = repo_profile(repo)
-    if name is None:
-        return None, None
-    try:
-        import yaml  # noqa: F401 — probe: load_profile exits (not raises) when it is missing
-    except ModuleNotFoundError:
-        return (
-            None,
-            f"profile '{name}' not applied (pyyaml unavailable) — compared unfiltered",
-        )
-    try:
-        profile, _ = load_profile(name)
-    except SystemExit:
-        return None, f"profile '{name}' unresolvable — compared unfiltered"
-    if not profile_hooks_enabled(profile):
-        return None, None
-    return profile_selected_hooks(profile), None
-
-
 # (section path, key, expected value) — the `.cache/` convention (kanban card
 # `convention-cache-jamais-distribuee`). `pyproject.toml` is repo-owned, not something `distribute()`
 # can write (it carries deps/metadata `distribute()` has no business touching), so this is advisory
@@ -1080,24 +863,13 @@ def _cache_convention_issues(repo: Path) -> list[str]:
 
 def check_drift(
     repos: list[Path],
-    selected_hooks: set[str] | None = None,
     quiet: bool = False,
     extras_fatal: bool = True,
 ) -> int:
     """Compare each repo against the workspace source; return divergence count.
 
     The expected hook-script set is per-repo (ADR-0027, via `_hook_files`) — scoped to what that
-    repo's own extras actually reference, not the full `hygiene/hooks/` directory. ``selected_hooks``
-    (ADR-0008) further narrows it to the profile's selection.
-
-    ``None`` no longer means "no filtering": it means **resolve each repo's own profile** (the one
-    `distribute()` recorded). Comparing a whole parc against a single caller-supplied profile is what
-    made this control permanently red — measured 2026-08-07 on the 19 repos: 10 divergences with no
-    `--profile`, 18 with `--profile pluto`, no invocation reporting 0. A repo recording nothing still
-    compares unfiltered, so a parc that has never been redistributed behaves exactly as before.
-
-    An explicit ``selected_hooks`` still wins for every repo — `--profile X --check-drift` asks "what
-    would this parc look like under X?", which stays a legitimate question.
+    repo's own extras actually reference, not the full `hygiene/hooks/` directory.
 
     ``quiet`` returns the count without the report, for ``warn_on_drift``'s one-line advisory.
 
@@ -1118,14 +890,7 @@ def check_drift(
         issues: list[str] = []
         uncounted = 0
         dst_hooks = repo / "scripts" / "hooks"
-        if selected_hooks is None:
-            repo_hooks, note = _recorded_selected_hooks(repo)
-        else:
-            repo_hooks, note = selected_hooks, None
-        if note:
-            say(f"  ⚠ {repo.name}: {note}")
-
-        expected = _hook_files(repo, repo_hooks)
+        expected = _hook_files(repo)
         for src in expected:
             dst = dst_hooks / src.name
             if not dst.exists():
@@ -1134,9 +899,9 @@ def check_drift(
                 issues.append(f"differs   scripts/hooks/{src.name}")
 
         # The symmetric half (card `defauts-moteur-releves-a-l-import-pluto` § 3). `distribute()`
-        # writes the hooks a profile keeps but never removes the ones it drops, so deselecting a
-        # hook leaves its script on disk, wired to nothing — 4 repos carried one for ten weeks and
-        # still reported ✓, because this loop only ever walked the EXPECTED set.
+        # writes but never removes, so a repo whose extras changed (e.g. dropped `web`) can carry a
+        # stale script wired to nothing — 4 repos carried one for ten weeks and still reported ✓,
+        # because this loop only ever walked the EXPECTED set.
         #
         # Scoped to names the framework itself ships (`CORE_HOOKS_DIR`) plus the two files
         # `distribute()` renders rather than copies. A repo's own helper dropped in scripts/hooks/
@@ -1158,7 +923,7 @@ def check_drift(
                         uncounted += 1
 
         cfg = repo / ".pre-commit-config.yaml"
-        expected_cfg = build_precommit_config(repo, resolve_extras(repo), repo_hooks)
+        expected_cfg = build_precommit_config(repo, resolve_extras(repo))
         if not cfg.exists():
             issues.append("missing .pre-commit-config.yaml")
         elif cfg.read_text(encoding="utf-8") != expected_cfg:
@@ -1183,7 +948,7 @@ def check_drift(
         # Version lag is reported separately from `issues`, never counted in `total`: a moteur bump
         # touches nothing on disk in a repo distributed before it, so treating it as a divergence
         # would turn `--check-drift` permanently red the moment ANY repo bumps — the exact
-        # "control nobody reads" failure the profile downgrade guard already avoids (§ `distribute`).
+        # "control nobody reads" failure this advisory framing avoids.
         recorded_version = repo_engine_version(repo)
         if recorded_version is not None and recorded_version != current_version:
             version_lag.append((repo.name, recorded_version))
@@ -1235,8 +1000,8 @@ def warn_on_drift() -> None:
     """Advisory drift notice for the RENDER path — one line, never blocking, never fatal.
 
     ADR-0055 folded the drift check into ``run_distribution`` so it could not be forgotten, but only
-    the distribution flags reach it. Rendering (``--provider claude`` / ``--profile <name>`` /
-    ``--into``) writes CLAUDE.md and ``.claude/`` and checked nothing — so a session that edits
+    the distribution flags reach it. Rendering (``--provider claude`` / ``--into``) writes CLAUDE.md
+    and ``.claude/`` and checked nothing — so a session that edits
     ``core/`` then renders, exactly what `feedback_core_edit_needs_setup` prescribes, walked away
     believing it had distributed. 30 divergences accumulated that way by 2026-08-05.
 
@@ -1290,10 +1055,10 @@ def new_repo(name: str, args) -> None:
     for a hand-built repo, so a repo born ``--type web`` gets the ``web`` extra because it has a
     ``package.json`` and no ``pyproject.toml`` — not because anything asked for ``web`` by name.
 
-    Delegates to ``run_distribution`` (via ``args.repo = name``) so the profile gate, docs identity,
-    à-la-carte hook selection and the socle floor are the exact same single path as ``--repo``.
-    Idempotent end to end: an existing repo is not re-init'd, ``scaffold_product`` never overwrites
-    an existing file, and ``distribute()`` converges.
+    Delegates to ``run_distribution`` (via ``args.repo = name``) so docs identity and the socle
+    floor are the exact same single path as ``--repo``. Idempotent end to end: an existing repo is
+    not re-init'd, ``scaffold_product`` never overwrites an existing file, and ``distribute()``
+    converges.
     """
     target = WORKSPACE_ROOT / name
     created = _init_repo_skeleton(target)
@@ -1318,49 +1083,6 @@ def new_repo(name: str, args) -> None:
 
 
 def run_distribution(args) -> None:
-    # Profile gate. When --profile is given, the rigor dial's `layers.hooks` first decides whether
-    # this profile receives the hooks distribution at all (Phase 2a coarse gate): an agent-only
-    # profile (layers.hooks: false) is excluded entirely — no hooks, no drift check. When hooks
-    # ARE enabled, the profile's `hooks:` list drives à-la-carte per-hook filtering (Phase 3b,
-    # ADR-0008): only the named selectable hooks ship; the hygiene socle is never touched. With NO
-    # --profile, selected_hooks stays None → identity → the 10 pinky repos stay at 0 drift.
-    selected_hooks: set[str] | None = None
-    if args.profile:
-        profile, _ = load_profile(args.profile)
-        if not profile_hooks_enabled(profile):
-            print(
-                f"Profile '{profile['name']}' is agent-only (layers.hooks: false) — "
-                "no hooks distributed."
-            )
-            sys.exit(0)
-        selected_hooks = profile_selected_hooks(profile)
-        if selected_hooks is None:
-            print(
-                f"Profile '{profile['name']}' — layers.hooks: true, no `hooks:` list "
-                "(framework default: all hooks)."
-            )
-        else:
-            unknown = selected_hooks - KNOWN_HOOK_KEYS
-            if unknown:
-                # A profile naming a hook that is neither selectable nor socle is a typo the
-                # selection would silently drop — fail rather than distribute a filter the author
-                # didn't intend.
-                sys.exit(
-                    f"✗ profile '{profile['name']}' lists unknown hook(s): "
-                    f"{', '.join(sorted(unknown))} (not in HOOK_MANIFEST or SOCLE_HOOKS)."
-                )
-            # The socle floor (SOCLE_HOOKS) always ships and is never reported here — only the
-            # selectable manifest is subject to à-la-carte kept/dropped.
-            kept = sorted(selected_hooks & set(HOOK_MANIFEST))
-            dropped = sorted(set(HOOK_MANIFEST) - selected_hooks)
-            print(
-                f"Profile '{profile['name']}' — layers.hooks: true; socle always on "
-                f"({', '.join(SOCLE_HOOKS)}); à-la-carte selection: "
-                f"{len(kept)}/{len(HOOK_MANIFEST)} selectable hooks."
-            )
-            if dropped:
-                print(f"  filtered out: {', '.join(dropped)}")
-
     repos = discover_repos()
     _report_unonboarded(repos)
     if args.repo:
@@ -1370,7 +1092,7 @@ def run_distribution(args) -> None:
             sys.exit(1)
 
     if args.check_drift:
-        sys.exit(1 if check_drift(repos, selected_hooks) else 0)
+        sys.exit(1 if check_drift(repos) else 0)
 
     if not (args.all or args.repo):
         print("Refusing to distribute to ALL repos without --all (use --repo <name>).")
@@ -1389,43 +1111,15 @@ def run_distribution(args) -> None:
             )
             sys.exit(1)
 
-    profile_name = resolve_profile_name(args.profile)
-
-    # Downgrade guard (card `defauts-moteur-releves-a-l-import-pluto` § 4). `--all` carries no
-    # per-repo intent, so it must not decide the regime of a repo deliberately placed on another
-    # one: on 2026-07-31 it reverted `pluto-poc-pilot` to the full socle — employer-keyword scanner
-    # and pinky identity reinstalled — then printed `✓` and `No drift`, because "no drift" was
-    # computed against the profile just applied. SKIP rather than refuse the whole run: refusing
-    # would make `--all` useless on a multi-profile parc (some repo always mismatches), whereas
-    # skipping converges what the caller owns and NAMES what to run separately. `--repo X` is
-    # exempt — the caller named both repo and profile, and it is the documented recovery gesture.
-    if args.all and not args.repo and not getattr(args, "force", False):
-        keep = []
-        for repo in repos:
-            recorded = repo_profile(repo)
-            if recorded is not None and recorded != profile_name:
-                print(
-                    f"→ {repo.name}  SKIPPED — recorded on profile '{recorded}', this run applies "
-                    f"'{profile_name}'. Run: pinky distribute --repo {repo.name} "
-                    f"--profile {recorded} (or --all --force to override — "
-                    "--force is setup.py-only, not yet mirrored in cli_pinky.py)."
-                )
-            else:
-                keep.append(repo)
-        repos = keep
-
     print("Hooks distribution" + (" (dry-run)" if args.dry_run else ""))
     print("=" * 52)
     _MISSING_TOOLS.clear()
     statuses: list[tuple[str, str]] = []
-    identity = _load_docs_identity(args.profile)
     for repo in repos:
         distribute(
             repo,
             dry_run=args.dry_run,
-            identity=identity,
-            selected_hooks=selected_hooks,
-            profile_name=profile_name,
+            identity=_group_docs_identity(repo, WORKSPACE_ROOT),
         )
         if args.commit and not args.dry_run:
             status = commit_distribution(repo)
@@ -1481,5 +1175,5 @@ def run_distribution(args) -> None:
     # writes and never deletes, so it cannot clear one — counting them here would make the nominal
     # path exit non-zero forever on any repo carrying an orphan, which is how a guard rail becomes
     # something people learn to ignore (the archived card `drift-check-faux-positif-sans-manifeste`).
-    if not args.dry_run and check_drift(repos, selected_hooks, extras_fatal=False):
+    if not args.dry_run and check_drift(repos, extras_fatal=False):
         sys.exit("✗ Residual drift after distribution — see the report above.")

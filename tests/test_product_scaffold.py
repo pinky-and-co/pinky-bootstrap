@@ -171,7 +171,6 @@ def test_new_repo_scaffold_flag_writes_stubs_before_distribution(tmp_path, monke
     )
 
     args = argparse.Namespace(
-        profile=None,
         repo=None,
         all=False,
         dry_run=True,
@@ -192,7 +191,6 @@ def test_new_repo_passes_type_through_to_scaffold(tmp_path, monkeypatch):
     monkeypatch.setattr(setup.precommit, "run_distribution", lambda args: None)
 
     args = argparse.Namespace(
-        profile=None,
         repo=None,
         all=False,
         dry_run=True,
@@ -213,7 +211,6 @@ def test_new_repo_without_scaffold_flag_skips_product_stubs(tmp_path, monkeypatc
     monkeypatch.setattr(setup.precommit, "run_distribution", lambda args: None)
 
     args = argparse.Namespace(
-        profile=None,
         repo=None,
         all=False,
         dry_run=True,

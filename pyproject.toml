@@ -9,28 +9,22 @@ name = "pinky-bootstrap"
 # as `engine_version` (card `versionner-le-moteur`). No PyPI publish here (ADR-0065 decision 5): the
 # git tag alone is the version, consumed via `uv tool install git+<url>@v<version>`.
 version = "0.1.0.dev1"
-# The data-warehouse vendor this profile targets is deliberately unnamed ANYWHERE in this file,
+# The data-warehouse vendor a repo may target is deliberately unnamed ANYWHERE in this file,
 # comments included: resolve_extras() (setup/precommit.py) matches that vendor's name as a bare
 # substring over the WHOLE lowered pyproject.toml text (no word boundary, comments not stripped) to
 # decide whether a repo needs its Core-API-specific hooks. This engine has no such dependency — it
-# composes profiles that may TARGET that vendor, it doesn't import its SDK — so even this very
-# sentence describing the false positive would BE one; caught live via --check-drift on this repo
-# (2026-08-07), twice (the description field, then this explanatory comment itself).
-description = "Instantiable framework for provisioning a Claude Code coding-agent workspace from a declarative profile"
+# distributes hooks to repos that may TARGET that vendor, it doesn't import its SDK — so even this
+# very sentence describing the false positive would BE one; caught live via --check-drift on this
+# repo (2026-08-07), twice (the description field, then this explanatory comment itself).
+description = "Instantiable framework for provisioning a Claude Code coding-agent workspace"
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "pinky-and-co" }]
 # No `license = {file = "LICENSE"}` yet — no LICENSE file exists. Tracked, non-blocking, by card
 # `choisir-license-pinky-workspace` (Apache-2.0 recommended, ADR-0065 decision 8).
-dependencies = [
-    # Only third-party runtime dep: profile rendering (`--profile`, `--provider`, `render`) parses
-    # profile.yaml. Every other mode (--repo/--all/--check-drift/--check-public without --profile)
-    # stays stdlib-only — see setup/common.py::load_profile, which already lazy-imports this so a
-    # bare `pip install .` with pyyaml missing degrades to a clear message instead of an ImportError
-    # at module load. Declaring it here means `uv tool install` pulls it automatically instead of a
-    # fresh install hitting that message on its very first realistic command.
-    "pyyaml>=6.0",
-]
+# No third-party runtime dependency: every mode (--repo/--all/--check-drift, --agents-md) is
+# stdlib-only.
+dependencies = []
 
 [project.scripts]
 pinky = "cli_pinky:main"
@@ -50,19 +44,15 @@ dev = ["pytest"]
 #
 # `setup` is a real Python package (packages=[...] below); `cli_pinky.py` is a loose top-level
 # module (the sub-command dispatcher — see its own docstring); `agentic-harness/`, `hygiene/`,
-# `corpus-public/`, `providers/`, `scripts/`, `tools/` are NOT Python packages, they are data the CLI
-# reads by path at runtime (AGENTIC_HARNESS_DIR/HYGIENE_DIR / CORPUS_POINTER_FILE's default root /
-# the provider docs / the standalone scripts index) — SIBLINGS of `setup/` in today's repo layout,
-# and they must stay siblings once installed, because common.py resolves them as
+# `scripts/`, `tools/` are NOT Python packages, they are data the CLI reads by path at runtime
+# (AGENTIC_HARNESS_DIR/HYGIENE_DIR / the standalone scripts index) — SIBLINGS of `setup/` in today's
+# repo layout, and they must stay siblings once installed, because common.py resolves them as
 # `SCRIPT_DIR / "agentic-harness"` etc. and SCRIPT_DIR becomes the install root.
 #
-# THIS is the silent failure point the card names, and it bit for real once already while writing
-# this file: the first version force-included the FOUR directories above but not `corpus-roots.txt`
-# — the wheel built and installed cleanly, `pinky --help` worked, and `pinky render --profile
-# example` failed with "Profile not found", because corpus_roots() couldn't find its pointer file
-# and fell back to searching SCRIPT_DIR itself instead of SCRIPT_DIR/corpus-public. Caught only by
-# actually running `uv tool install git+file://…` end to end and exercising `render`, not by
-# `unzip -l` (which shows presence, never correctness of what's missing).
+# THIS is the silent failure point the card names — a directory force-included in the wheel but
+# missing from this list resolves to nothing once installed, and only actually running `uv tool
+# install git+file://…` end to end (not `unzip -l`, which shows presence, never correctness of
+# what's missing) catches it.
 [tool.hatch.build.targets.wheel]
 packages = ["setup"]
 
@@ -70,7 +60,6 @@ packages = ["setup"]
 "cli_pinky.py" = "cli_pinky.py"
 "agentic-harness" = "agentic-harness"
 "hygiene" = "hygiene"
-"corpus-public" = "corpus-public"
 "scripts" = "scripts"
 "tools" = "tools"
 
@@ -80,7 +69,6 @@ include = [
     "cli_pinky.py",
     "agentic-harness",
     "hygiene",
-    "corpus-public",
     "scripts",
     "tools",
     "README.md",

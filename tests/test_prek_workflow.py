@@ -227,29 +227,3 @@ def test_install_walkthrough_covers_the_real_sequence(tmp_path):
     assert "pinky init-workspace" in fragment
     assert "pinky distribute" in fragment
     assert "pinky drift" in fragment
-
-
-def test_every_shipped_public_profile_can_be_distributed_with():
-    """Un profil livré publiquement doit pouvoir servir à distribuer — sinon il n'est pas un modèle.
-
-    `docs_identity.json` est **requis** par `pinky distribute --profile <nom>` (l'identité injectée
-    dans les docs générées) et vit à côté du `profile.yaml`. `example` n'en avait pas, alors que le
-    how-to dit précisément de le copier comme point de départ : un adoptant butait à l'étape 5 sur
-    un fichier que rien ne lui avait mentionné. Trouvé le 2026-08-09 par le job CI qui joue le
-    parcours d'install — jamais par les tests, qui ne distribuaient qu'avec un profil privé complet.
-    """
-    profiles = sorted(
-        (precommit_mod.SCRIPT_DIR / "corpus-public" / "profiles").glob("*/profile.yaml")
-    )
-    assert profiles, "aucun profil public — extraction cassée"
-
-    missing = [
-        p.parent.name
-        for p in profiles
-        if not (p.parent / "docs_identity.json").is_file()
-    ]
-
-    assert not missing, (
-        f"profil(s) public(s) sans docs_identity.json : {', '.join(missing)} — "
-        "`pinky distribute --profile <nom>` s'arrête dessus."
-    )

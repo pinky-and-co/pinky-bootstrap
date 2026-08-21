@@ -68,7 +68,7 @@ def test_bare_repo_has_no_drift_right_after_distribution(tmp_path):
         pitch_paragraphs=("x",),
         pitch_pills=("x",),
     )
-    setup.distribute(target, dry_run=False, identity=identity, selected_hooks=None)
+    setup.distribute(target, dry_run=False, identity=identity)
 
     # The bug: distribute()'s own output poisoned the NEXT resolve_extras() call.
     assert setup.resolve_extras(target) == []

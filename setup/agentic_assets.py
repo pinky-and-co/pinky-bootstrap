@@ -45,7 +45,7 @@ class Asset:
 def _frontmatter_fields(path: Path) -> dict[str, str]:
     """Read every `key: value` line from a `.md` file's YAML frontmatter — `{}` if none.
 
-    Same shape as `profile._command_description` (not imported — that one is commands-only in
+    Same shape as `cli_pinky._command_description` (not imported — that one is commands-only in
     spirit, and duplicating a short loop beats a cross-concern import here), generalized to grab
     `name:` alongside `description:` in one pass.
     """
