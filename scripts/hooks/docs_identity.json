@@ -1,20 +1,10 @@
 {
   "engine_version": "0.1.0.dev1",
-  "profile": "pinky",
-  "header_image_url": "https://assets.pinky-suite.fr/icons/pinky-header.png",
-  "header_alt": "pinky &amp; co",
-  "suite_line": "Part of the [pinky-and-co](https://github.com/pinky-and-co) suite.",
-  "github_org": "pinky-and-co",
-  "pitch_heading": "Why pinky?",
-  "pitch_paragraphs": [
-    "The modern data stack was built on a good idea \u2014 **best of breed**. One tool for ingestion, one for transformation, one for orchestration, one for observability.",
-    "The reality: more licenses, same delivery time, and most of your energy goes into *the glue*.",
-    "Snowflake collapsed the stack. **Pinky makes it operational.**",
-    "Do it right, and the credits follow."
-  ],
-  "pitch_pills": [
-    "Rationalized costs",
-    "Pure Python",
-    "Snowflake Native First"
-  ]
+  "header_image_url": "",
+  "header_alt": "",
+  "suite_line": "",
+  "github_org": "",
+  "pitch_heading": "",
+  "pitch_paragraphs": [],
+  "pitch_pills": []
 }
