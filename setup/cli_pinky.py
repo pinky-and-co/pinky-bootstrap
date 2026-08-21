@@ -110,6 +110,10 @@ def cmd_distribute(args: argparse.Namespace) -> None:
         argv += ["--profile", args.profile]
     if args.commit:
         argv.append("--commit")
+    if args.agents_md:
+        argv.append("--agents-md")
+    if args.standalone:
+        argv.append("--standalone")
     if args.dry_run:
         argv.append("--dry-run")
     setup_main(argv)
@@ -198,6 +202,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--all", action="store_true")
     p.add_argument("--profile", default=None)
     p.add_argument("--commit", action="store_true")
+    p.add_argument(
+        "--agents-md",
+        action="store_true",
+        help="also (re)render AGENTS.md at workspace/group/repo level",
+    )
+    p.add_argument(
+        "--standalone",
+        action="store_true",
+        help="with --agents-md --repo NAME: one-time extraction gesture (see setup.py --help)",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_distribute)
 

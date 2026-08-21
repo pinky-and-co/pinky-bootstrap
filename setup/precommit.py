@@ -30,6 +30,7 @@ from .common import (
     load_profile,
     render_index_home,
 )
+from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
 from .product_scaffold import scaffold_product
 
 # ── Security/integrity socle — the universal floor (chantier-0001, ADR-0062) ──────────────────
@@ -1378,6 +1379,16 @@ def run_distribution(args) -> None:
         )
         sys.exit(1)
 
+    if getattr(args, "standalone", False):
+        if not getattr(args, "agents_md", False):
+            print("--standalone requires --agents-md.")
+            sys.exit(1)
+        if args.all or not args.repo:
+            print(
+                "--standalone requires --repo <name> (never --all — one repo at a time)."
+            )
+            sys.exit(1)
+
     profile_name = resolve_profile_name(args.profile)
 
     # Downgrade guard (card `defauts-moteur-releves-a-l-import-pluto` § 4). `--all` carries no
@@ -1420,6 +1431,20 @@ def run_distribution(args) -> None:
             status = commit_distribution(repo)
             statuses.append((repo.name, status))
             print(f"  commit  {status}")
+
+    if getattr(args, "agents_md", False) and not args.dry_run:
+        if getattr(args, "standalone", False):
+            written = [
+                write_standalone_agents_md_recorded(
+                    repos[0], workspace_root=WORKSPACE_ROOT
+                )
+            ]
+        else:
+            written = generate_agents_md(repos, workspace_root=WORKSPACE_ROOT)
+        print("\nAGENTS.md")
+        print("-" * 52)
+        for path in written:
+            print(f"  ✓ {path.relative_to(WORKSPACE_ROOT)}")
 
     print("\nDone." + ("  Nothing written (dry-run)." if args.dry_run else ""))
     if statuses:

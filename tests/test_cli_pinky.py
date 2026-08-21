@@ -112,6 +112,20 @@ def test_distribute_dispatch_all(monkeypatch):
     assert calls == [["--all", "--profile", "pluto"]]
 
 
+def test_distribute_dispatch_agents_md(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["distribute", "--repo", "pinky-core", "--agents-md"])
+    assert calls == [["--repo", "pinky-core", "--agents-md"]]
+
+
+def test_distribute_dispatch_agents_md_standalone(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(
+        ["distribute", "--repo", "pinky-core", "--agents-md", "--standalone"]
+    )
+    assert calls == [["--repo", "pinky-core", "--agents-md", "--standalone"]]
+
+
 def test_install_dispatch_default(monkeypatch):
     # Phase 1: install only orchestrates `rules` today — same argv as `pinky rules`.
     calls = _captured_argv(monkeypatch)
