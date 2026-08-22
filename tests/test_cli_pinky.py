@@ -202,7 +202,7 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
 
     setup.cli.main(["--rules", "/from-explicit-argv"])
 
-    assert [str(workspace) for workspace, _ in seen] == ["/from-explicit-argv"]
+    assert [workspace for workspace, _ in seen] == [Path("/from-explicit-argv")]
 
 
 # ── the root shim must stay a re-export, never a second copy ──────────────────
