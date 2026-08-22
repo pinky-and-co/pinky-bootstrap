@@ -36,6 +36,7 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     for name in (
         "new-repo",
         "distribute",
+        "rules",
         "drift",
         "check-public",
     ):
@@ -108,6 +109,19 @@ def test_distribute_dispatch_all(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["distribute", "--all", "--profile", "pluto"])
     assert calls == [["--all", "--profile", "pluto"]]
+
+
+def test_rules_dispatch_default_workspace(monkeypatch):
+    # No positional workspace -> bare `--rules` (setup.cli's own const=WORKSPACE_ROOT kicks in).
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["rules"])
+    assert calls == [["--rules"]]
+
+
+def test_rules_dispatch_explicit_workspace(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["rules", "/tmp/some-workspace", "--dry-run", "--yes"])
+    assert calls == [["--rules", "/tmp/some-workspace", "--dry-run", "--yes"]]
 
 
 def test_drift_dispatch(monkeypatch):
