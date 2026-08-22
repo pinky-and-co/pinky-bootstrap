@@ -160,7 +160,8 @@ def test_build_lines_oracle_empty_payload_still_renders_the_full_skeleton():
     lines = sl.build_lines({})
     assert len(lines) == 8
     stripped = [_strip_ansi(ln) for ln in lines]
-    assert stripped[0].strip() == "v?"
+    assert "⚪️" in stripped[0]  # idle indicator, no rate-limit warning
+    assert "v?" in stripped[0]
     assert "🤖 ?" in stripped[2]
     assert "Session 🆔 ?" in stripped[4]
     assert "Context window" in stripped[6] and "0%" in stripped[6]
@@ -196,7 +197,8 @@ def test_build_lines_oracle_rich_payload_readable_content(monkeypatch):
         },
     }
     stripped = [_strip_ansi(ln) for ln in sl.build_lines(data)]
-    assert stripped[0].strip() == "v2.1.228"
+    assert "⚪️" in stripped[0]  # idle indicator, no rate-limit warning
+    assert "v2.1.228" in stripped[0]
     assert "🤖 Opus 4.8" in stripped[2]
     assert "💪 high" in stripped[2]
     assert "⚡ fast" in stripped[2]
