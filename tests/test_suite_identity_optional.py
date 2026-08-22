@@ -84,11 +84,16 @@ def test_a_declared_header_still_renders(tmp_path):
 def test_no_pitch_declared_renders_empty_markers_not_a_hollow_section():
     """Oracle d'égalité : marqueurs seuls, pour que l'injection reste idempotente et qu'un pitch
     ajouté plus tard atterrisse au bon endroit — sans titre suivi de blanc entre-temps.
+
+    La ligne blanche entre les deux marqueurs n'est pas cosmétique : sans elle, mdformat en
+    ajoute une à chaque commit et generate-docs la retire à chaque fois — `git commit` ne
+    converge jamais sur un repo dont l'identité de groupe n'a pas encore de pitch (mesuré sur
+    `pinky-agentic-plugins`, 2026-08-21).
     """
     from render_docs import README_WHY_MARK_END, README_WHY_MARK_START
 
     assert render_readme_why(SuiteIdentity.from_dict(MINIMAL)) == (
-        f"{README_WHY_MARK_START}\n{README_WHY_MARK_END}"
+        f"{README_WHY_MARK_START}\n\n{README_WHY_MARK_END}"
     )
 
 

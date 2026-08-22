@@ -3,7 +3,7 @@
 
 The CDN serves the minified file only (AGENT_JS_CONVENTIONS.md § Minification — the source must
 not be reachable). Committing engine.js without regenerating engine.min.js ships stale behaviour.
-This is the ONLY web hook that is a hard block (exit 1) — on every profile, POC included.
+This is the ONLY web hook that is a hard block (exit 1) — on every repo, POC included.
 
 The staged set is read from `git diff --cached --name-only`, NOT from argv: `prek` (unlike
 classic pre-commit) can split matched files across several separate invocations of the same

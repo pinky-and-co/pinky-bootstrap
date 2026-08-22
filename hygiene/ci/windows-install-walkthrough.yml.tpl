@@ -2,9 +2,9 @@
     # Le parcours d'INSTALL, joué de bout en bout sur Windows — pas les tests, pas les hooks.
     #
     # Pourquoi un job de plus alors que `precommit-windows` existe déjà : celui-là prouve que les
-    # hooks et la suite de tests tournent sous Windows, jamais que `init-workspace → distribute →
-    # drift` y arrive. C'est pourtant la séquence qu'un adoptant exécute, et ses chemins d'instance
-    # (`.pinky/config.txt`) portent antislashs et lettre de lecteur — un piège Windows-only.
+    # hooks et la suite de tests tournent sous Windows, jamais que `distribute → drift` y arrive à
+    # travers un `*.code-workspace` réel — et ses chemins portent antislashs et lettre de lecteur,
+    # un piège Windows-only.
     #
     # Tant que ce job n'existait pas, la première exécution réelle de cette séquence sous Windows
     # devait avoir lieu sur la machine de l'adoptant. Ajouté 2026-08-09 après avoir rejoué l'install
@@ -13,8 +13,6 @@
     # La vérification du lanceur de hook (`py -3` vs `python3` dans settings.json) a été retirée
     # 2026-08-17 avec le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/` du
     # tout, prek provisionne son propre interpréteur (`language: python`) — plus rien à figer.
-    #
-    # Profil `example` : le seul public, donc le seul disponible dans un checkout CI.
     runs-on: windows-latest
     permissions:
       contents: read
@@ -42,12 +40,9 @@
           New-Item -ItemType Directory -Path ws\pinky-demo-repo -Force | Out-Null
           Set-Location ws
           $ErrorActionPreference = 'Stop'
-          pinky init-workspace .
-          if ($LASTEXITCODE -ne 0) { throw "init-workspace a échoué ($LASTEXITCODE)" }
-          # Le marqueur doit exister ET porter config.txt — c'est lui qui DÉFINIT la racine
-          # (ADR-0065), et un `.pinky/` nu ne suffit pas (défaut trouvé sur pinky-provider).
-          if (-not (Test-Path .pinky\config.txt)) { throw "init-workspace n'a pas écrit .pinky/config.txt" }
-          "default_profile = example`nrepo_globs = pinky-demo-*" | Set-Content .pinky\config.txt
+          # Le `*.code-workspace` DÉFINIT la racine (ADR-0065) — sans lui WORKSPACE_ROOT retombe sur
+          # le chemin d'install du paquet pip, pas `ws\`, et discover_repos() n'y trouve rien.
+          '{"folders": [{"path": "."}]}' | Set-Content pinky-demo.code-workspace
           Set-Location pinky-demo-repo
           git init -q -b main .
           New-Item -ItemType File -Path README.md -Force | Out-Null
@@ -63,9 +58,9 @@
           # distribution en échec passe inaperçue et les assertions suivantes mesurent un état
           # qu'aucune commande n'a produit. Constaté au premier run de ce job (2026-08-09).
           $ErrorActionPreference = 'Stop'
-          pinky distribute --repo pinky-demo-repo --profile example --dry-run
+          pinky distribute --repo pinky-demo-repo --dry-run
           if ($LASTEXITCODE -ne 0) { throw "distribute --dry-run a échoué ($LASTEXITCODE)" }
-          pinky distribute --repo pinky-demo-repo --profile example
+          pinky distribute --repo pinky-demo-repo
           if ($LASTEXITCODE -ne 0) { throw "distribute a échoué ($LASTEXITCODE)" }
           # `drift` sort 0 même quand il ne trouve AUCUN repo : c'est le no-op silencieux
           # d'ADR-0065. On exige donc que le repo soit nommé dans la sortie, pas juste un code 0.

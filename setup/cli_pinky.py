@@ -17,19 +17,34 @@ Usage:
     python cli_pinky.py install
     python cli_pinky.py rules
     python cli_pinky.py drift
-    python cli_pinky.py check-public
 """
 
 import argparse
+import re
 import sys
 
 from . import agentic_assets
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .product_scaffold import REPO_TYPES
-from .profile import _command_description
 
 SCRIPTS_DIR = SCRIPT_DIR / "tools"
+
+
+def _command_description(path) -> str:
+    """Read the `description:` frontmatter field from a command file — empty if absent."""
+    in_frontmatter = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() == "---":
+            if in_frontmatter:
+                break
+            in_frontmatter = True
+            continue
+        if in_frontmatter:
+            m = re.match(r"^description:\s*(.+)$", line)
+            if m:
+                return m.group(1).strip()
+    return ""
 
 
 def _commands_index() -> str:
@@ -106,10 +121,12 @@ def cmd_distribute(args: argparse.Namespace) -> None:
         argv += ["--repo", args.repo]
     elif args.all:
         argv.append("--all")
-    if args.profile:
-        argv += ["--profile", args.profile]
     if args.commit:
         argv.append("--commit")
+    if args.agents_md:
+        argv.append("--agents-md")
+    if args.standalone:
+        argv.append("--standalone")
     if args.dry_run:
         argv.append("--dry-run")
     setup_main(argv)
@@ -127,17 +144,7 @@ def cmd_rules(args: argparse.Namespace) -> None:
 
 
 def cmd_drift(args: argparse.Namespace) -> None:
-    argv = ["--check-drift"]
-    if args.profile:
-        argv += ["--profile", args.profile]
-    setup_main(argv)
-
-
-def cmd_check_public(args: argparse.Namespace) -> None:
-    argv = ["--check-public"]
-    if args.profile:
-        argv += ["--profile", args.profile]
-    setup_main(argv)
+    setup_main(["--check-drift"])
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -196,8 +203,17 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("distribute", help="📦 distribute hooks to one repo or --all")
     p.add_argument("--repo", default=None)
     p.add_argument("--all", action="store_true")
-    p.add_argument("--profile", default=None)
     p.add_argument("--commit", action="store_true")
+    p.add_argument(
+        "--agents-md",
+        action="store_true",
+        help="also (re)render AGENTS.md at workspace/group/repo level",
+    )
+    p.add_argument(
+        "--standalone",
+        action="store_true",
+        help="with --agents-md --repo NAME: one-time extraction gesture (see setup.py --help)",
+    )
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_distribute)
 
@@ -245,12 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_rules)
 
     p = sub.add_parser("drift", help="🧭 report repo vs source drift")
-    p.add_argument("--profile", default=None)
     p.set_defaults(func=cmd_drift)
-
-    p = sub.add_parser("check-public", help="🔒 scan the public profile for leaks")
-    p.add_argument("--profile", default=None)
-    p.set_defaults(func=cmd_check_public)
 
     return parser
 

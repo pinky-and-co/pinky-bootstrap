@@ -60,7 +60,7 @@ def test_engine_version_falls_back_to_this_repos_pyproject_when_not_installed(
 def _distributed_repo(tmp_path: Path, name: str = "pinky-thing") -> Path:
     repo = tmp_path / name
     setup._init_repo_skeleton(repo)
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
     return repo
 
 
@@ -84,7 +84,7 @@ def test_check_drift_is_silent_on_a_repo_never_carrying_the_key(
     monkeypatch.setattr(setup.precommit, "engine_version", lambda: "0.1.0.dev1")
     repo = tmp_path / "pinky-legacy"
     setup._init_repo_skeleton(repo)
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
     (repo / "scripts" / "hooks" / "docs_identity.json").write_text(
         IDENTITY.to_json(), encoding="utf-8"
     )
@@ -117,7 +117,7 @@ def test_check_drift_reports_a_repo_missing_the_cache_convention(
     )
     # Redistribute so hooks/.pre-commit-config.yaml catch up with the now-present pyproject.toml
     # (extras resolution reads it) — isolates the cache gap as the ONLY remaining divergence.
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     total = setup.check_drift([repo])
 

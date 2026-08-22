@@ -1,8 +1,8 @@
-"""Web pre-commit extra — detection, assembly, à-la-carte filtering, and hook behaviour.
+"""Web pre-commit extra — detection, assembly, and hook behaviour.
 
 Defines "done" for the chantier-0001 card `web-precommit`: a web repo (package.json, no
-pyproject) gets `extras/web.yaml`; its four hooks are filterable per profile; the three warn-only
-hooks never block; `js-engine-sync` is a hard block.
+pyproject) gets `extras/web.yaml`; the three warn-only hooks never block; `js-engine-sync` is a
+hard block.
 """
 
 import subprocess
@@ -48,19 +48,6 @@ def test_resolve_extras_empty_for_bare_repo(tmp_path):
 
 def test_web_config_includes_all_four_hooks(tmp_path):
     cfg = setup.build_precommit_config(tmp_path, ["web"])
-    for pcid in ("js-file-size", "js-structure", "html-inline-js", "js-engine-sync"):
-        assert f"id: {pcid}" in cfg
-
-
-def test_web_hooks_cannot_be_filtered_away_by_a_profile(tmp_path):
-    """ADR-0062: the web hooks route by capability, so no `hooks:` list can strip them.
-
-    The inverse of the test this replaces. Before, a profile omitting the js_* keys dropped them —
-    and `pinky` omitted all four while its comment claimed to be the identity filter, which would
-    have stripped js_engine_sync (the one HARD BLOCK of the set) from pinky-studio. A repo that has
-    the web capability gets the web hooks; the profile has no say.
-    """
-    cfg = setup.build_precommit_config(tmp_path, ["web"], selected_hooks=set())
     for pcid in ("js-file-size", "js-structure", "html-inline-js", "js-engine-sync"):
         assert f"id: {pcid}" in cfg
 

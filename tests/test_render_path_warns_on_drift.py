@@ -3,18 +3,14 @@
 Card `render-path-ne-verifie-aucune-derive`: ADR-0055 folded the drift check into `run_distribution()`
 precisely so nobody could forget it ("the tool tells you, you don't have to think about it"). But it
 only fires on the DISTRIBUTION flags (`--repo`, `--all`, `--check-drift`). The second path — rendering,
-`--provider claude` / `--profile <name>` / `--into` — writes CLAUDE.md and `.claude/` and checks
-nothing. A session that edits `hygiene/pre-commit/` then runs only `--provider claude`, which is what
+`--provider claude` / `--into` — writes CLAUDE.md and `.claude/` and checks nothing. A session that
+edits `hygiene/pre-commit/` then runs only `--provider claude`, which is what
 `feedback_core_edit_needs_setup` prescribes to the letter, walks away believing it distributed while
 the 19 repos stay stale without a word. Measured 2026-08-05: 30 divergences accumulated that way.
 
 **Non-blocking, by requirement.** The render path must stay usable on a machine whose repos are not
-cloned yet (framework targets #2 and #3 — the brother's POC-light box, a colleague's BYO-profile
-setup). Failing there would be worse than saying nothing.
-
-**Wired last, on purpose.** Steps 1-3 of this session had to land first: on a parc where no invocation
-could report 0 (10 divergences with no `--profile`, 18 with one), this warning would have fired on
-every single render — manufacturing exactly the guard-rail-one-learns-to-ignore that the card is about.
+cloned yet (framework targets #2 and #3 — the brother's POC-light box, a colleague's own setup).
+Failing there would be worse than saying nothing.
 """
 
 import sys
@@ -37,7 +33,7 @@ IDENTITY = setup.SuiteIdentity(
 def _drifted_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "pinky-stale"
     setup._init_repo_skeleton(repo)
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
     (repo / "scripts" / "hooks" / "commit-msg").unlink()  # core moved on, repo did not
     return repo
 
@@ -60,11 +56,11 @@ def test_warns_and_names_the_command_that_fixes_it(tmp_path, monkeypatch, capsys
 
 
 def test_says_nothing_when_the_parc_is_clean(tmp_path, monkeypatch, capsys):
-    """The whole point of ordering this after the per-repo profile fix: on a converged parc the
-    render path stays silent. A notice that fires every time is one nobody reads."""
+    """On a converged parc the render path stays silent. A notice that fires every time is one
+    nobody reads."""
     repo = tmp_path / "pinky-clean"
     setup._init_repo_skeleton(repo)
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
     monkeypatch.setattr(setup.precommit, "discover_repos", lambda: [repo])
 
     capsys.readouterr()  # drain distribute()'s own output — only the notice below counts

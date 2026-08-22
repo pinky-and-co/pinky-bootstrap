@@ -1,15 +1,9 @@
-"""Scaffolding layering — public core/ commands+agents + the active profile's private set.
-
-Defines "done" for the chantier-0001 card `agents-commands-layering`: a leaky/instance-specific
-command (review_brief, explain, yml_audit) or agent (yaml-audit) lives in the PRIVATE corpus, not
-in the public moteur. setup.py layers `core/<sub>/` (public) with `<profile dir>/<sub>/` (private),
-profile file overriding a core file of the same name; `rules` stays base-only.
+"""Public-corpus hygiene — the moteur's own commands/agents/rules never leak instance-specific
+content, and every domain rule stays path-scoped (chantier-0001 card `agents-commands-layering`).
 """
 
 import sys
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import setup  # noqa: E402
@@ -55,21 +49,3 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
         head = f.read_text(encoding="utf-8").split("---")[1]
         assert "paths:" in head, f"{f.name} n'est pas scopée par paths:"
         assert "capability:" in head, f"{f.name} ne déclare pas sa capacité"
-
-
-def test_commands_key_is_now_a_build_error(tmp_path, capsys):
-    # La clé supprimée ne doit pas être ignorée en silence : un profil qui la porte encore aurait
-    # l'air de gouverner quelque chose sans aucun effet, et l'auteur ne le découvrirait que des mois
-    # plus tard en s'étonnant d'une commande inattendue.
-    profile_yaml = tmp_path / "profile.yaml"
-    profile_yaml.write_text("name: x", encoding="utf-8")
-    profile = {
-        "name": "x",
-        "knowledge_agents": [],
-        "model_routing": {"fast": "f", "default": "d", "thorough": "t"},
-        "commands": ["commit"],
-    }
-    with pytest.raises(SystemExit):
-        setup.validate_profile(profile, profile_yaml)
-    out = capsys.readouterr().out
-    assert "commands: key removed" in out

@@ -27,7 +27,7 @@ IDENTITY = setup.SuiteIdentity(
 def test_missing_policies_json_is_scaffolded_with_null_branch_workflow(tmp_path):
     repo = tmp_path / "pinky-thing"
     setup._init_repo_skeleton(repo)
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     policies_path = repo / ".claude" / "policies.json"
     assert policies_path.exists()
@@ -42,7 +42,7 @@ def test_existing_policies_json_is_never_overwritten(tmp_path):
     original_content = '{"branch_workflow": "git flow"}'
     policies_path.write_text(original_content, encoding="utf-8")
 
-    setup.distribute(repo, dry_run=False, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     assert policies_path.read_text(encoding="utf-8") == original_content
 
@@ -51,6 +51,6 @@ def test_dry_run_does_not_write_policies_json(tmp_path):
     repo = tmp_path / "pinky-thing"
     setup._init_repo_skeleton(repo)
 
-    setup.distribute(repo, dry_run=True, identity=IDENTITY, selected_hooks=None)
+    setup.distribute(repo, dry_run=True, identity=IDENTITY)
 
     assert not (repo / ".claude" / "policies.json").exists()

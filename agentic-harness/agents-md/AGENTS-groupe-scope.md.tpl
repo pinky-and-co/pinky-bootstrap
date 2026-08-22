@@ -1,5 +1,6 @@
 # AGENTS.md — {{group_name}}
-# Rendered by the repo CLI setup — do not edit directly.
+# Packages below is generator-owned (marker-wrapped, safe to re-render) — everything else on this
+# page, edit directly.
 # Source : <cli-setup-repo>/agentic-harness/agents-md/AGENTS-groupe-scope.md.tpl
 #
 # {{packages_table}} — one row per repo nested under this group directory. Description column
