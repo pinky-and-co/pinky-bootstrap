@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from datetime import date, timedelta
 from pathlib import Path
 
 from .common import (
@@ -269,6 +270,53 @@ CI_INSTALL_OVERRIDES: dict[str, str] = {
 CI_NO_LOCK_REPOS: frozenset[str] = frozenset(
     {"pinky-ai", "pinky-connect", "pinky-provider", "pinky-snowpark", "pinky-streamlit"}
 )
+
+# ── [tool.uv] exclude-newer distribution (chantier 0024) ─────────────────────
+# Fenêtre glissante contre une dépendance fraîchement compromise republiée sur PyPI. Recalculée à
+# chaque distribution plutôt que codée en dur dans chaque pyproject.toml : renouveler la fenêtre
+# redevient "relancer la distribution", pas 12 edits manuels identiques (AGENTS.md § Repo
+# conventions documente le geste qui reste humain — décider QUAND redistribuer).
+EXCLUDE_NEWER_DAYS = 3
+EXCLUDE_NEWER_RE = re.compile(r'(?m)^exclude-newer[ \t]*=[ \t]*"[^"]*"[ \t]*$')
+EXCLUDE_NEWER_COMMENT = (
+    "# Fenêtre de cooldown contre une dépendance fraîchement compromise republiée sur PyPI\n"
+    "# (chantier 0024) : `uv lock`/`uv sync` ignorent tout paquet uploadé après cette date.\n"
+    "# Recalculée par `pinky distribute` (AGENTS.md de `pinky-bootstrap` § Repo conventions) —\n"
+    "# jamais éditée à la main. Enregistrée dans `uv.lock` : `grep exclude-newer uv.lock` dit\n"
+    "# exactement quelle fenêtre a produit le lock courant.\n"
+)
+
+
+def exclude_newer_cutoff() -> str:
+    """RFC 3339 date, ``EXCLUDE_NEWER_DAYS`` before today — the `[tool.uv] exclude-newer` cutoff."""
+    cutoff = date.today() - timedelta(days=EXCLUDE_NEWER_DAYS)
+    return f"{cutoff.isoformat()}T00:00:00Z"
+
+
+def render_pyproject_with_exclude_newer(repo: Path, cutoff: str) -> str | None:
+    """The repo's `pyproject.toml` with `[tool.uv] exclude-newer` set to ``cutoff``, or None.
+
+    None when the repo has no pyproject.toml, or when the text would not change (already
+    up to date) — the only artefact touched is the `exclude-newer` line itself: an existing
+    `[tool.uv]` table, its other settings, and the rest of the file stay untouched, never
+    rewritten through a TOML parser (which would drop comments and formatting).
+    """
+    pyproject_path = repo / "pyproject.toml"
+    if not pyproject_path.exists():
+        return None
+    text = pyproject_path.read_text(encoding="utf-8")
+    new_line = f'exclude-newer = "{cutoff}"'
+    if EXCLUDE_NEWER_RE.search(text):
+        new_text = EXCLUDE_NEWER_RE.sub(new_line, text, count=1)
+    elif "[tool.uv]" in text:
+        new_text = text.replace(
+            "[tool.uv]", "[tool.uv]\n" + EXCLUDE_NEWER_COMMENT + new_line, 1
+        )
+    else:
+        sep = "" if text.endswith("\n") else "\n"
+        new_text = text + f"{sep}\n[tool.uv]\n{EXCLUDE_NEWER_COMMENT}{new_line}\n"
+    return new_text if new_text != text else None
+
 
 # ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,
 # prek only, no toolchain). Not every lib, so this is an explicit set, not a resolve_extras() axis.
@@ -585,6 +633,15 @@ def distribute(
             if not dry_run:
                 ci_path.parent.mkdir(parents=True, exist_ok=True)
                 ci_path.write_text(ci_yml, encoding="utf-8")
+
+    # 2b-bis. pyproject.toml's [tool.uv] exclude-newer (chantier 0024) — the one line this CLI
+    # writes into a file it otherwise only reads from (see the module docstring's scope note).
+    # Idempotent — same as 2b, rewritten only on a real diff (a same-day rerun is a no-op).
+    new_pyproject = render_pyproject_with_exclude_newer(repo, exclude_newer_cutoff())
+    if new_pyproject is not None:
+        print(f"  {tag}uv      pyproject.toml (exclude-newer)")
+        if not dry_run:
+            (repo / "pyproject.toml").write_text(new_pyproject, encoding="utf-8")
 
     # 2c. .github/workflows/prek.yml — the same server-side net for the repos 2b skips (no
     # pyproject → no ci.yml). Complementary to 2b, never both: see render_prek_yml.

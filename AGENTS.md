@@ -38,9 +38,11 @@ orientation only.
   — a validator for SKILL.md / agent frontmatter that also rejects legacy `commands/` directories
   in plugin repos. Write the hook to satisfy the existing tests, not the reverse.
 - Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer` — a rolling 3-day
-  cooldown window against a freshly compromised dependency republished on PyPI. Before running
-  `uv lock` in any consumer repo, advance that date to 3 days before today (RFC 3339, e.g.
-  `"2026-08-23T00:00:00Z"`); a stale date just makes the window more conservative, never silently
-  permissive, so an occasional missed bump is not an incident — but running `uv lock` without
-  checking it first defeats the point. No scheduled job renews it (chantier 0024, `## Items
-  ouverts`): this is a manual discipline, not automation.
+  cooldown window against a freshly compromised dependency republished on PyPI, one of the few
+  lines `distribute()` writes into a file it otherwise only reads (`EXCLUDE_NEWER_DAYS` /
+  `render_pyproject_with_exclude_newer` in `setup/precommit.py`). `pinky distribute --repo <name>`
+  (or `--all`) recomputes it to 3 days before *today*, so renewing the window is running the
+  distribution again, not a hand-typed date in 12 files. What stays manual (chantier 0024, `##
+  Items ouverts`): nothing schedules that rerun — no job renews it on its own, so a repo that
+  never gets redistributed keeps an aging cutoff. A stale date only makes the window more
+  conservative, never silently permissive, so this decays safely, not dangerously.
