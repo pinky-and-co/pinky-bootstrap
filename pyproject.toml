@@ -39,6 +39,15 @@ Repository = "https://github.com/pinky-and-co/pinky-bootstrap"
 [dependency-groups]
 dev = ["pytest"]
 
+# ── uv ───────────────────────────────────────────────────────────────────────
+[tool.uv]
+# Fenêtre de cooldown contre une dépendance fraîchement compromise republiée sur PyPI (chantier
+# 0024) : `uv lock`/`uv sync` ignorent tout paquet uploadé après cette date. Fenêtre glissante de
+# 3 jours — avancée manuellement avant tout `uv lock` (discipline documentée dans l'AGENTS.md de
+# `pinky-bootstrap`, pas de job planifié). Enregistrée dans `uv.lock` : `grep exclude-newer
+# uv.lock` dit exactement quelle fenêtre a produit le lock courant.
+exclude-newer = "2026-08-23T00:00:00Z"
+
 # ── Packaging — flat layout, NOT src/ (ADR-0065 decision 6: src/ + the setup/ → pinky_workspace/
 # rename are a LATER phase, 228 files across the parc reference render_docs.py's distributed copies).
 #
