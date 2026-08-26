@@ -37,3 +37,10 @@ orientation only.
 - `test_validate_frontmatter.py` defines the contract for `scripts/hooks/validate_frontmatter.py`
   — a validator for SKILL.md / agent frontmatter that also rejects legacy `commands/` directories
   in plugin repos. Write the hook to satisfy the existing tests, not the reverse.
+- Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer` — a rolling 3-day
+  cooldown window against a freshly compromised dependency republished on PyPI. Before running
+  `uv lock` in any consumer repo, advance that date to 3 days before today (RFC 3339, e.g.
+  `"2026-08-23T00:00:00Z"`); a stale date just makes the window more conservative, never silently
+  permissive, so an occasional missed bump is not an incident — but running `uv lock` without
+  checking it first defeats the point. No scheduled job renews it (chantier 0024, `## Items
+  ouverts`): this is a manual discipline, not automation.
