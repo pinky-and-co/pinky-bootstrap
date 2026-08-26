@@ -24,6 +24,9 @@
         with:
           extra-args: 'mdformat --all-files'
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Install dependencies
         run: __INSTALL_CMD__
 
@@ -32,4 +35,6 @@
         # proven the HOOKS run hermetically on Windows, never that the repo's own test suite does.
         # Same install/test commands as the Linux job — a real Windows regression should be a red
         # job, not a silent gap this pilot doesn't look at.
-        run: __TESTS_CMD__
+        # `uv run` : cf ci.yml.tpl — un `pytest` nu ne trouve rien depuis que l'install passe par
+        # `uv sync --locked` (chantier 0024).
+        run: uv run __TESTS_CMD__

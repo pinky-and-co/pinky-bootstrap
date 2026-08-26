@@ -235,7 +235,7 @@ CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
 CI_D1_DATABASE_PLACEHOLDER = "__D1_DATABASE__"
 
-CI_DEFAULT_INSTALL_CMD = "pip install -e . --group dev"
+CI_DEFAULT_INSTALL_CMD = "uv sync --locked --group dev"
 
 # `pytest` suppose que la suite est en Python. Elle ne l'est pas partout : PILOT teste ses calculs
 # monétaires en JavaScript (`node --test`), et n'installe même pas pytest. Déléguer au hook du repo
@@ -248,11 +248,14 @@ CI_TESTS_OVERRIDES: dict[str, str] = {
 # Functional extras (validate/address/schedule/xml/lint), not just validate/address — omitting
 # xml/schedule/lint silently skips their test files at collection time (pytest.importorskip on
 # the missing package), deflating the coverage number without ever failing CI. fec is
-# intentionally left out (not exercised by CI). pinky-provider needs --pre: it depends on
-# pinky-core/pinky-snowpark, both pre-release.
+# intentionally left out (not exercised by CI). pinky-provider needs --prerelease allow: it
+# depends on pinky-core/pinky-snowpark, both pre-release.
 CI_INSTALL_OVERRIDES: dict[str, str] = {
-    "pinky-core": 'pip install -e ".[validate,address,schedule,xml,lint]" --group dev',
-    "pinky-provider": "pip install --pre -e . --group dev",
+    "pinky-core": (
+        "uv sync --locked --extra validate --extra address --extra schedule --extra xml "
+        "--extra lint --group dev"
+    ),
+    "pinky-provider": "uv sync --locked --prerelease allow --group dev",
 }
 
 # ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,

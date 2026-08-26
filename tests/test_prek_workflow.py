@@ -11,8 +11,9 @@ workflows — never both (duplicate CI minutes, two places to keep in sync), nev
 the hole this whole change closes). That invariant is what a future refactor of either renderer can
 silently break; the YAML equality check below only guards the emitted text.
 
-Note for whoever extends this file: `render_ci_yml` — the renderer that writes every lib's CI — has
-**no test at all**. Pre-existing gap, deliberately not widened here.
+Note for whoever extends this file: `render_ci_yml`'s dependency-install/audit steps are covered in
+`test_ci_yml_dependency_install.py`, not here — its trigger/hook-suite properties below remain the
+only `render_ci_yml` oracles in this file.
 """
 
 import sys
