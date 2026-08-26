@@ -31,3 +31,11 @@ def test_quality_hooks_also_cover_mcp_subdir(tmp_path):
         "plugin-repo.yaml's quality hooks must also scope plugins/*/mcp/, "
         "not just plugins/*/hooks/ — an MCP server ships real Python too."
     )
+
+
+def test_validate_plugins_strict_hook_present(tmp_path):
+    """Card `declarer-dependencies-plugin-et-valider-strict.md` (chantier 0023): every plugin repo
+    must run `claude plugin validate --strict` on its own manifests as a commit-time gate."""
+    cfg = _plugin_repo_config(tmp_path)
+    assert "id: validate-plugins-strict" in cfg
+    assert "scripts/hooks/validate_plugins_strict.py" in cfg
