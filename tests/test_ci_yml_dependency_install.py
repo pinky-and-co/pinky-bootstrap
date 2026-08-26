@@ -60,7 +60,7 @@ def test_ci_installs_via_uv_sync_locked(lib_repo):
     steps = _steps(lib_repo, "ci")
     install = next(s for s in steps if s.get("name") == "Install dependencies")
     assert install["run"] == precommit_mod.CI_DEFAULT_INSTALL_CMD
-    assert install["run"] == "uv sync --locked --group dev"
+    assert install["run"] == "uv sync --locked --no-sources --group dev"
 
 
 def test_ci_sets_up_uv_before_installing(lib_repo):
@@ -114,7 +114,23 @@ def test_pinky_provider_override_uses_prerelease_allow(pinky_provider_repo):
         for s in _steps(pinky_provider_repo, "ci")
         if s.get("name") == "Install dependencies"
     )
-    assert install["run"] == "uv sync --locked --prerelease allow --group dev"
+    assert (
+        install["run"] == "uv sync --locked --no-sources --prerelease allow --group dev"
+    )
+
+
+def test_no_sources_ignored_when_repo_has_no_uv_sources_override(pinky_core_repo):
+    # Trouvé en CI réelle (pinky-connect PR #8) : `[tool.uv.sources]` pointe un repo frère en
+    # chemin relatif (`../pinky-core`, dev only) — `pip install` l'ignorait déjà silencieusement,
+    # `uv sync` l'honore et casse en CI isolée ("Distribution not found", pas de repo voisin).
+    # pinky-core lui-même n'a pas de `[tool.uv.sources]` — `--no-sources` y est un no-op, pas
+    # besoin de l'exiger dans son override propre (cf `test_pinky_core_override_keeps_extras...`).
+    install = next(
+        s
+        for s in _steps(pinky_core_repo, "ci")
+        if s.get("name") == "Install dependencies"
+    )
+    assert "--no-sources" not in install["run"]
 
 
 def test_tests_step_runs_through_uv(lib_repo):

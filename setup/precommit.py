@@ -235,7 +235,7 @@ CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
 CI_D1_DATABASE_PLACEHOLDER = "__D1_DATABASE__"
 
-CI_DEFAULT_INSTALL_CMD = "uv sync --locked --group dev"
+CI_DEFAULT_INSTALL_CMD = "uv sync --locked --no-sources --group dev"
 
 # `pytest` suppose que la suite est en Python. Elle ne l'est pas partout : PILOT teste ses calculs
 # monétaires en JavaScript (`node --test`), et n'installe même pas pytest. Déléguer au hook du repo
@@ -255,7 +255,7 @@ CI_INSTALL_OVERRIDES: dict[str, str] = {
         "uv sync --locked --extra validate --extra address --extra schedule --extra xml "
         "--extra lint --group dev"
     ),
-    "pinky-provider": "uv sync --locked --prerelease allow --group dev",
+    "pinky-provider": "uv sync --locked --no-sources --prerelease allow --group dev",
 }
 
 # ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,
