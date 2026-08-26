@@ -231,6 +231,24 @@ CI_INSTALL_WALKTHROUGH_PATH = CORE_CI_DIR / "windows-install-walkthrough.yml.tpl
 PREK_DEFAULT_PYTHON = "3.12"
 # Server-side hook suite for the repos ci.yml.tpl does not cover (see render_prek_yml).
 PREK_TPL_PATH = CORE_CI_DIR / "prek.yml.tpl"
+# Anchor spliced before by render_prek_yml when the repo has the `plugin-repo` extra — the exact
+# text as it appears in prek.yml.tpl, so a .replace() on it is a no-op for every other repo.
+PREK_RUN_HOOKS_ANCHOR = (
+    "      - name: Run pre-commit hooks\n        uses: j178/prek-action@v2\n"
+)
+# `validate-plugins-strict` (plugin-repo extra) shells out to `claude plugin validate --strict` —
+# absent from the runner image, so the repo's own hook gate is a silent no-op in CI without this
+# (measured, chantier 0023: exit 1, "`claude` CLI not found on PATH").
+PREK_CLAUDE_CLI_STEP = (
+    "      - name: Set up Node.js\n"
+    "        uses: actions/setup-node@v4\n"
+    "        with:\n"
+    '          node-version: "22"\n'
+    "\n"
+    "      - name: Install claude CLI\n"
+    "        run: npm install -g @anthropic-ai/claude-code\n"
+    "\n"
+)
 CI_PYTHON_VERSION_PLACEHOLDER = "__PYTHON_VERSION__"
 CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
@@ -430,6 +448,11 @@ def render_prek_yml(repo: Path) -> str:
     python_version = _python_version_pin(repo)
     if python_version is not None:
         text = text.replace(PREK_DEFAULT_PYTHON, python_version)
+    if "plugin-repo" in resolve_extras(repo):
+        text = text.replace(
+            PREK_RUN_HOOKS_ANCHOR,
+            PREK_CLAUDE_CLI_STEP + PREK_RUN_HOOKS_ANCHOR,
+        )
     return text
 
 
