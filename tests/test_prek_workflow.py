@@ -186,6 +186,39 @@ def test_prek_yml_actually_runs_the_hook_suite(non_lib_repo):
     assert any("prek-action" in str(s.get("uses", "")) for s in steps)
 
 
+# ── `claude` CLI setup — plugin-repo extra only ───────────────────────────────
+
+
+@pytest.fixture
+def plugin_repo(tmp_path):
+    """A repo shaped like a Claude Code plugin repo: a `.claude-plugin/` marketplace dir."""
+    repo = tmp_path / "pc-fake"
+    (repo / ".claude-plugin").mkdir(parents=True)
+    return repo
+
+
+def test_plugin_repo_gets_claude_cli_setup(plugin_repo):
+    """`validate-plugins-strict` (plugin-repo extra) shells out to `claude` — absent from the
+    runner image by default (measured, chantier 0023: exit 1, `claude` CLI not found on PATH)."""
+    text = precommit_mod.render_prek_yml(plugin_repo)
+    assert "npm install -g @anthropic-ai/claude-code" in text
+    assert "actions/setup-node" in text
+
+
+def test_non_plugin_repo_has_no_claude_cli_setup(non_lib_repo):
+    """The Node.js toolchain is dead weight for the 90% of repos with no `validate-plugins-strict`."""
+    assert "claude-code" not in precommit_mod.render_prek_yml(non_lib_repo)
+
+
+def test_plugin_repo_prek_yml_still_valid_yaml_with_claude_cli_step(plugin_repo):
+    wf = yaml.safe_load(precommit_mod.render_prek_yml(plugin_repo))
+    steps = wf["jobs"]["hooks"]["steps"]
+    names = [s.get("name", s.get("uses", "")) for s in steps]
+    assert names.index("Install claude CLI") < names.index("Run pre-commit hooks"), (
+        "claude must be on PATH before prek runs validate-plugins-strict"
+    )
+
+
 # ── Le parcours d'install sous Windows — réservé au moteur ───────────────────
 
 
