@@ -45,6 +45,12 @@ jobs:
         # `--locked`, pas `--frozen` : échoue si `uv.lock` est désynchronisé du `pyproject.toml`
         # (dépendance ajoutée sans relancer `uv lock`) au lieu d'installer un lock potentiellement
         # obsolète en silence — `pip install` ignorait totalement `uv.lock` (chantier 0024).
+        # `--no-sources` : ignore `[tool.uv.sources]` (override dev vers un repo frère en chemin
+        # relatif, ex. `../pinky-core`) — la CI checkout un seul repo, isolé, ce chemin n'existe
+        # pas. `pip install` ignorait déjà `[tool.uv.sources]` (mécanisme propre à uv), donc
+        # retombait silencieusement sur le paquet publié ; `uv sync` l'honore et casse sans ce
+        # flag (mesuré : "Distribution not found" sur pinky-connect en CI réelle). Résout contre
+        # le contrat publié, ce que teste une CI est censée valider de toute façon.
         # --group dev, pas ".[dev]" : les deps de dev sont un dependency-group PEP 735 depuis
         # 2026-07-22 (voir le commentaire dans pyproject.toml — `uv run` désinstallait les extras).
         run: __INSTALL_CMD__
