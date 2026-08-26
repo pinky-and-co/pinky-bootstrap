@@ -8,6 +8,7 @@
 """
 
 import filecmp
+import hashlib
 import json
 import re
 import shutil
@@ -21,6 +22,7 @@ from .common import (
     CORE_CI_DIR,
     CORE_HOOKS_DIR,
     CORE_PRECOMMIT_DIR,
+    CORE_VENDOR_DIR,
     SCRIPT_DIR,
     WORKSPACE_ROOT,
     SuiteIdentity,
@@ -249,6 +251,23 @@ PREK_CLAUDE_CLI_STEP = (
     "        run: npm install -g @anthropic-ai/claude-code\n"
     "\n"
 )
+# Small utility modules shared by two plugins in `pinky-agentic-plugins` that a plugin-boundary
+# split (chantier 0023, decouper-pc-core-en-pc-git-et-pc-kanban) put in DIFFERENT plugins — a
+# plugin can only ever import its own files, never a dependency's (`dependencies` orders install,
+# it builds no `sys.path`). Source of truth here, distributed with a checksum manifest so a
+# hand-edited copy is caught at commit time instead of silently drifting from its sibling.
+VENDOR_MAP: dict[str, list[str]] = {
+    "policy_lib.py": [
+        "plugins/pc-core/hooks/policy_lib.py",
+        "plugins/pc-git/hooks/policy_lib.py",
+    ],
+    "secret_patterns.py": [
+        "plugins/pc-core/hooks/secret_patterns.py",
+        "plugins/pc-kanban/hooks/secret_patterns.py",
+    ],
+}
+VENDOR_MANIFEST_NAME = ".vendor-manifest.json"
+
 CI_PYTHON_VERSION_PLACEHOLDER = "__PYTHON_VERSION__"
 CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
@@ -545,6 +564,36 @@ def repo_engine_version(repo: Path) -> str | None:
     return _read_docs_identity_key(repo, "engine_version")
 
 
+def distribute_vendor(repo: Path, *, dry_run: bool) -> None:
+    """Copy each vendored source file to its targets in `repo`, write the checksum manifest.
+
+    Silent no-op for a repo with none of VENDOR_MAP's targets (every repo but
+    pinky-agentic-plugins today) — gated by target-directory existence, not a repo-name literal,
+    so a future repo gains vendoring by having the right plugin directories, not an added carve-out.
+    """
+    tag = "[dry-run] " if dry_run else ""
+    manifest: dict[str, str] = {}
+    for source_name, targets in VENDOR_MAP.items():
+        source = CORE_VENDOR_DIR / source_name
+        content = source.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        for target in targets:
+            dst = repo / target
+            if not dst.parent.exists():
+                continue
+            manifest[target] = digest
+            print(f"  {tag}vendor  {target}")
+            if not dry_run:
+                dst.write_bytes(content)
+    if not manifest:
+        return
+    if not dry_run:
+        manifest_path = repo / VENDOR_MANIFEST_NAME
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+
+
 def distribute(
     repo: Path,
     *,
@@ -636,6 +685,9 @@ def distribute(
         if not dry_run:
             policies_path.parent.mkdir(parents=True, exist_ok=True)
             policies_path.write_text('{"branch_workflow": null}\n', encoding="utf-8")
+
+    # 1h. vendor/*.py — small utility modules shared across a plugin-boundary split.
+    distribute_vendor(repo, dry_run=dry_run)
 
     # 2. .pre-commit-config.yaml
     print(f"  {tag}config  .pre-commit-config.yaml")

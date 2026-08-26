@@ -39,3 +39,11 @@ def test_validate_plugins_strict_hook_present(tmp_path):
     cfg = _plugin_repo_config(tmp_path)
     assert "id: validate-plugins-strict" in cfg
     assert "scripts/hooks/validate_plugins_strict.py" in cfg
+
+
+def test_check_vendor_checksum_hook_present(tmp_path):
+    """Card `decouper-pc-core-en-pc-git-et-pc-kanban.md` (chantier 0023): a vendored file
+    (policy_lib.py, secret_patterns.py) must be checked against its source checksum at commit time."""
+    cfg = _plugin_repo_config(tmp_path)
+    assert "id: check-vendor-checksum" in cfg
+    assert "scripts/hooks/check_vendor_checksum.py" in cfg
