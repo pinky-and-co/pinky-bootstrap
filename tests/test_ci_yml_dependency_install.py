@@ -108,15 +108,27 @@ def test_pinky_core_override_keeps_extras_via_uv_sync(pinky_core_repo):
     )
 
 
-def test_pinky_provider_override_uses_prerelease_allow(pinky_provider_repo):
+def test_pinky_provider_override_uses_prerelease_allow_and_drops_locked(
+    pinky_provider_repo,
+):
+    # pinky-provider is in CI_NO_LOCK_REPOS ([tool.uv.sources] -> sibling repos) — --locked
+    # would permanently disagree with a lock that must also satisfy --no-sources (chantier 0024).
     install = next(
         s
         for s in _steps(pinky_provider_repo, "ci")
         if s.get("name") == "Install dependencies"
     )
-    assert (
-        install["run"] == "uv sync --locked --no-sources --prerelease allow --group dev"
+    assert install["run"] == "uv sync --no-sources --prerelease allow --group dev"
+
+
+def test_no_lock_repo_without_override_drops_locked_too(tmp_path):
+    # Same exemption via CI_DEFAULT_INSTALL_CMD (no CI_INSTALL_OVERRIDES entry) — pinky-connect
+    # is CI_NO_LOCK_REPOS but has no per-repo override.
+    repo = _named_repo(tmp_path, "pinky-connect")
+    install = next(
+        s for s in _steps(repo, "ci") if s.get("name") == "Install dependencies"
     )
+    assert install["run"] == "uv sync --no-sources --group dev"
 
 
 def test_no_sources_ignored_when_repo_has_no_uv_sources_override(pinky_core_repo):

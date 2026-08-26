@@ -258,6 +258,18 @@ CI_INSTALL_OVERRIDES: dict[str, str] = {
     "pinky-provider": "uv sync --locked --no-sources --prerelease allow --group dev",
 }
 
+# Repos whose [tool.uv.sources] points a dev-only dependency at a sibling working copy by
+# relative path (e.g. `pinky-core = { path = "../pinky-core", editable = true }`) — deliberate,
+# so a change there is visible downstream immediately instead of via a .devN release. A lock
+# resolved with --no-sources (required so CI's isolated single-repo checkout, which has no
+# sibling, doesn't hit "Distribution not found") permanently disagrees with what pyproject.toml
+# itself declares — a bare `uv lock` by anyone reverts it (measured on pinky-connect, chantier
+# 0024). `--locked`'s drift-detection (FR-0024-02) can't hold under that contradiction, so these
+# repos are exempted from it: `--no-sources` stays (CI must still succeed), `--locked` drops.
+CI_NO_LOCK_REPOS: frozenset[str] = frozenset(
+    {"pinky-ai", "pinky-connect", "pinky-provider", "pinky-snowpark", "pinky-streamlit"}
+)
+
 # ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,
 # prek only, no toolchain). Not every lib, so this is an explicit set, not a resolve_extras() axis.
 # `pinky-workspace` joined 2026-08-07 (card `pyproject-entry-point-et-ci-windows`, ADR-0065
@@ -307,6 +319,8 @@ def render_ci_yml(repo: Path) -> str | None:
     if python_version is None:
         return None
     install_cmd = CI_INSTALL_OVERRIDES.get(repo.name, CI_DEFAULT_INSTALL_CMD)
+    if repo.name in CI_NO_LOCK_REPOS:
+        install_cmd = install_cmd.replace("--locked ", "")
     tests_cmd = CI_TESTS_OVERRIDES.get(repo.name, CI_DEFAULT_TESTS_CMD)
     text = CI_TPL_PATH.read_text(encoding="utf-8")
     text = text.replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
