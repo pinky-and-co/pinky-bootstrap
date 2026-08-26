@@ -66,6 +66,10 @@ CORE_HOOKS_DIR = HYGIENE_DIR / "hooks"
 CORE_HARNESS_HOOKS_DIR = AGENTIC_HARNESS_DIR / "status-lines"
 CORE_PRECOMMIT_DIR = HYGIENE_DIR / "pre-commit"
 CORE_CI_DIR = HYGIENE_DIR / "ci"
+# Small utility modules shared by two plugins that end up split apart by the plugin boundary
+# (a plugin can only ever import its own files — no relative reach into a `dependencies` entry).
+# Vendored here rather than duplicated by hand so both copies stay provably identical.
+CORE_VENDOR_DIR = HYGIENE_DIR / "vendor"
 
 # render_docs.py renders the repo-local README/index.md sections (badges/tagline/documentation/
 # license). It is distributed as-is into every repo's scripts/hooks/ so the `generate-docs` commit

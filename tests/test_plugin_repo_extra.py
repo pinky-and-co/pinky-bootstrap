@@ -39,3 +39,18 @@ def test_validate_plugins_strict_hook_present(tmp_path):
     cfg = _plugin_repo_config(tmp_path)
     assert "id: validate-plugins-strict" in cfg
     assert "scripts/hooks/validate_plugins_strict.py" in cfg
+
+
+def test_mypy_excludes_vendored_copies_but_the_canonical_one(tmp_path):
+    """A vendored file (chantier 0023) is the same filename in two sibling plugins/*/hooks/ dirs —
+    mypy errors 'Duplicate module named X' scanning both; exclude every copy but pc-core's."""
+    cfg = _plugin_repo_config(tmp_path)
+    assert r"^plugins/(pc-git|pc-kanban)/hooks/(policy_lib|secret_patterns)\.py$" in cfg
+
+
+def test_check_vendor_checksum_hook_present(tmp_path):
+    """Card `decouper-pc-core-en-pc-git-et-pc-kanban.md` (chantier 0023): a vendored file
+    (policy_lib.py, secret_patterns.py) must be checked against its source checksum at commit time."""
+    cfg = _plugin_repo_config(tmp_path)
+    assert "id: check-vendor-checksum" in cfg
+    assert "scripts/hooks/check_vendor_checksum.py" in cfg
