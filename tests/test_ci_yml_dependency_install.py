@@ -151,13 +151,13 @@ def test_tests_step_runs_through_uv(lib_repo):
     # sort "command not found" / "not recognized". `uv run` expose le bin du venv.
     steps = _steps(lib_repo, "ci")
     tests_step = next(s for s in steps if s.get("name") == "Tests")
-    assert tests_step["run"] == "uv run pytest"
+    assert tests_step["run"] == "uv run --no-sources pytest"
 
 
 def test_windows_tests_step_also_runs_through_uv(pinky_core_repo):
     steps = _steps(pinky_core_repo, "precommit-windows")
     tests_step = next(s for s in steps if s.get("name") == "Tests")
-    assert tests_step["run"] == "uv run pytest"
+    assert tests_step["run"] == "uv run --no-sources pytest"
 
 
 def test_no_repo_install_step_still_calls_pip_install(

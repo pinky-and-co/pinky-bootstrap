@@ -35,6 +35,7 @@
         # proven the HOOKS run hermetically on Windows, never that the repo's own test suite does.
         # Same install/test commands as the Linux job — a real Windows regression should be a red
         # job, not a silent gap this pilot doesn't look at.
-        # `uv run` : cf ci.yml.tpl — un `pytest` nu ne trouve rien depuis que l'install passe par
-        # `uv sync --locked` (chantier 0024).
-        run: uv run __TESTS_CMD__
+        # `uv run --no-sources` : cf ci.yml.tpl — un `pytest` nu ne trouve rien depuis que
+        # l'install passe par `uv sync --locked` (chantier 0024), et `uv run` sans `--no-sources`
+        # resynchronise avec `[tool.uv.sources]` si le repo en a un, qui casse en CI isolée.
+        run: uv run --no-sources __TESTS_CMD__

@@ -74,4 +74,8 @@ jobs:
         # `uv run`, pas la commande nue : depuis `uv sync --locked` (chantier 0024), les paquets
         # vivent dans le venv géré par uv, plus dans le Python système comme avec `pip install` —
         # un `pytest` nu sort "command not found" (mesuré en CI réelle, Linux et Windows).
-        run: uv run __TESTS_CMD__
+        # `--no-sources` : `uv run` resynchronise l'environnement AVANT de lancer la commande, avec
+        # la config par défaut du repo — donc `[tool.uv.sources]` si le repo en a un, qui casse en
+        # CI isolée exactement comme l'étape d'install (mesuré : pinky-ai PR#9, "Distribution not
+        # found" ici, pas à l'install). No-op sur un repo sans `[tool.uv.sources]`.
+        run: uv run --no-sources __TESTS_CMD__
