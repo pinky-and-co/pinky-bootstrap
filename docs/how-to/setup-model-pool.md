@@ -1,6 +1,6 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-08-27 12:32*
+*Update date : 2026-08-27 13:55*
 
 `pc-core`'s `adversarial` MCP tool (and, in the future, a task-delegation consumer) reads a pool of
 non-Claude models from the `model_pool` key of `settings.pinky.json` — the same file, and the same
@@ -15,13 +15,18 @@ case) but rarely useful, since a model pool is a machine/account fact, not a per
 
 | File | Contents | Committed? |
 |---|---|---|
-| `~/.claude/settings.pinky.json` | `{"model_pool": [...]}` (see schema below), alongside any other pinky setting | never |
-| `~/.mistral_api_key` | Mistral API key, one line | never |
-| `~/.openrouter_api_key` | OpenRouter API key, one line | never |
+| `~/.claude/settings.pinky.json` | `{"model_pool": [...], "keys": [...]}` (see schema below), alongside any other pinky setting | never |
 
-Each key file also accepts the matching env var instead (`MISTRAL_API_KEY`, `OPENROUTER_API_KEY`) —
-env wins when both are set. The file matters for an unattended/scheduled caller with no shell env
-(a cron job, a scheduled agent).
+**Recommended**: declare each provider's key in `settings.pinky.json`'s `keys` array, stored in the
+classic macOS keychain — never a plaintext file. See `setup-declarative-secrets.md` for the schema
+and the `security add-generic-password` commands. `load_secrets.py` (a `SessionStart` hook) exports
+it as `MISTRAL_API_KEY`/`OPENROUTER_API_KEY` before `resolve_api_key_for` ever looks anywhere else.
+
+Each pool entry's `api_key_file` (`~/.mistral_api_key`, `~/.openrouter_api_key`, ...) is a **legacy
+fallback only**, checked after the env var — it exists for `model_adversarial.py` invoked as a bare
+CLI outside any Claude Code session (no `SessionStart` hook ever ran, so no env var was exported).
+Plaintext files are exactly what the `keys`/keychain mechanism was built to stop needing — don't
+create one for a new setup.
 
 ## Pool entry schema
 
@@ -44,6 +49,9 @@ env wins when both are set. The file matters for an unattended/scheduled caller 
 }
 ```
 
+- `api_key_env`/`api_key_file` — resolution order for this entry's key: env var first (populated by
+  `load_secrets.py` from the keychain when a matching `keys` entry exists), the file only as a
+  legacy fallback — see "Files" above.
 - `kind` — `"http"` (called directly, OpenAI-compatible `/v1/chat/completions`) or `"offline"`
   (routed to the separate zero-egress `offline` MCP tool instead — never called through this pool's
   HTTP path, so its answer body never crosses into the cloud tool's return value).
