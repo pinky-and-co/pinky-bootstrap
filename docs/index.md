@@ -9,6 +9,7 @@
 ## How-to
 
 - [install-plugin.md](how-to/install-plugin.md) — installer un plugin puis l'activer au bon scope (user/groupe/repo)
+- [setup-model-pool.md](how-to/setup-model-pool.md) — provisionner le pool multi-fournisseur (clés, schéma d'entrée) pour `adversarial`/délégation
 
 ## Explanation
 
