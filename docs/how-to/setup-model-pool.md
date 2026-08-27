@@ -1,6 +1,6 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-08-27 15:35*
+*Update date : 2026-08-27 18:00*
 
 `pc-core`'s `adversarial` MCP tool (and, in the future, a task-delegation consumer) reads a pool of
 non-Claude models from the `model_pool` key of `settings.pinky.json` — the same file, and the same
@@ -17,16 +17,24 @@ case) but rarely useful, since a model pool is a machine/account fact, not a per
 |---|---|---|
 | `~/.claude/settings.pinky.json` | `{"model_pool": [...], "keys": [...]}` (see schema below), alongside any other pinky setting | never |
 
-**Recommended**: declare each provider's key in `settings.pinky.json`'s `keys` array, stored in the
-classic macOS keychain — never a plaintext file. See `setup-declarative-secrets.md` for the schema
-and the `security add-generic-password` commands. `load_secrets.py` (a `SessionStart` hook) exports
-it as `MISTRAL_API_KEY`/`OPENROUTER_API_KEY` before `resolve_api_key_for` ever looks anywhere else.
+Store each provider's key in the **classic macOS keychain**, under a service name equal to the
+entry's `api_key_env` (`MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, ...). Declaring it in the `keys`
+array too is recommended but not required by the pool — see `setup-declarative-secrets.md` for the
+schema and the `security add-generic-password` commands.
 
-Each pool entry's `api_key_file` (`~/.mistral_api_key`, `~/.openrouter_api_key`, ...) is a **legacy
-fallback only**, checked after the env var — it exists for `model_adversarial.py` invoked as a bare
-CLI outside any Claude Code session (no `SessionStart` hook ever ran, so no env var was exported).
-Plaintext files are exactly what the `keys`/keychain mechanism was built to stop needing — don't
-create one for a new setup.
+`resolve_api_key_for` reads, in order: the `api_key_env` variable from the process environment,
+then a keychain item of that same name. **No plaintext file anywhere** — a keychain item is the
+only supported store.
+
+The env-var branch matters less than it looks: the `adversarial` MCP tool runs in a server process
+that never receives `$CLAUDE_ENV_FILE` (Claude Code sources that for Bash commands only), so
+`load_secrets.py` exporting the key does **not** reach it — the keychain read is the real path. The
+env branch only catches a key exported into the session by hand, or a bare-CLI
+`model_adversarial.py --task ...` run with the var already set.
+
+Keychain reads need the `login` keychain unlocked (it unlocks with your macOS GUI session). A
+headless/SSH caller with the keychain locked gets no key and that pool entry is skipped — acceptable
+for a live-review tool, revisit only if a scheduled local caller needs it.
 
 ## Pool entry schema
 
@@ -40,7 +48,6 @@ create one for a new setup.
       "model": "mistral-medium-3.5",
       "base_url": "https://api.mistral.ai/v1/chat/completions",
       "api_key_env": "MISTRAL_API_KEY",
-      "api_key_file": "~/.mistral_api_key",
       "capacity_tier": "opus",
       "free_tier": false,
       "concurrency": null
@@ -49,9 +56,8 @@ create one for a new setup.
 }
 ```
 
-- `api_key_env`/`api_key_file` — resolution order for this entry's key: env var first (populated by
-  `load_secrets.py` from the keychain when a matching `keys` entry exists), the file only as a
-  legacy fallback — see "Files" above.
+- `api_key_env` — the env var checked first for this entry's key, and the macOS keychain service
+  name checked next. No file fallback — see "Files" above.
 - `kind` — `"http"` (called directly, OpenAI-compatible `/v1/chat/completions`) or `"offline"`
   (routed to the separate zero-egress `offline` MCP tool instead — never called through this pool's
   HTTP path, so its answer body never crosses into the cloud tool's return value).

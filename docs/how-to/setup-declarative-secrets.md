@@ -1,12 +1,16 @@
 # How to declare a secret loaded at session start
 
-*Update date : 2026-08-27 13:46*
+*Update date : 2026-08-27 18:00*
 
 `pc-core`'s `load_secrets.py` (a `SessionStart` hook) reads the `keys` array of
 `settings.pinky.json` and exports each resolved value as an environment variable before the first
 Bash command of the session runs. This is the general-purpose sibling of the `model_pool` key
-(`setup-model-pool.md`) — `keys` covers any secret a session needs, not just the model pool's own
-provider keys.
+(`setup-model-pool.md`) — `keys` covers any secret a session's **Bash commands** need.
+
+Scope note: the export reaches Bash-invoked processes only. An MCP server process does not receive
+`$CLAUDE_ENV_FILE`, so an MCP tool that needs a provider key reads the keychain directly at the
+point of use (see `setup-model-pool.md`) — declaring the key here still matters, because that is
+what puts the item in the keychain.
 
 ## Where a key lives
 
