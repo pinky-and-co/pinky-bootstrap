@@ -1,6 +1,6 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-08-27 13:55*
+*Update date : 2026-08-27 15:35*
 
 `pc-core`'s `adversarial` MCP tool (and, in the future, a task-delegation consumer) reads a pool of
 non-Claude models from the `model_pool` key of `settings.pinky.json` — the same file, and the same
@@ -61,8 +61,19 @@ create one for a new setup.
 - `concurrency` — max simultaneous tasks, or `null` for no known limit. Set to `1` for a local/offline
   entry (one machine) — recorded for a future concurrent dispatcher, not enforced by the pool
   selectors themselves today.
+- `max_tokens` — optional, overrides the module's global response-token budget for this entry only.
+  Needed when a free tier's tokens-per-minute quota is tighter than the default (confirmed on Groq:
+  `openai/gpt-oss-120b`'s free tier caps at 8000 TPM, below the default budget alone — a real `413`,
+  not assumed). Omit for providers with a generous enough quota.
 
 Adding a provider is a config-only change — no `pc-core` code references a provider name.
+
+## A plain `urllib` request gets blocked by some providers' WAF
+
+Confirmed on Groq: the default `urllib` User-Agent trips a Cloudflare rule (error code 1010, a bare
+`403`, easy to misread as an auth problem). `call_provider` already sends a fixed `User-Agent`
+header for every request — nothing to configure per entry, but worth knowing if you're debugging a
+`403` from a new provider that looks unrelated to the API key.
 
 ## Direct vs aggregator
 
