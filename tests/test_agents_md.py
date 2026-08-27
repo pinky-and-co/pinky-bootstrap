@@ -82,16 +82,16 @@ def test_gotchas_section_no_doc_hygiene_rule_duplicate():
     assert "docs/reference/generated" not in gotchas_section()
 
 
-def test_behavior_section_renders_policies_json_in_order(tmp_path):
+def test_behavior_section_renders_settings_pinky_json_in_order(tmp_path):
     root = tmp_path / "workspace"
     (root / ".claude").mkdir(parents=True)
-    (root / ".claude" / "policies.json").write_text(
+    (root / ".claude" / "settings.pinky.json").write_text(
         json.dumps({"behavior": {"a": "**A** — first.", "b": "**B** — second."}})
     )
     assert behavior_section(root) == "- **A** — first.\n- **B** — second."
 
 
-def test_behavior_section_empty_when_policies_json_absent(tmp_path):
+def test_behavior_section_empty_when_settings_pinky_json_absent(tmp_path):
     assert behavior_section(tmp_path / "nowhere") == ""
 
 
@@ -226,7 +226,7 @@ def test_render_standalone_drops_packages_and_cross_package_patterns(tmp_path):
 def test_render_standalone_includes_gotchas_and_behavior(tmp_path):
     root = _workspace(tmp_path)
     (root / ".claude").mkdir()
-    (root / ".claude" / "policies.json").write_text(
+    (root / ".claude" / "settings.pinky.json").write_text(
         json.dumps({"behavior": {"a": "**A** — first."}})
     )
     repo = root / "a-group" / "pkg-one"

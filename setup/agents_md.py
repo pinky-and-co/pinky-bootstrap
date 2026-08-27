@@ -139,12 +139,12 @@ def gotchas_section() -> str:
 
 
 def behavior_section(workspace_root: Path) -> str:
-    """Render `policies.json["behavior"]`, in file order — empty (not absent) if the key is
+    """Render `settings.pinky.json["behavior"]`, in file order — empty (not absent) if the key is
     missing, so a fresh workspace gets a visibly-empty section instead of a silent skip."""
-    policies_path = workspace_root / ".claude" / "policies.json"
-    if not policies_path.is_file():
+    settings_path = workspace_root / ".claude" / "settings.pinky.json"
+    if not settings_path.is_file():
         return ""
-    data = json.loads(policies_path.read_text(encoding="utf-8"))
+    data = json.loads(settings_path.read_text(encoding="utf-8"))
     behavior = data.get("behavior", {})
     return "\n".join(f"- {text}" for text in behavior.values())
 

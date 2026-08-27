@@ -29,7 +29,7 @@ slot: output styles, themes, rules.
 
 ## Branch strategy
 
-GitHub Flow — the resolved value the skills rely on lives in `.claude/policies.json`, this is
+GitHub Flow — the resolved value the skills rely on lives in `.claude/settings.pinky.json`, this is
 orientation only.
 
 ## Repo conventions
