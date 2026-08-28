@@ -8,41 +8,24 @@ Un id absent du flux de sortie garde le rendu par défaut de Claude Code.
 """
 
 import json
-import os
 import sys
 
-
-def enable_ansi_on_windows():
-    if os.name != "nt":
-        return
-    try:
-        import ctypes
-
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(-11)
-        mode = ctypes.c_uint32()
-        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-    except Exception:
-        pass
-
+from _common import (
+    BLUE,
+    CYAN,
+    DIM,
+    GREEN,
+    GREY,
+    RED,
+    RESET,
+    YELLOW,
+    enable_ansi_on_windows,
+    force_utf8_stdout,
+    render_bar,
+)
 
 enable_ansi_on_windows()
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
-RESET = "\033[0m"
-BOLD = "\033[1m"
-DIM = "\033[2m"
-CYAN = "\033[36m"
-MAGENTA = "\033[35m"
-BLUE = "\033[34m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RED = "\033[31m"
-GREY = "\033[90m"
+force_utf8_stdout()
 
 SEP = f"{GREY} · {RESET}"
 
@@ -68,10 +51,7 @@ def _color_for_pct(pct):
 
 
 def _mini_bar(pct, width=5):
-    pct = max(0, min(100, pct))
-    filled = round(pct * width / 100)
-    color = _color_for_pct(pct)
-    return f"{color}{'█' * filled}{RESET}{DIM}{'░' * (width - filled)}{RESET}"
+    return render_bar(pct, width=width, color=_color_for_pct(pct))
 
 
 def _short_model(model_id):

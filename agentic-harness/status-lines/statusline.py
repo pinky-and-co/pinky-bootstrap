@@ -16,56 +16,41 @@ import sys
 import unicodedata
 from datetime import datetime, timedelta
 
+from _common import (
+    BOLD,
+    CYAN,
+    DIM,
+    GREEN,
+    GREY,
+    MAGENTA,
+    RED,
+    RESET,
+    YELLOW,
+    enable_ansi_on_windows,
+    force_utf8_stdout,
+    render_bar,
+)
 
-def _enable_ansi_on_windows():
-    """On Windows, enables ANSI rendering (Windows Terminal already has it, but
-    classic cmd.exe/PowerShell require this flag). A no-op on Mac/Linux."""
-    if os.name != "nt":
-        return
-    try:
-        import ctypes
+enable_ansi_on_windows()
+force_utf8_stdout()
 
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
-        mode = ctypes.c_uint32()
-        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-            ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
-            kernel32.SetConsoleMode(
-                handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING
-            )
-    except Exception:
-        # If this fails (old cmd.exe, permissions...), continue without crashing:
-        # the text remains readable, just without colors.
-        pass
-
-
-_enable_ansi_on_windows()
-
-# Force UTF-8 output (Windows consoles sometimes default to cp1252,
-# which breaks emojis). reconfigure() has existed since Python 3.7.
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
-# --- ANSI colors ---
+# --- ANSI colors — statusline-only, on top of the shared palette in _common ---
 
 WHITE = "\033[37m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
-DIM = "\033[2m"
-CYAN = "\033[36m"
-MAGENTA = "\033[35m"
-BLUE = "\033[34m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RED = "\033[31m"
-GREY = "\033[90m"
 YELLOW_BG = "\033[43;30m"  # yellow background, black text ->  "warning" effect
 RED_BG = "\033[41;30m"  # red background, white text ->  "alert" effect
 
 SEP = f"  {GREY}·{RESET}  "
-SEP_LINE = f"{DIM}-{RESET}"
+
+# Minimum blank gap between a row's left and right groups, and the gutter added past the widest
+# natural row to place the shared right-hand column.
+_MIN_GAP = 10
+# A braille blank (U+2800): an invisible, non-whitespace glyph. Used two ways below — as the
+# spacer row between content rows (the host collapses a row that is empty or whitespace-only, both
+# tried), and as row 0's left anchor (a row that starts with a space gets left-trimmed, which
+# would drag the version string away from its column).
+_BLANK = "⠀"
+_SPACER_ROW = _BLANK
 
 
 def _safe_get(d, path, default=None):
@@ -76,15 +61,6 @@ def _safe_get(d, path, default=None):
             return default
         cur = cur[key]
     return cur if cur is not None else default
-
-
-def _get_columns(default=100):
-    """Terminal width. Claude Code sets the COLUMNS environment variable
-    before launching the script (v2.1.153+); otherwise, it fallback to a reasonable default."""
-    try:
-        return int(os.environ.get("COLUMNS", default))
-    except (TypeError, ValueError):
-        return default
 
 
 def _visible_len(s: str):
@@ -124,37 +100,31 @@ def _visible_len(s: str):
 
 
 def _render_flex(
-    left_parts: list[str], right_parts: list[str], left_column_width, min_gap=10
+    left_parts: list[str], right_parts: list[str], right_edge: int, min_gap=_MIN_GAP
 ):
-    """Joins `left_parts` with `SEP` and `right_parts` with `SEP`, and pushes the right-hand group to the edge of
-    the terminal—with a guaranteed minimum spacing if the terminal is too narrow to separate them completely
-    (the flex behavior then degrades to simple fixed spacing rather than overlapping)."""
+    """Join `left_parts` and `right_parts` each with `SEP`, then pad so the right group *ends* at
+    column `right_edge` — every row's right group lines up on the same right-hand column. When the
+    two groups are too wide to keep `min_gap` between them, the gap floors at `min_gap` and the
+    row overflows `right_edge` rather than the groups overlapping.
+
+    `right_edge` is a content-derived width (the widest natural row), never the terminal edge — a
+    width read from COLUMNS goes stale the moment a VSCode panel is resized. A shorter right group
+    just gets more padding, so alignment holds even on the row whose left side is empty."""
     left = SEP.join(left_parts)
     if not right_parts:
         return left
     right = SEP.join(right_parts)
-    pad = max(min_gap, (left_column_width - _visible_len(left)) + min_gap)
+    pad = max(min_gap, right_edge - _visible_len(left) - _visible_len(right))
     return f"{left}{' ' * pad}{right}"
 
 
-def _compute_content_width(flex_specs):
-    """Calculates column widths to align multiple flex rows with each other,
-    table-style: using max(left) and max(right) separately.
-
-    The distinction matters: with a maximum width based on the full row,
-    two rows of the same total width might have different left/right
-    split points (e.g., 20+43 vs. 50+13—same total of 63, but the right
-    column starts at a different screen position). By using separate
-    max(left) and max(right) values, the right column consistently
-    starts at the same position across all rows—creating true grid alignment."""
-    left_widths, right_widths = [], []
-    for left_parts, right_parts in flex_specs:
-        left_widths.append(_visible_len(SEP.join(left_parts)))
-        if right_parts:
-            right_widths.append(_visible_len(SEP.join(right_parts)))
-    max_left = max(left_widths) if left_widths else 0
-    max_right = max(right_widths) if right_widths else 0
-    return max_left, max_right
+def _content_widths(flex_specs):
+    """`(max_left, max_right)` in visible columns across `flex_specs` — the width of the widest
+    left group and of the widest right group, measured separately so the right column can be
+    placed at one consistent position for every row."""
+    left_widths = [_visible_len(SEP.join(lp)) for lp, _ in flex_specs]
+    right_widths = [_visible_len(SEP.join(rp)) for _, rp in flex_specs if rp]
+    return (max(left_widths, default=0), max(right_widths, default=0))
 
 
 def _color_for_pct(pct):
@@ -178,10 +148,13 @@ def _color_for_hit_rate(pct, warmed_up: bool):
 
 
 def _build_bar(pct, width=10, filled_char="█", empty_char="░"):
-    pct = max(0, min(100, pct))
-    filled = round(pct * width / 100)
-    color = _color_for_pct(pct)
-    return f"{color}{filled_char * filled}{RESET}{DIM}{empty_char * (width - filled)}{RESET}"
+    return render_bar(
+        pct,
+        width=width,
+        color=_color_for_pct(pct),
+        filled=filled_char,
+        empty=empty_char,
+    )
 
 
 def _fmt_epoch(epoch_seconds):
@@ -273,11 +246,12 @@ def build_lines(data: dict) -> list[str]:
     degrades to a bare fallback line instead of blanking the whole bar — but this function itself
     stays the single, testable entry point (tests.md § generator oracle)."""
     transcript_path = _safe_get(data, "transcript_path")
-    columns: int = _get_columns()
     lines: list[str] = []
 
     version = _safe_get(data, "version", "?")
-    line0_left_parts = ["⚪️"]
+    # Row 0 carries only the version on the right; its left is an invisible anchor (see _BLANK),
+    # replaced by the rate-limit banner below when one fires.
+    line0_left_parts = [_BLANK]
     line0_right_parts = [f"{DIM}v{version}{RESET}"]
     # ---------- Ligne 1 : version, modèle, effort, thinking, fast mode, output style ----------
     model = _safe_get(data, "model.display_name", "?")
@@ -369,34 +343,25 @@ def build_lines(data: dict) -> list[str]:
     if warnings:
         line0_left_parts = [f"{bg} ⚠ RATE LIMIT — {' | '.join(warnings)} {RESET}"]
 
-    max_left, max_right = _compute_content_width(
+    max_left, max_right = _content_widths(
         [
             (line1_left_parts, line1_right_parts),
             (line2_left_parts, line2_right_parts),
             (line3_left_parts, line3_right_parts),
         ]
     )
-    natural_total = max_left + 3 + max_right
-    if columns and columns < natural_total:
-        overflow = natural_total - columns
-        max_left = max(10, max_left - overflow)
+    # Shared right-hand column: the widest natural row plus one gutter. Content-derived on
+    # purpose - a width read from COLUMNS goes stale the moment a VSCode panel is resized.
+    right_edge = max_left + max_right + _MIN_GAP
 
-    lines.append(
-        _render_flex(line0_left_parts, line0_right_parts, left_column_width=max_left)
-    )
-    lines.append(SEP_LINE)
-    lines.append(
-        _render_flex(line1_left_parts, line1_right_parts, left_column_width=max_left)
-    )
-    lines.append(SEP_LINE)
-    lines.append(
-        _render_flex(line2_left_parts, line2_right_parts, left_column_width=max_left)
-    )
-    lines.append(SEP_LINE)
-    lines.append(
-        _render_flex(line3_left_parts, line3_right_parts, left_column_width=max_left)
-    )
-    lines.append(SEP_LINE)
+    lines.append(_render_flex(line0_left_parts, line0_right_parts, right_edge))
+    lines.append(_SPACER_ROW)
+    lines.append(_render_flex(line1_left_parts, line1_right_parts, right_edge))
+    lines.append(_SPACER_ROW)
+    lines.append(_render_flex(line2_left_parts, line2_right_parts, right_edge))
+    lines.append(_SPACER_ROW)
+    lines.append(_render_flex(line3_left_parts, line3_right_parts, right_edge))
+    lines.append(_SPACER_ROW)
 
     return lines
 

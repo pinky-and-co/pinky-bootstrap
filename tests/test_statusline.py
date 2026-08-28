@@ -75,20 +75,42 @@ def test_visible_len_ignores_ansi_and_counts_emoji_as_wide():
     assert sl._visible_len("ab") == 2
 
 
-def test_render_flex_pads_right_group_to_the_edge():
-    left = sl._render_flex(["L"], ["R"], left_column_width=10, min_gap=3)
-    assert left == "L" + " " * 12 + "R"  # pad = max(3, (10 - 1) + 3) = 12
+def test_render_flex_ends_the_right_group_at_right_edge():
+    # left "L" (1 col) + right "R" (1 col), right_edge 20 -> 18 spaces, right group ends at col 20.
+    assert (
+        sl._render_flex(["L"], ["R"], right_edge=20, min_gap=3) == "L" + " " * 18 + "R"
+    )
+
+
+def test_render_flex_holds_the_right_column_when_the_left_is_empty():
+    # No left content -> the right group still ends at right_edge; a shorter left just means more
+    # padding. This is what removes the need for a spacer placeholder on line 0.
+    assert sl._render_flex([], ["R"], right_edge=20, min_gap=3) == " " * 19 + "R"
+
+
+def test_render_flex_degrades_to_min_gap_when_groups_do_not_fit():
+    # left+right already wider than right_edge -> the gap floors at min_gap, the row overflows
+    # rather than the two groups overlapping.
+    assert (
+        sl._render_flex(["x" * 15], ["y" * 15], right_edge=20, min_gap=4)
+        == "x" * 15 + " " * 4 + "y" * 15
+    )
 
 
 def test_render_flex_without_right_parts_returns_left_only():
-    assert sl._render_flex(["a", "b"], [], left_column_width=10) == f"a{sl.SEP}b"
+    assert sl._render_flex(["a", "b"], [], right_edge=80) == f"a{sl.SEP}b"
 
 
-def test_compute_content_width_takes_max_per_column_not_per_row():
-    # Row 1: left=20, right=43 (total 63) ; row 2: left=50, right=13 (total 63, same total —
-    # the bug this table-style computation avoids: a per-row max would misalign the two rows).
+def test_content_widths_takes_max_per_column_not_per_row():
+    # Row 1: left 20 / right 43 ; row 2: left 50 / right 13. max_left and max_right are measured
+    # separately so every row's right group can sit at one consistent column.
     specs = [(["x" * 20], ["y" * 43]), (["x" * 50], ["y" * 13])]
-    assert sl._compute_content_width(specs) == (50, 43)
+    assert sl._content_widths(specs) == (50, 43)
+
+
+def test_content_widths_ignores_rows_that_have_no_right_group():
+    specs = [(["aaa"], []), (["a"], ["bb"])]
+    assert sl._content_widths(specs) == (3, 2)
 
 
 def test_fmt_epoch_same_day_shows_time_only(monkeypatch):
@@ -160,7 +182,7 @@ def test_build_lines_oracle_empty_payload_still_renders_the_full_skeleton():
     lines = sl.build_lines({})
     assert len(lines) == 8
     stripped = [_strip_ansi(ln) for ln in lines]
-    assert "⚪️" in stripped[0]  # idle indicator, no rate-limit warning
+    assert "RATE LIMIT" not in stripped[0]  # no rate-limit banner on row 0
     assert "v?" in stripped[0]
     assert "🤖 ?" in stripped[2]
     assert "Session 🆔 ?" in stripped[4]
@@ -197,7 +219,7 @@ def test_build_lines_oracle_rich_payload_readable_content(monkeypatch):
         },
     }
     stripped = [_strip_ansi(ln) for ln in sl.build_lines(data)]
-    assert "⚪️" in stripped[0]  # idle indicator, no rate-limit warning
+    assert "RATE LIMIT" not in stripped[0]  # no rate-limit banner on row 0
     assert "v2.1.228" in stripped[0]
     assert "🤖 Opus 4.8" in stripped[2]
     assert "💪 high" in stripped[2]
