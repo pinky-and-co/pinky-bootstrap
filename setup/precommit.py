@@ -674,17 +674,19 @@ def distribute(
             if not dry_run:
                 pin_path.write_text(f"{python_pin}\n", encoding="utf-8")
 
-    # 1g. .claude/policies.json — scaffold with branch_workflow: null if missing, never overwrite.
-    #     No safe universal default (verified: "git flow" on pinky-lib/ops, "github flow" on
-    #     pinky-agentic-plugins) — a repo fact, decided per repo, not inheritable or inventable.
-    #     null (not an empty object) names the expected key so it's visibly unset, not silently
-    #     absent — a human fills in the value.
-    policies_path = repo / ".claude" / "policies.json"
-    if not policies_path.exists():
-        print(f"  {tag}scaffold .claude/policies.json (branch_workflow: null)")
+    # 1g. .claude/settings.pinky.json — scaffold with branch_workflow: null if missing, never
+    #     overwrite. No safe universal default (verified: "git flow" on pinky-lib/ops, "github
+    #     flow" on pinky-agentic-plugins) — a repo fact, decided per repo, not inheritable or
+    #     inventable. null (not an empty object) names the expected key so it's visibly unset, not
+    #     silently absent — a human fills in the value.
+    settings_pinky_path = repo / ".claude" / "settings.pinky.json"
+    if not settings_pinky_path.exists():
+        print(f"  {tag}scaffold .claude/settings.pinky.json (branch_workflow: null)")
         if not dry_run:
-            policies_path.parent.mkdir(parents=True, exist_ok=True)
-            policies_path.write_text('{"branch_workflow": null}\n', encoding="utf-8")
+            settings_pinky_path.parent.mkdir(parents=True, exist_ok=True)
+            settings_pinky_path.write_text(
+                '{"branch_workflow": null}\n', encoding="utf-8"
+            )
 
     # 1h. vendor/*.py — small utility modules shared across a plugin-boundary split.
     distribute_vendor(repo, dry_run=dry_run)

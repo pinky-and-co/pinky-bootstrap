@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-08-21 10:13*
+*Update date : 2026-08-27 12:32*
 
 Two separate steps, two separate tools — not one command yet:
 
@@ -62,7 +62,7 @@ plugin initializes; **not verified today which of these need `/reload-plugins --
 session) vs pick up live**. Until checked case by case, keep reloading for anything beyond editing
 an existing hook/skill script's own logic.
 
-Separately: `.claude/rules/`, `.claude/policies.json` and anything else `pinky distribute`/`pinky
+Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky distribute`/`pinky
 rules` renders into a *consuming* repo are a **copy**, made by that CLI step — unrelated to
 marketplace source type. Editing the plugin's source never updates that copy; only rerunning the
 CLI distribution command does, `directory`-source or not.
