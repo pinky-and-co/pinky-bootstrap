@@ -1,5 +1,5 @@
 # Portée de la convention — où une règle s'applique, et qui l'emporte
-*Update date : 2026-08-21 01:22*
+*Update date : 2026-08-28 17:21*
 
 **L'endroit où une règle est installée détermine sa portée.** Appartenir à un plugin indique d'où elle *vient* ; le répertoire dans lequel elle atterrit indique où elle *s'applique*. Une règle de plugin installée dans un répertoire de groupe (`pinky-lib/.claude/rules/`) est inaccessible en dehors de celui-ci — ce qui est ce qui rend un `paths: **/*.py` large correct là plutôt que partout.
 
@@ -18,5 +18,18 @@ n'atterrit nulle part par défaut — la cible est résolue depuis `~/.claude/pl
 jamais lancée) → aucune cible → ses rules ne se distribuent nulle part, silencieusement. C'est
 voulu : simuler le comportement qu'aurait `rules/` si elle pouvait voyager packagée dans le plugin
 lui-même (elle ne peut pas, format absent) — pas de rule sans le plugin qui la justifie.
+
+**Critère de rangement.** Une rule vit sous `rules/<plugin>/` **ssi elle est inerte ou absurde sans
+l'outillage de ce plugin** (elle nomme ses skills/commands/hooks, ou son workflow) ; sinon elle
+reste `rules/pc-core/` (discipline de raisonnement ou d'ingénierie tool-agnostique). Ex :
+`kanban-proactivity.md` → `pc-kanban` ; `verify-diagnosis.md`, `tests.md` → `pc-core`.
+
+**Purge à périmètre global par cible.** Plusieurs plugins peuvent résoudre vers le même
+`.claude/rules/` (tous les `scope: user` atterrissent à la racine workspace). Le mirror-purge de
+`distribute_rules` ne supprime alors un fichier que s'il ne matche **aucune** source d'un plugin qui
+résout vers cette cible (`distribute_all_plugin_rules` calcule l'union par cible). Conséquence : une
+rule devient orpheline — et est nettoyée à la distribution suivante — quand son plugin est
+désinstallé *et* qu'au moins un autre plugin cible encore ce répertoire ; un répertoire que plus
+aucun plugin ne cible garde ses rules jusqu'à ce qu'un plugin le re-cible.
 
 Mais la précédence est un filet, pas une solution. Deux règles se déclenchant sur la même portée avec des conseils opposés constituent un défaut à signaler, pas un cas à arbitrer — nommez les deux sources, appliquez la plus spécifique, et dites que vous l'avez fait.

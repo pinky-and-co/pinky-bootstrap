@@ -46,16 +46,25 @@ class RulesReport:
 
 
 def distribute_rules(
-    rules_source: Path, target_root: Path, *, apply: bool = True
+    rules_source: Path,
+    target_root: Path,
+    *,
+    apply: bool = True,
+    sibling_owned: frozenset[str] = frozenset(),
 ) -> RulesReport:
     """Diff ``rules_source/*.md`` against ``<target_root>/.claude/rules/``, applying by default.
 
-    The target is a mirror of ``rules_source``: a file with no matching source is purged.
+    The target is a mirror of ``rules_source``: a file with no matching source is purged —
+    unless it is in ``sibling_owned``, i.e. owned by another plugin that resolves to the same
+    target. Without that exemption, two plugins landing in one ``.claude/rules/`` purge each
+    other's rules on alternate passes.
 
     Args:
         rules_source: Directory of ``.md`` rule files to distribute.
         target_root: Root that gets a ``.claude/`` — a workspace root or a specific repo.
         apply: When False, compute the diff without touching the filesystem — a plan.
+        sibling_owned: Filenames owned by a co-resident plugin at this target — never purged,
+            never reported, even with no matching source here.
 
     Returns:
         A RulesReport — the plan when ``apply=False``, what was actually done otherwise.
@@ -91,7 +100,7 @@ def distribute_rules(
         if apply:
             dst.write_text(payload, encoding="utf-8")
 
-    owned = {src.name for src in sources}
+    owned = {src.name for src in sources} | sibling_owned
     purged: list[str] = []
     if target.is_dir():
         for f in sorted(target.glob("*.md")):
@@ -142,15 +151,48 @@ def distribute_all_plugin_rules(
     Keyed by plugin name, then by target path. A plugin never installed on this machine still
     appears in the result with an empty target dict — visible as "nothing to do", not silently
     dropped.
+
+    The per-target mirror purge is scoped to the union of every plugin that resolves to that
+    target: a file in ``.claude/rules/`` is purged only when no such plugin has a source for it.
+    Otherwise ``pc-core`` and ``pc-kanban`` — both ``user``-scoped, so both landing at the
+    workspace root — would purge each other's rules on alternate passes.
+
+    Args:
+        workspace_root: The directory a ``user``-scope plugin's rules resolve to.
+        apply: When False, compute the plan without touching the filesystem.
+
+    Returns:
+        Reports keyed by plugin name, then by target path.
     """
+    plugin_dirs = discover_plugin_rule_dirs()
+    # Resolve targets up front: the sibling map below groups plugins by target, and two spellings
+    # of one directory (trailing slash, symlink, ``~``) must not land in separate buckets — that
+    # revives the mutual-purge bug this scoping fixes.
+    targets_by_plugin = {
+        d.name: [
+            t.expanduser().resolve()
+            for t in resolve_targets_for_plugin(d.name, workspace_root)
+        ]
+        for d in plugin_dirs
+    }
+    plugins_by_target: dict[Path, list[Path]] = {}
+    for plugin_dir in plugin_dirs:
+        for target in targets_by_plugin[plugin_dir.name]:
+            plugins_by_target.setdefault(target, []).append(plugin_dir)
+
     result: dict[str, dict[Path, RulesReport]] = {}
-    for plugin_dir in discover_plugin_rule_dirs():
-        plugin_name = plugin_dir.name
-        targets = resolve_targets_for_plugin(plugin_name, workspace_root)
-        result[plugin_name] = {
-            target: distribute_rules(plugin_dir, target, apply=apply)
-            for target in targets
-        }
+    for plugin_dir in plugin_dirs:
+        result[plugin_dir.name] = {}
+        for target in targets_by_plugin[plugin_dir.name]:
+            sibling_owned = frozenset(
+                sibling_src.name
+                for other in plugins_by_target[target]
+                if other != plugin_dir
+                for sibling_src in other.glob("*.md")
+            )
+            result[plugin_dir.name][target] = distribute_rules(
+                plugin_dir, target, apply=apply, sibling_owned=sibling_owned
+            )
     return result
 
 

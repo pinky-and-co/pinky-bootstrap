@@ -14,6 +14,18 @@ from pathlib import Path
 import pytest
 
 from setup import rules as rules_mod
+from setup.common import AGENTIC_HARNESS_DIR
+
+
+def test_kanban_proactivity_rule_lives_under_pc_kanban_not_pc_core():
+    """The kanban rule is inert without pc-kanban installed — it must not ship workspace-wide.
+
+    Guards the 2026-08-28 re-bucketing (FR-0023-17/18): it is the only one of the nine
+    ``rules/pc-core/`` files tied to a specific plugin.
+    """
+    rules_root = AGENTIC_HARNESS_DIR / "rules"
+    assert (rules_root / "pc-kanban" / "kanban-proactivity.md").is_file()
+    assert not (rules_root / "pc-core" / "kanban-proactivity.md").exists()
 
 
 @pytest.fixture
@@ -255,3 +267,80 @@ def test_distribute_all_plugin_rules_skips_a_plugin_with_no_installed_target(
     result = rules_mod.distribute_all_plugin_rules(tmp_path / "workspace")
 
     assert result["pc-snow"] == {}
+
+
+def _two_plugins_one_target(tmp_path, monkeypatch, installed_plugins_file):
+    """`pc-core` + `pc-kanban`, both user-scoped → both resolve to the workspace root."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-core").mkdir(parents=True)
+    (rules_dir / "pc-core" / "minimal-code.md").write_text("core\n", encoding="utf-8")
+    (rules_dir / "pc-kanban").mkdir()
+    (rules_dir / "pc-kanban" / "kanban-proactivity.md").write_text(
+        "kanban\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    installed_plugins_file(
+        {
+            "pc-core@m": [{"scope": "user"}],
+            "pc-kanban@m": [{"scope": "user"}],
+        }
+    )
+    return tmp_path / "workspace"
+
+
+def test_two_plugins_same_target_do_not_purge_each_other(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    """Same target, disjoint rule sets — the mirror purge spares the co-resident plugin's files."""
+    ws = _two_plugins_one_target(tmp_path, monkeypatch, installed_plugins_file)
+
+    result = rules_mod.distribute_all_plugin_rules(ws)
+
+    landed = {p.name for p in (ws / ".claude/rules").glob("*.md")}
+    assert landed == {"minimal-code.md", "kanban-proactivity.md"}
+    assert result["pc-core"][ws].purged == []
+    assert result["pc-kanban"][ws].purged == []
+
+
+def test_global_purge_still_removes_a_file_no_plugin_owns(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    """A stale file owned by neither co-resident plugin is still purged."""
+    ws = _two_plugins_one_target(tmp_path, monkeypatch, installed_plugins_file)
+    target = ws / ".claude/rules"
+    target.mkdir(parents=True)
+    (target / "ancient.md").write_text("no plugin owns this\n", encoding="utf-8")
+
+    rules_mod.distribute_all_plugin_rules(ws)
+
+    assert not (target / "ancient.md").exists()
+
+
+def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
+    tmp_path, installed_plugins_file
+):
+    """Real ``agentic-harness/rules/`` tree, synthetic ``installed_plugins.json``.
+
+    Proves the re-bucketing outcome end to end: with ``pc-kanban`` resolving to the target the
+    kanban rule lands (and the co-resident ``pc-core`` rules survive); without it, ``pc-kanban``
+    resolves to no target and the kanban rule ships nowhere (IMP-0023-12 / IMP-0023-13).
+    """
+    installed_plugins_file(
+        {
+            "pc-core@m": [{"scope": "user"}],
+            "pc-kanban@m": [{"scope": "user"}],
+        }
+    )
+    with_kanban = tmp_path / "with-kanban"
+    rules_mod.distribute_all_plugin_rules(with_kanban)
+    landed = {p.name for p in (with_kanban / ".claude/rules").glob("*.md")}
+    assert "kanban-proactivity.md" in landed
+    assert "minimal-code.md" in landed  # pc-core rule not clobbered by pc-kanban's pass
+
+    installed_plugins_file({"pc-core@m": [{"scope": "user"}]})
+    without_kanban = tmp_path / "without-kanban"
+    result = rules_mod.distribute_all_plugin_rules(without_kanban)
+    assert result["pc-kanban"] == {}
+    landed = {p.name for p in (without_kanban / ".claude/rules").glob("*.md")}
+    assert "kanban-proactivity.md" not in landed
+    assert "minimal-code.md" in landed
