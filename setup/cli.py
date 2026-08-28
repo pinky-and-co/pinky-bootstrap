@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import agentic_assets
+from . import agentic_assets, plugin_install
 from .common import WORKSPACE_ROOT
 from .plugin_scope import run_marketplace_wizard
 from .precommit import new_repo, run_distribution
@@ -118,6 +118,18 @@ def main(argv: list[str] | None = None) -> None:
     args, _ = parser.parse_known_args(argv)
 
     if args.plugin is not None:
+        # 1. Fetch the plugin's files (and enable it at user scope) via Claude Code's own command.
+        plugin_install.install_plugin_files(args.plugin, args.marketplace)
+        install_path = plugin_install.resolve_install_path(
+            args.plugin, args.marketplace
+        )
+        # 2a. A plugin that ships a status line: `statusLine` has no plugin-manifest slot, so wire
+        #     it (user scope — a cross-session UI preference, ADR-0001). No depth question to ask.
+        written = plugin_install.set_status_lines(install_path)
+        if written:
+            print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
+            return
+        # 2b. Any other plugin: the wizard places `enabledPlugins` at the chosen workspace depth.
         run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
         return
 

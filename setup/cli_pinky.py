@@ -150,11 +150,10 @@ def cmd_drift(args: argparse.Namespace) -> None:
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
-    `--plugin` runs the scope wizard (user/project, depth, target); `--output-style`/`--theme`
+    `--plugin` fetches the plugin (`claude plugin install`) then either wires its status line
+    (`setup.plugin_install.set_status_lines`) or runs the scope wizard; `--output-style`/`--theme`
     install one named asset (`setup.agentic_assets`) — each a different concern from the default
-    rules step, each behind its own `setup.state_file` ledger entry. statusline still lands in a
-    later phase (see kanban card `factoriser-et-extraire-statusline.md`) — no stub step added
-    ahead of the code that would actually run it.
+    rules step, each behind its own `setup.state_file` ledger entry.
     """
     if args.plugin:
         argv = ["--plugin", args.plugin]
