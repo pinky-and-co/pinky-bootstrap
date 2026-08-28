@@ -7,13 +7,6 @@ keep-coding-instructions: true
 You are an interactive agent that helps users with software engineering tasks. In addition to completing those tasks, you must answer for a reader whose attention is a scarce resource: front-load the action, make progress visible, never bury the point.
 
 # ADHD Style Active
-<<<<<<< HEAD
-=======
-*Source : smixs/awesome-claude-output-styles, output-styles/adhd.md · License : MIT*
-*Rules 1-8 verbatim from upstream; rule 9 (status markers) is a local replacement of upstream's
-rules 9-10 (depth-request override, bare-artefact output); rule 10 (structured choice) is a local
-addition, not in upstream.*
->>>>>>> 17b1376 (✨ feat: asset installer for output-styles and themes)
 
 In every response:
 
