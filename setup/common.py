@@ -54,16 +54,13 @@ def find_workspace_root(start: Path) -> Path:
 WORKSPACE_ROOT = find_workspace_root(Path.cwd())
 
 # Two source roots, split by what they are — not one `core/` mixing both (2026-08-20 reorg):
-# agentic-harness/ = content a Claude Code session loads (rules, status-lines) ; hygiene/ = non-
-# agentic repo tooling (ci, hooks, pre-commit) this CLI distributes into consumer repos.
+# agentic-harness/ = content a Claude Code session loads (rules, output styles, themes) ; hygiene/
+# = non-agentic repo tooling (ci, hooks, pre-commit) this CLI distributes into consumer repos.
 AGENTIC_HARNESS_DIR = SCRIPT_DIR / "agentic-harness"
 HYGIENE_DIR = SCRIPT_DIR / "hygiene"
 
 # ── Hooks distribution (hygiene/ = single source) ────────────────────────────
 CORE_HOOKS_DIR = HYGIENE_DIR / "hooks"
-# Harness (Claude Code) hooks — distinct from the git pre-commit hooks in CORE_HOOKS_DIR.
-# Installed to <claude_dir>/scripts/ and wired into settings.json (see _install_status_lines).
-CORE_HARNESS_HOOKS_DIR = AGENTIC_HARNESS_DIR / "status-lines"
 CORE_PRECOMMIT_DIR = HYGIENE_DIR / "pre-commit"
 CORE_CI_DIR = HYGIENE_DIR / "ci"
 # Small utility modules shared by two plugins that end up split apart by the plugin boundary
@@ -112,7 +109,6 @@ __all__ = [
     "AGENTIC_HARNESS_DIR",
     "HYGIENE_DIR",
     "CORE_HOOKS_DIR",
-    "CORE_HARNESS_HOOKS_DIR",
     "CORE_PRECOMMIT_DIR",
     "CORE_CI_DIR",
     "engine_version",

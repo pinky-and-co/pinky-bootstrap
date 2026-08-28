@@ -1,28 +1,32 @@
 # How to install a plugin at the right scope
-*Update date : 2026-08-27 12:32*
+*Update date : 2026-08-28 13:18*
 
-Two separate steps, two separate tools — not one command yet:
+```bash
+pinky install --plugin <plugin-id> --marketplace <marketplace>
+```
 
-1. **Get the plugin's files onto the machine** — Claude Code's own job, `pinky` doesn't
-   reimplement it:
-   ```bash
-   claude plugin install <marketplace>@<plugin-id>
-   ```
-   This only makes the plugin available locally. It does **not** decide where it applies.
+One command. It:
 
-2. **Choose where it applies, and activate it there** — this is what `pinky` adds, because
-   Claude Code has no notion of this workspace's own hierarchy (workspace → group → repo):
-   ```bash
-   pinky install --plugin <plugin-id> --marketplace <marketplace>
-   ```
-   Runs an interactive wizard:
-   - **Scope** — user (every session, any project) or project?
-   - **Depth** (project only) — workspace root, top-level directory (a repo or a group like
-     `pinky-lib/`), or a repo nested under a group?
-   - **Target** — pick from the directories actually found at that depth.
+1. **Fetches the plugin's files** — shells out to `claude plugin install <plugin-id>@<marketplace>
+   --scope user --yes` (then `claude plugin update`, so a re-run picks up a changed plugin). This
+   also enables the plugin at user scope.
 
-   Merges `enabledPlugins["<plugin-id>@<marketplace>"] = true` into the chosen
-   `<target>/.claude/settings.json` — never overwrites the file, only that one key.
+2. **Then, one of two things:**
+   - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes
+     `statusLine` and `subagentStatusLine` into `~/.claude/settings.json`, pointing at the installed
+     scripts (resolved from `~/.claude/plugins/installed_plugins.json`, never a guessed path). The
+     main-session `statusLine` key has no plugin-manifest slot — only `agent` and
+     `subagentStatusLine` are read from a plugin's bundled `settings.json` — so `pinky` wires it
+     explicitly. User scope: a status line is a cross-session preference (ADR-0001). Re-run after
+     `claude plugin update` — the path carries the plugin version.
+   - **Any other plugin** → an interactive wizard places `enabledPlugins["<id>@<marketplace>"] =
+     true` at a chosen workspace depth (root / a group like `pinky-lib/` / a repo nested under a
+     group), because Claude Code's own `--scope` only knows user/project/local, not this
+     workspace's hierarchy. Merged into `<target>/.claude/settings.json`, that one key only.
+
+     > **Known overlap** (chantier 0023, à reconcilier) : step 1's `--scope user` already enables
+     > the plugin at user level, so the wizard's narrower placement is additive, not exclusive. The
+     > wizard needs a rework to fetch-without-enabling for the depth case.
 
 ## During plugin development — local marketplace instead of GitHub
 
@@ -88,9 +92,8 @@ applies to sessions started in any repo nested under it. Three real targets, one
 
 ## What this does not do
 
-- **Does not install the plugin's files** — step 1 above, `claude plugin install`, is still
-  required first.
-- **Does not configure `statusLine`** (the main session's status line) — only `agent` and
-  `subagentStatusLine` are read from a plugin's own bundled `settings.json`. `statusLine` itself
-  needs a separate, explicit write of the resolved script path — not built yet (see kanban card
-  `factoriser-et-extraire-statusline.md`).
+- **Does not re-decide `enabledPlugins` scope for a status-line plugin** — those go to user scope
+  unconditionally (a cross-session preference), no depth wizard.
+- **Does not refresh a stale `statusLine` path on its own after `claude plugin update`** — the
+  written path carries the plugin version, so re-run `pinky install --plugin <id>` to re-resolve it
+  (it reads the live path from `installed_plugins.json` every run).

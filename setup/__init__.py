@@ -21,7 +21,6 @@ if sys.platform == "win32":
 from .common import (
     AGENTIC_HARNESS_DIR,
     HYGIENE_DIR,
-    CORE_HARNESS_HOOKS_DIR,
     CORE_HOOKS_DIR,
     CORE_PRECOMMIT_DIR,
     CORE_VENDOR_DIR,
@@ -75,7 +74,6 @@ from .cli import main
 __all__ = [
     "AGENTIC_HARNESS_DIR",
     "HYGIENE_DIR",
-    "CORE_HARNESS_HOOKS_DIR",
     "CORE_HOOKS_DIR",
     "CORE_PRECOMMIT_DIR",
     "CORE_VENDOR_DIR",
