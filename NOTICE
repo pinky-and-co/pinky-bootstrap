@@ -1,0 +1,20 @@
+pinky-bootstrap — Third-Party Notices
+
+Third-party dependencies carrying a license obligation. Courtesy-only inspirations
+(concept/pattern reuse, no obligation) are in CREDITS. The shared running ledger lives at
+pinky-agentic-plugins/ATTRIBUTIONS.md.
+
+================================================================================
+GENERATION-TIME TOOLING  (not shipped into any consumer repo)
+================================================================================
+
+markdownify — MIT
+beautifulsoup4 — MIT
+lxml — BSD-3-Clause
+
+  Used by: tools/mirror_to_md.py — convert wget HTML mirrors of vendor docs into lean
+  Markdown for local agent reference. Runs locally only, at generation time; the output
+  is never committed or distributed.
+
+================================================================================
+Shared ledger and verification method: pinky-agentic-plugins/ATTRIBUTIONS.md
