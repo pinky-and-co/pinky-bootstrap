@@ -1,4 +1,4 @@
-"""pinky-workspace toolbox — sub-commands over setup.py's flags (chantier-0001, card
+"""pinky-bootstrap toolbox — sub-commands over setup.py's flags (chantier-0001, card
 `cli-pinky-sous-commandes-au-lieu-de-flags`).
 
 Lives in `setup/` — not at the repo root — so an editable install (`packages = ["setup"]`) picks up
@@ -181,7 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
         # sub-command's usage line inherits it, so `pinky drift --help` used to answer
         # `usage: cli_pinky.py drift` — naming a file the reader never types. argparse's default is
         # basename(argv[0]), which is right for both by construction.
-        description="🧰 pinky-workspace toolbox — see setup.py for the underlying flags.",
+        description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
         epilog=_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

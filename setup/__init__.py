@@ -1,7 +1,7 @@
-"""setup — pinky-workspace's hooks-distribution runner (package form).
+"""setup — pinky-bootstrap's hooks-distribution runner (package form).
 
-Thin re-export layer: `setup.py` at the workspace root stays the entrypoint (`python
-pinky-workspace/setup.py ...`); this package holds the implementation, split by responsibility
+Thin re-export layer: `setup.py` at the repo root stays a shim entrypoint; the `pinky` console
+script is the real one. This package holds the implementation, split by responsibility
 (see the split-setup-py-package kanban card). Every name — public and private — is re-exported
 here so `import setup; setup.<name>` keeps working exactly as when everything lived in one file
 (the test suite relies on this: it imports the module and reaches into its internals).
