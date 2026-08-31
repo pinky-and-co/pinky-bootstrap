@@ -81,4 +81,6 @@ include = [
     "scripts",
     "tools",
     "README.md",
+    "NOTICE",
+    "CREDITS",
 ]

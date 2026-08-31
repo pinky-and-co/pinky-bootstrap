@@ -1,0 +1,25 @@
+pinky-bootstrap — Credits
+
+Courtesy attribution for concepts and patterns that shaped the rules this CLI distributes —
+no code was copied and no license obligation applies. See NOTICE for items that carry an
+obligation. Shared running ledger: pinky-agentic-plugins/ATTRIBUTIONS.md.
+
+ponytail (DietrichGebert/ponytail) — MIT
+  https://github.com/DietrichGebert/ponytail
+  The pre-generation decision ladder (YAGNI → reuse → stdlib → native → installed dep →
+  one line → MVP) and the "minimal ≠ unsafe" guardrail — concept only, no code copied.
+  Adapted into the rule `agentic-harness/rules/pc-core/minimal-code.md`.
+
+ECC (affaan-m/ECC) — MIT
+  https://github.com/affaan-m/ECC
+  The "specific overrides general" precedence phrasing for layered rules — concept only.
+  Used in `minimal-code.md` § Scope & overrides.
+
+Diátaxis (Daniele Procida)
+  https://diataxis.fr
+  The documentation folder structure (tutorials / how-to / reference / explanation) that
+  `pinky new-repo --scaffold` and the doc-hygiene rule assume — structure only; the
+  Diátaxis text is CC-BY-SA and is not reproduced.
+
+================================================================================
+Shared ledger and verification method: pinky-agentic-plugins/ATTRIBUTIONS.md
