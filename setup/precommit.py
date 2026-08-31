@@ -357,14 +357,9 @@ def render_pyproject_with_exclude_newer(repo: Path, cutoff: str) -> str | None:
 
 # ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,
 # prek only, no toolchain). Not every lib, so this is an explicit set, not a resolve_extras() axis.
-# `pinky-workspace` joined 2026-08-07 (card `pyproject-entry-point-et-ci-windows`, ADR-0065
-# decision 6): "the cheapest gesture to turn the brother's machine into a tested case rather than a
-# hope" — the moteur's own 396-test suite had never run on native Windows path separators before.
-# `pinky-bootstrap` (2026-08-17): the moteur itself, ported from `pinky-workspace` — the intent
-# survives the rename, the literal has to follow it or the moteur silently loses the coverage.
-CI_WINDOWS_PILOT: frozenset[str] = frozenset(
-    {"pinky-core", "pinky-workspace", "pinky-bootstrap"}
-)
+# `pinky-bootstrap` (the moteur itself, ported from the retired `pinky-workspace`) and `pinky-core`
+# carry the coverage — the moteur's test suite must keep passing on native Windows path separators.
+CI_WINDOWS_PILOT: frozenset[str] = frozenset({"pinky-core", "pinky-bootstrap"})
 
 
 def _d1_database_name(repo: Path) -> str | None:
@@ -914,7 +909,7 @@ DISTRIBUTED_PATHS = (
 # No `(scope)` — hygiene/hooks/commit-msg's PATTERN is strictly `<emoji> <type>: <description>`
 # (tightened after this constant was last exercised via bulk --commit; a `chore(hooks):` scope
 # fails it, drift caught 2026-07-11 rolling out the docs_identity pitch fields).
-COMMIT_MESSAGE = "🔧 chore: adopt pinky-workspace centralized hooks distribution"
+COMMIT_MESSAGE = "🔧 chore: adopt pinky-bootstrap centralized hooks distribution"
 
 
 def commit_distribution(repo: Path) -> str:
@@ -1030,7 +1025,7 @@ def check_drift(
     carrying one, a control that fails on the nominal path and that the tool it gates cannot satisfy.
     """
     say = (lambda *_a, **_k: None) if quiet else print
-    say("\nDrift check — repo vs pinky-workspace/core/ source")
+    say("\nDrift check — repo vs pinky-bootstrap source")
     say("=" * 52)
     total = 0
     advisory = 0

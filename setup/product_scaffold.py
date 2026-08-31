@@ -109,8 +109,7 @@ _PACKAGE_JSON = """{{
 
 _LICENSE = """TODO: choisir une licence.
 
-Voir la carte _KANBAN/CHANTIER0001-frameworkiser-pinky-workspace/0-ideas/choisir-license-pinky-workspace.md
-— ne pas remplacer ce placeholder par une licence en dur tant qu'elle n'est pas tranchée.
+Décision non tranchée — ne pas remplacer ce placeholder par une licence en dur avant.
 """
 
 REPO_TYPES = ("lib", "data", "web", "tooling")

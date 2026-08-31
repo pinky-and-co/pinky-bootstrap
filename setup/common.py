@@ -12,8 +12,8 @@ from pathlib import Path
 
 PROVIDERS = ["claude", "mistral"]
 
-# This package lives at <workspace-root>/pinky-workspace/setup/ — one level deeper than the
-# former setup.py, so SCRIPT_DIR (= pinky-workspace/) needs the extra .parent to stay correct.
+# This package lives at <repo>/setup/ — one level deeper than the former top-level setup.py, so
+# SCRIPT_DIR (= the repo root) needs the extra .parent to stay correct.
 PACKAGE_DIR = Path(__file__).parent.resolve()
 SCRIPT_DIR = PACKAGE_DIR.parent
 
