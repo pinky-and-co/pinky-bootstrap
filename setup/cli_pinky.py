@@ -91,6 +91,13 @@ def _assets_epilog() -> str:
                 for a in agentic_assets.discover_themes()
             ),
         ),
+        (
+            "📖 Other assets:",
+            (
+                "  --live-docs   local MkDocs viewer of the kanban boards + agent logs "
+                "(macOS: launchd service)"
+            ),
+        ),
     ]
     return "\n\n".join(f"{title}\n{body}" for title, body in sections if body)
 
@@ -151,6 +158,10 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     setup_main(["--doctor", *(["--fix"] if args.fix else [])])
 
 
+def cmd_docs(args: argparse.Namespace) -> None:
+    setup_main([f"--live-docs-{args.action}"])
+
+
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
@@ -168,6 +179,8 @@ def cmd_install(args: argparse.Namespace) -> None:
         setup_main(["--output-style", args.output_style])
     elif args.theme:
         setup_main(["--theme", args.theme])
+    elif args.live_docs:
+        setup_main(["--live-docs", *(["--force"] if args.force else [])])
     else:
         argv = ["--rules"]
         if args.yes:
@@ -257,6 +270,17 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NAME",
         help="install this theme (see the list below)",
     )
+    p.add_argument(
+        "--live-docs",
+        action="store_true",
+        help="install the live board/log viewer (MkDocs; macOS launchd service). "
+        "Then `pinky docs serve` / `status` / `uninstall`.",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="with --live-docs: replace a launchd agent pinky did not install",
+    )
     p.set_defaults(func=cmd_install)
 
     p = sub.add_parser(
@@ -272,6 +296,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("drift", help="🧭 report repo vs source drift")
     p.set_defaults(func=cmd_drift)
+
+    p = sub.add_parser(
+        "docs",
+        help="📖 live board/log viewer — serve it, check its status, or remove it "
+        "(install it with `pinky install --live-docs`)",
+    )
+    p.add_argument(
+        "action",
+        choices=["serve", "status", "uninstall"],
+        help="serve: run the site live, no service · status: posed / not-mine / absent · "
+        "uninstall: remove what `pinky install --live-docs` posed",
+    )
+    p.set_defaults(func=cmd_docs)
 
     p = sub.add_parser(
         "doctor",

@@ -69,6 +69,7 @@ packages = ["setup"]
 "cli_pinky.py" = "cli_pinky.py"
 "agentic-harness" = "agentic-harness"
 "hygiene" = "hygiene"
+"live-docs" = "live-docs"
 "scripts" = "scripts"
 "tools" = "tools"
 
@@ -78,6 +79,7 @@ include = [
     "cli_pinky.py",
     "agentic-harness",
     "hygiene",
+    "live-docs",
     "scripts",
     "tools",
     "README.md",

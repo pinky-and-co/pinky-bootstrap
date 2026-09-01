@@ -1,0 +1,163 @@
+:root  > * {
+  --md-primary-fg-color:        #d9807f;
+  --md-primary-fg-color--light: #fdeeed;
+  --md-primary-fg-color--dark:  #c06a69;
+  --md-accent-fg-color:              #f1a1a0;
+  --md-footer-bg-color--dark:  #a15f5e;
+  --md-footer-bg-color: var(--md-primary-fg-color--dark);
+  --md-status--idea: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none" /><path fill="currentColor" d="M10.588 21.413Q10 20.825 10 20h4q0 .825-.587 1.413T12 22t-1.412-.587M9 19q-.425 0-.712-.288T8 18t.288-.712T9 17h6q.425 0 .713.288T16 18t-.288.713T15 19zm-.75-3q-1.725-1.025-2.738-2.75T4.5 9.5q0-3.125 2.188-5.312T12 2t5.313 2.188T19.5 9.5q0 2.025-1.012 3.75T15.75 16zm.6-2h6.3q1.125-.8 1.738-1.975T17.5 9.5q0-2.3-1.6-3.9T12 4T8.1 5.6T6.5 9.5q0 1.35.613 2.525T8.85 14M12 14" /></svg>');
+  --md-status--todo: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 16 16"><path d="M0 0h16v16H0z" fill="none" /><path fill="currentColor" fill-rule="evenodd" d="M13 6a.75.75 0 0 1-.75-.75v-1.5h-1.5a.75.75 0 0 1 0-1.5h1.5V.75a.75.75 0 0 1 1.5 0v1.5h1.5a.75.75 0 0 1 0 1.5h-1.5v1.5A.75.75 0 0 1 13 6M3 13.5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5h4.25a.75.75 0 0 0 0-1.5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.75a.75.75 0 0 0-1.5 0V13a.5.5 0 0 1-.5.5z" clip-rule="evenodd" /></svg>');
+  --md-status--selected: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none" /><path fill="currentColor" d="m11.5 11l6.38 5.37l-.88.18l-.64.12c-.63.13-.99.83-.71 1.4l.27.58l1.36 2.94l-1.42.66l-1.36-2.93l-.26-.58a.985.985 0 0 0-1.52-.36l-.51.4l-.71.57zm-.74-2.31a.76.76 0 0 0-.76.76V20.9c0 .42.34.76.76.76c.19 0 .35-.06.48-.16l1.91-1.55l1.66 3.62c.13.27.4.43.69.43c.11 0 .22 0 .33-.08l2.76-1.28c.38-.18.56-.64.36-1.01L17.28 18l2.41-.45a.9.9 0 0 0 .43-.26c.27-.32.23-.79-.12-1.08l-8.74-7.35l-.01.01a.76.76 0 0 0-.49-.18M15 10V8h5v2zm-1.17-5.24l2.83-2.83l1.41 1.41l-2.83 2.83zM10 0h2v5h-2zM3.93 14.66l2.83-2.83l1.41 1.41l-2.83 2.83zm0-11.32l1.41-1.41l2.83 2.83l-1.41 1.41zM7 10H2V8h5z" /></svg>');
+  --md-status--in-progress: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none" /><path fill="currentColor" d="M13 2.03v2.02c4.39.54 7.5 4.53 6.96 8.92c-.46 3.64-3.32 6.53-6.96 6.96v2c5.5-.55 9.5-5.43 8.95-10.93c-.45-4.75-4.22-8.5-8.95-8.97m-2 .03c-1.95.19-3.81.94-5.33 2.2L7.1 5.74c1.12-.9 2.47-1.48 3.9-1.68zM4.26 5.67A9.9 9.9 0 0 0 2.05 11h2c.19-1.42.75-2.77 1.64-3.9zM2.06 13c.2 1.96.97 3.81 2.21 5.33l1.42-1.43A8 8 0 0 1 4.06 13zm5.04 5.37l-1.43 1.37A10 10 0 0 0 11 22v-2a8 8 0 0 1-3.9-1.63M12.5 7v5.25l4.5 2.67l-.75 1.23L11 13V7z" /></svg>');
+  --md-status--done: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 16 16"><path d="M0 0h16v16H0z" fill="none" /><path fill="currentColor" fill-rule="evenodd" d="M3 13.5a.5.5 0 0 1-.5-.5V3a.5.5 0 0 1 .5-.5h9.25a.75.75 0 0 0 0-1.5H3a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.75a.75.75 0 0 0-1.5 0V13a.5.5 0 0 1-.5.5zm12.78-8.82a.75.75 0 0 0-1.06-1.06L9.162 9.177L7.289 7.241a.75.75 0 1 0-1.078 1.043l2.403 2.484a.75.75 0 0 0 1.07.01z" clip-rule="evenodd" /></svg>');
+  --md-status--blocked: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none" /><path fill="currentColor" d="M12 0a12 12 0 0 1 12 12a12 12 0 0 1-12 12A12 12 0 0 1 0 12A12 12 0 0 1 12 0m0 2A10 10 0 0 0 2 12c0 2.4.85 4.6 2.26 6.33L18.33 4.26A10 10 0 0 0 12 2m0 20a10 10 0 0 0 10-10c0-2.4-.85-4.6-2.26-6.33L5.67 19.74A10 10 0 0 0 12 22" /></svg>');
+}
+
+
+.md-status--idea::after {
+  mask-image: var(--md-status--idea);
+  -webkit-mask-image: var(--md-status--idea);
+}
+
+.md-status--todo::after {
+  mask-image: var(--md-status--todo);
+  -webkit-mask-image: var(--md-status--todo);
+}
+.md-status--selected::after {
+  mask-image: var(--md-status--selected);
+  -webkit-mask-image: var(--md-status--selected);
+}
+.md-status--in-progress::after {
+  mask-image: var(--md-status--in-progress);
+  -webkit-mask-image: var(--md-status--in-progress);
+}
+.md-status--done::after {
+  mask-image: var(--md-status--done);
+  -webkit-mask-image: var(--md-status--done);
+}
+.md-status--blocked::after {
+  mask-image: var(--md-status--blocked);
+  -webkit-mask-image: var(--md-status--blocked);
+}
+
+.tabler--subtasks {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='black' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 9h6M4 5h4M6 5v11a1 1 0 0 0 1 1h5m0-9a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1zm0 8a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1z'/%3E%3C/svg%3E");
+  background-color: currentColor;
+  -webkit-mask-image: var(--svg);
+  mask-image: var(--svg);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+
+
+.kanban-board {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+.board-column {
+  background: var(--md-code-bg-color);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  min-width: 220px;
+  flex: 1;
+}
+
+.board-column__header {
+  font-weight: 700;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.board-column__count {
+  opacity: 0.5;
+}
+
+.board-card {
+  background: var(--md-default-bg-color);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  font-size: 0.85rem;
+}
+
+.board-card_blocked {
+  background: #FFFAE8;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  font-size: 0.85rem;
+}
+
+.board-card__title {
+  color: var(--md-default-fg-color);
+  font-size: 0.7rem;
+}
+
+.board-card__badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.board-card__badge_blocked {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: #ff4b4b;
+  font-weight: 500;
+}
+
+/* Élargit .md-grid uniquement sur les pages qui contiennent un board,
+   sans toucher à la largeur du reste du site */
+body .md-grid {
+  max-width: 75rem; /* ajuste selon ton écran ; "initial" pour du edge-to-edge total */
+}
+
+
+/* ===== Sidebar élargie sur les pages avec TOC intégré (toc.integrate) ===== */
+
+.md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) {
+  width: 18rem; /* ajuste selon tes titres les plus longs */
+}
+
+.md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) .md-sidebar__scrollwrap,
+.md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) .md-sidebar__inner,
+.md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) .md-nav {
+  width: 100%;
+}
+
+/* Le thème réserve ~12.2rem de padding-right dans .md-sidebar__inner pour le
+   slide mobile des sous-menus — inutile en desktop, ça mange toute la largeur
+   gagnée ci-dessus. On ne le retire qu'au-delà du seuil desktop de Material
+   (76.25em) pour ne pas casser le mécanisme mobile. */
+@media screen and (min-width: 76.25em) {
+  .md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) .md-sidebar__inner {
+    padding-right: 0.8rem;
+  }
+}
+
+/* .md-ellipsis tronque le texte des liens de nav en une ligne par défaut
+   (text-overflow: ellipsis) — sans ça, aucune largeur de sidebar ne suffit
+   à afficher les titres longs sur plusieurs lignes. */
+.md-sidebar--primary:has(.md-nav__list[data-md-component="toc"]) .md-ellipsis {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+}

@@ -64,3 +64,8 @@ tests/_local/
 # déclaration du repo (branch_workflow, languages) lue par les hooks et les skills.
 .claude/*
 !.claude/policies.json
+# live-docs/ ne versionne que les 3 fichiers d'outillage (hooks.py, mkdocs.yml,
+# stylesheets/board.css) — test_bundled_source_carries_only_tooling en est le garde-fou. Les
+# montages de boards vivent sous ~/.local/share/pinky/live-docs/docs/, jamais ici ; ceci couvre
+# le cas d'un `pinky docs serve` lancé par erreur contre le dossier source.
+live-docs/docs/
