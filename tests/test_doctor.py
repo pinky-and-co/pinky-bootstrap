@@ -1,0 +1,453 @@
+"""`setup/doctor.py` — `pinky doctor`, the installed-plugin prerequisite check.
+
+Boundary fakes only: `shutil.which` (PATH), `_read_ollama_tags` (network), `_keychain_has` /
+`subprocess.run` (the `security` and `brew` CLIs). The parsing, resolution and report functions
+stay real. `format_report` is pinned by a whole-string oracle (`tests.md` — it is a `*_report`
+generator).
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from setup import cli_pinky, doctor, state_file
+
+# ── helpers ─────────────────────────────────────────────────────────────────────────────────
+
+
+def _plugin(root: Path, name: str, *, skills: dict[str, str]) -> Path:
+    """A fake installed-plugin dir: `root/name/skills/<skill>/SKILL.md` with the given
+    `allowed-tools` frontmatter value per skill."""
+    plugin_dir = root / name
+    for skill, allowed_tools in skills.items():
+        skill_dir = plugin_dir / "skills" / skill
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {skill}\nallowed-tools: {allowed_tools}\n---\n# {skill}\n",
+            encoding="utf-8",
+        )
+    return plugin_dir
+
+
+def _registry(path: Path, dirs: list[Path]) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "plugins": {
+                    f"{d.name}@mkt": [
+                        {"scope": "user", "installPath": str(d), "version": "0.1.0"}
+                    ]
+                    for d in dirs
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _settings_pinky(
+    path: Path, *, pool: list[dict] | None = None, keys: list[dict] | None = None
+) -> None:
+    path.write_text(
+        json.dumps({"model_pool": pool or [], "keys": keys or []}), encoding="utf-8"
+    )
+
+
+# ── parse_bash_binaries — NFR-0024-10 ───────────────────────────────────────────────────────
+
+
+def test_parse_bash_binaries_covers_every_known_form_without_crashing():
+    value = (
+        "Bash(rg:*), Bash(command -v markitdown:*), Bash(command -v:*), Bash(gh run list:*), "
+        "Bash(${CLAUDE_PLUGIN_ROOT}/hooks/x.sh:*), Bash(python3 ${CLAUDE_PLUGIN_ROOT}/y.py:*), "
+        "Read, Edit, mcp__plugin_pc-core_pc-core-models__offline, Bash("
+    )
+    # `command` (builtin shell) ne fuit jamais, `Bash(command -v:*)` ne rend rien
+    assert doctor.parse_bash_binaries(value) == {"rg", "markitdown", "gh", "python3"}
+
+
+def test_parse_bash_binaries_empty_value_is_empty_set():
+    assert doctor.parse_bash_binaries("") == set()
+
+
+# ── required_binaries / check_binaries — FR-0024-11, FR-0024-12 ──────────────────────────────
+
+
+def test_required_binaries_lists_non_ambient_and_attributes_them(tmp_path):
+    a = _plugin(
+        tmp_path,
+        "pc-alpha",
+        skills={"one": "Bash(rg:*), Bash(command -v markitdown:*)"},
+    )
+    b = _plugin(tmp_path, "pc-beta", skills={"two": "Bash(git:*), Bash(rg:*)"})
+
+    reqs = doctor.required_binaries([("pc-alpha", a), ("pc-beta", b)])
+
+    assert reqs == {"markitdown": ["pc-alpha"], "rg": ["pc-alpha", "pc-beta"]}
+    assert "git" not in reqs  # ambient, subtracted
+
+
+def test_check_binaries_reports_present_and_absent(tmp_path, monkeypatch):
+    plugin = _plugin(
+        tmp_path, "pc-alpha", skills={"one": "Bash(present-bin:*), Bash(missing-bin:*)"}
+    )
+    monkeypatch.setattr(
+        doctor.shutil,
+        "which",
+        lambda name: "/usr/bin/x" if name == "present-bin" else None,
+    )
+
+    checks = {c.name: c for c in doctor.check_binaries([("pc-alpha", plugin)])}
+
+    assert checks["present-bin"].ok is True
+    assert checks["missing-bin"].ok is False
+    assert "brew install missing-bin" in checks["missing-bin"].detail
+
+
+def test_check_binaries_maps_known_brew_formula(tmp_path, monkeypatch):
+    plugin = _plugin(tmp_path, "pc-alpha", skills={"one": "Bash(rg:*)"})
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+
+    (check,) = doctor.check_binaries([("pc-alpha", plugin)])
+
+    assert check.name == "rg"
+    assert "brew install ripgrep" in check.detail
+
+
+def test_installed_plugins_names_from_key_skips_a_missing_path(tmp_path):
+    present = _plugin(tmp_path, "pc-alpha", skills={"one": "Bash(rg:*)"})
+    registry = tmp_path / "installed_plugins.json"
+    _registry(registry, [present, tmp_path / "gone"])
+
+    assert doctor.installed_plugins(registry) == [("pc-alpha", present)]
+
+
+def test_check_binaries_empty_when_no_registry(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "INSTALLED_PLUGINS_PATH", tmp_path / "nope.json")
+    assert doctor.check_binaries() == []
+
+
+# ── check_ollama — FR-0024-13, FR-0024-14 ───────────────────────────────────────────────────
+
+
+def test_check_ollama_endpoint_unreachable(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings, pool=[{"name": "local-ollama", "kind": "offline", "model": None}]
+    )
+
+    checks = doctor.check_ollama(settings, tags_reader=lambda url: None)
+
+    assert len(checks) == 1
+    assert checks[0].name == "endpoint" and checks[0].ok is False
+
+
+def test_check_ollama_model_absent_then_present(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings, pool=[{"name": "local-ollama", "kind": "offline", "model": None}]
+    )
+
+    absent = doctor.check_ollama(settings, tags_reader=lambda url: ["llama3:8b"])
+    assert [c.ok for c in absent] == [True, False]
+    assert absent[1].name == "gemma4:12b"
+    assert absent[1].detail == "ollama pull gemma4:12b"
+
+    present = doctor.check_ollama(settings, tags_reader=lambda url: ["gemma4:12b"])
+    assert [c.ok for c in present] == [True, True]
+
+
+def test_check_ollama_no_offline_entry_is_empty(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(settings, pool=[{"name": "mistral", "kind": "http"}])
+    assert doctor.check_ollama(settings, tags_reader=lambda url: []) == []
+
+
+# ── check_keys — FR-0024-15 ─────────────────────────────────────────────────────────────────
+
+
+def test_check_keys_absent_when_neither_env_nor_keychain(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings, keys=[{"env": "MISTRAL_API_KEY", "service": "MISTRAL_API_KEY"}]
+    )
+
+    (check,) = doctor.check_keys(settings, env={}, keychain=lambda service: False)
+
+    assert check.name == "MISTRAL_API_KEY" and check.ok is False
+    assert "MISTRAL_API_KEY" in check.detail
+
+
+def test_check_keys_present_via_env_or_keychain(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings,
+        keys=[
+            {"env": "A_KEY", "service": "svc-a"},
+            {"env": "B_KEY", "service": "svc-b"},
+        ],
+    )
+
+    checks = {
+        c.name: c
+        for c in doctor.check_keys(
+            settings, env={"A_KEY": "x"}, keychain=lambda service: service == "svc-b"
+        )
+    }
+
+    assert checks["A_KEY"].ok is True
+    assert checks["B_KEY"].ok is True
+
+
+def test_check_keys_empty_when_no_settings(tmp_path):
+    assert doctor.check_keys(tmp_path / "absent.json") == []
+
+
+# ── format_report — oracle ──────────────────────────────────────────────────────────────────
+
+
+def test_format_report_is_empty_case():
+    assert doctor.format_report([]) == (
+        "pinky doctor — prérequis des plugins installés\n"
+        "\n"
+        "  (aucun plugin installé, ou aucun prérequis déclaré)"
+    )
+
+
+def test_format_report_full_string_oracle():
+    checks = [
+        doctor.Check("binary", "rg", True, "requis par : pc-alpha"),
+        doctor.Check(
+            "binary", "yt-dlp", False, "brew install yt-dlp (requis par : pc-kanban)"
+        ),
+        doctor.Check("ollama", "endpoint", True, "http://localhost:11434"),
+        doctor.Check("ollama", "gemma4:12b", False, "ollama pull gemma4:12b"),
+        doctor.Check("key", "MISTRAL_API_KEY", True, ""),
+    ]
+
+    assert doctor.format_report(checks) == (
+        "pinky doctor — prérequis des plugins installés\n"
+        "\n"
+        "binaires\n"
+        "  ✓ rg — requis par : pc-alpha\n"
+        "  ✗ yt-dlp — brew install yt-dlp (requis par : pc-kanban)\n"
+        "\n"
+        "ollama\n"
+        "  ✓ endpoint — http://localhost:11434\n"
+        "  ✗ gemma4:12b — ollama pull gemma4:12b\n"
+        "\n"
+        "clés API\n"
+        "  ✓ MISTRAL_API_KEY\n"
+        "\n"
+        "2 prérequis manquants"
+    )
+
+
+def test_format_report_all_present_singular_and_plural():
+    ok = [doctor.Check("binary", "rg", True, "requis par : x")]
+    assert doctor.format_report(ok).endswith("tous les prérequis sont présents")
+
+    one = [doctor.Check("binary", "rg", False, "brew install ripgrep")]
+    assert doctor.format_report(one).endswith("1 prérequis manquant")
+
+
+# ── run_doctor — FR-0024-10, FR-0024-16 ─────────────────────────────────────────────────────
+
+
+def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
+    plugin = _plugin(tmp_path, "pc-alpha", skills={"one": "Bash(rg:*)"})
+    registry = tmp_path / "installed_plugins.json"
+    _registry(registry, [plugin])
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings,
+        pool=[{"name": "local-ollama", "kind": "offline", "model": None}],
+        keys=[{"env": "A_KEY", "service": "svc-a"}],
+    )
+    monkeypatch.setattr(doctor, "INSTALLED_PLUGINS_PATH", registry)
+    monkeypatch.setattr(doctor, "SETTINGS_PINKY_PATH", settings)
+    monkeypatch.setattr(doctor.shutil, "which", which)
+    monkeypatch.setattr(doctor, "_read_ollama_tags", tags)
+    monkeypatch.setattr(doctor, "_keychain_has", keychain)
+
+
+def test_run_doctor_returns_zero_when_all_present(tmp_path, monkeypatch, capsys):
+    _full_setup(
+        tmp_path,
+        monkeypatch,
+        which=lambda name: "/usr/bin/x",
+        tags=lambda url: ["gemma4:12b"],
+        keychain=lambda service: True,
+    )
+    assert doctor.run_doctor() == 0
+
+
+def test_run_doctor_reports_exactly_the_missing_prerequisites(tmp_path, monkeypatch):
+    _full_setup(
+        tmp_path,
+        monkeypatch,
+        which=lambda name: None,  # rg absent
+        tags=lambda url: [],  # modèle absent (endpoint ok)
+        keychain=lambda service: False,  # clé absente
+    )
+    monkeypatch.delenv("A_KEY", raising=False)
+
+    checks = doctor.collect_checks()
+    missing = {(c.category, c.name) for c in checks if not c.ok}
+
+    assert missing == {("binary", "rg"), ("ollama", "gemma4:12b"), ("key", "A_KEY")}
+    assert doctor.run_doctor() == 3
+
+
+def test_run_doctor_output_is_stable_across_two_runs(tmp_path, monkeypatch, capsys):
+    _full_setup(
+        tmp_path,
+        monkeypatch,
+        which=lambda name: None,
+        tags=lambda url: ["gemma4:12b"],
+        keychain=lambda service: False,
+    )
+    monkeypatch.delenv("A_KEY", raising=False)
+    doctor.run_doctor()
+    first = capsys.readouterr().out
+    doctor.run_doctor()
+    second = capsys.readouterr().out
+    assert first == second
+
+
+# ── apply_fixes — FR-0024-16, FR-0024-17, FR-0024-18, IMP-0024-10 ────────────────────────────
+
+
+def test_apply_fixes_brew_installs_a_missing_binary(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: "/opt/homebrew/bin/brew")
+    calls: list[list[str]] = []
+
+    installed = doctor.apply_fixes(
+        [doctor.Check("binary", "rg", False, "brew install ripgrep")],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == [["brew", "install", "ripgrep"]]
+    assert installed == ["ripgrep"]
+
+
+def test_apply_fixes_never_touches_keys_or_ollama_models(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: "/opt/homebrew/bin/brew")
+    calls: list[list[str]] = []
+
+    installed = doctor.apply_fixes(
+        [
+            doctor.Check("key", "MISTRAL_API_KEY", False, "définir $MISTRAL_API_KEY"),
+            doctor.Check("ollama", "gemma4:12b", False, "ollama pull gemma4:12b"),
+        ],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == []
+    assert installed == []
+
+
+def test_apply_fixes_offers_ollama_when_endpoint_down(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: "/opt/homebrew/bin/brew")
+    calls: list[list[str]] = []
+
+    doctor.apply_fixes(
+        [doctor.Check("ollama", "endpoint", False, "démarrer Ollama")],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == [["brew", "install", "ollama"]]
+
+
+def test_apply_fixes_no_brew_runs_nothing(monkeypatch, capsys):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+    calls: list[list[str]] = []
+
+    installed = doctor.apply_fixes(
+        [doctor.Check("binary", "rg", False, "brew install ripgrep")],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == []
+    assert installed == []
+    assert "brew` absent" in capsys.readouterr().out
+
+
+def test_apply_fixes_declined_prompt_skips(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: "/opt/homebrew/bin/brew")
+    calls: list[list[str]] = []
+
+    doctor.apply_fixes(
+        [doctor.Check("binary", "rg", False, "x")],
+        runner=calls.append,
+        confirm=lambda prompt: False,
+    )
+
+    assert calls == []
+
+
+# ── ASS-0024-10 — no side effects ───────────────────────────────────────────────────────────
+
+
+def test_doctor_writes_no_ledger_and_no_config(tmp_path, monkeypatch):
+    ledger = tmp_path / "ledger.json"
+    settings_json = tmp_path / "settings.json"
+    settings_json.write_text('{"kept": true}', encoding="utf-8")
+    monkeypatch.setattr(state_file, "STATE_FILE_PATH", ledger)
+    _full_setup(
+        tmp_path,
+        monkeypatch,
+        which=lambda name: None,
+        tags=lambda url: [],
+        keychain=lambda service: False,
+    )
+    monkeypatch.delenv("A_KEY", raising=False)
+
+    doctor.run_doctor(fix=False)
+
+    assert not ledger.exists()
+    assert settings_json.read_text(encoding="utf-8") == '{"kept": true}'
+
+
+# ── cli_pinky wiring — FR-0024-10, FR-0024-19 ───────────────────────────────────────────────
+
+
+def test_pinky_doctor_is_in_help(capsys):
+    with pytest.raises(SystemExit):
+        cli_pinky.main(["--help"])
+    assert "doctor" in capsys.readouterr().out
+
+
+def test_cmd_doctor_delegates_the_flag(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: calls.append(argv))
+
+    cli_pinky.main(["doctor"])
+    cli_pinky.main(["doctor", "--fix"])
+
+    assert calls == [["--doctor"], ["--doctor", "--fix"]]
+
+
+@pytest.mark.parametrize(
+    "install_args",
+    [["install"], ["install", "--plugin", "pc-snow"], ["install", "--theme", "x"]],
+)
+def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):
+    """Every `pinky install` path runs the preflight, and a missing prerequisite never raises
+    (FR-0024-19) — `--plugin` most of all: it activates a plugin whose prerequisites are new."""
+    monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: None)
+    ran: list[bool] = []
+    # renvoie 3 (prérequis manquants) — `cmd_install` doit l'ignorer, jamais lever
+    monkeypatch.setattr(doctor, "run_doctor", lambda **kw: ran.append(True) or 3)
+
+    cli_pinky.main(install_args)
+
+    assert ran == [True]

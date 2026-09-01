@@ -71,6 +71,17 @@ def main(argv: list[str] | None = None) -> None:
         "--check-drift", action="store_true", help="report repo vs source drift"
     )
     parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="check the prerequisites installed plugins assume (external binaries, local Ollama, "
+        "API keys) — exits non-zero if any is missing",
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="with --doctor: offer to `brew install` each missing binary and Ollama",
+    )
+    parser.add_argument(
         "--commit",
         action="store_true",
         help="after distributing, commit the distributed files in each repo",
@@ -116,6 +127,11 @@ def main(argv: list[str] | None = None) -> None:
         "~/.claude/settings.json. See `pinky install --help` for the list.",
     )
     args, _ = parser.parse_known_args(argv)
+
+    if args.doctor:
+        from . import doctor
+
+        raise SystemExit(1 if doctor.run_doctor(fix=args.fix) else 0)
 
     if args.plugin is not None:
         # 1. Fetch the plugin's files (and enable it at user scope) via Claude Code's own command.
