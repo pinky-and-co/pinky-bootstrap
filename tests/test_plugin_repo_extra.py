@@ -41,11 +41,13 @@ def test_validate_plugins_strict_hook_present(tmp_path):
     assert "scripts/hooks/validate_plugins_strict.py" in cfg
 
 
-def test_mypy_excludes_vendored_copies_but_the_canonical_one(tmp_path):
-    """A vendored file (chantier 0023) is the same filename in two sibling plugins/*/hooks/ dirs —
-    mypy errors 'Duplicate module named X' scanning both; exclude every copy but pc-core's."""
+def test_mypy_excludes_same_named_files_down_to_one_canonical_copy(tmp_path):
+    """mypy errors 'Duplicate module named X' when one invocation sees two same-named files under
+    sibling plugins/*/ dirs. Two collisions, each excluded to one canonical copy: the vendored
+    hooks/ files (chantier 0023) and every plugin's mcp/server.py entrypoint (harness convention)."""
     cfg = _plugin_repo_config(tmp_path)
     assert r"^plugins/(pc-git|pc-kanban)/hooks/(policy_lib|secret_patterns)\.py$" in cfg
+    assert r"^plugins/(?!pc-core/)[^/]+/mcp/server\.py$" in cfg
 
 
 def test_check_vendor_checksum_hook_present(tmp_path):
