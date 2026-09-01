@@ -17,6 +17,8 @@ from setup import state_file
 
 
 def test_state_file_path_is_never_the_real_ledger():
-    real_ledger = Path.home() / ".claude" / "pinky-install-state.json"
-    assert state_file.STATE_FILE_PATH != real_ledger
-    assert Path.home() not in state_file.STATE_FILE_PATH.parents
+    real_claude_dir = Path.home() / ".claude"
+    assert state_file.STATE_FILE_PATH != real_claude_dir / "pinky-install-state.json"
+    # pas `Path.home()` : sous Windows le tmp_path de pytest vit dessous
+    # (C:\Users\<user>\AppData\Local\Temp\...) ; `~/.claude`, jamais.
+    assert real_claude_dir not in state_file.STATE_FILE_PATH.parents
