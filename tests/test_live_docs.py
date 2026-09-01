@@ -89,7 +89,7 @@ def test_discover_board_mounts_keeps_a_double_slash_inside_a_string(tmp_path):
     (external / "_KANBAN").mkdir(parents=True)
     (root / "pinky.code-workspace").write_text(
         '{\n  // header comment\n  "settings": { "x": "https://example.com" },\n'
-        f'  "folders": [ {{ "path": "{external}" }} ]\n}}\n',
+        f'  "folders": [ {{ "path": "{external.as_posix()}" }} ]\n}}\n',
         encoding="utf-8",
     )
     (mount,) = live_docs.discover_board_mounts(root)

@@ -202,6 +202,14 @@ def _uv_path() -> str:
     return shutil.which("uv") or "uv"
 
 
+def _launchd_domain() -> str:
+    """`gui/<uid>` — the launchd domain the agent loads into. `os.getuid` is POSIX-only; the
+    fallback keeps the module importable and unit-testable on Windows (the launchd path never
+    runs there — `is_macos` gates it)."""
+    getuid = getattr(os, "getuid", None)
+    return f"gui/{getuid() if getuid else 0}"
+
+
 class LiveDocsConflict(RuntimeError):
     """`install` found a launchd plist at the target path that pinky did not pose — refuse to
     clobber it (state-file ownership rule). `--force` overrides."""
@@ -266,7 +274,7 @@ def install(
     plist_path.write_text(render_plist(install_dir, uv=_uv_path()), encoding="utf-8")
     state_file.record_posed(_LEDGER_PLIST, path=str(plist_path), value=LAUNCHD_LABEL)
 
-    domain = f"gui/{os.getuid()}"
+    domain = _launchd_domain()
     if launchctl("print", f"{domain}/{LAUNCHD_LABEL}").returncode == 0:
         launchctl("bootout", f"{domain}/{LAUNCHD_LABEL}")
     booted = launchctl("bootstrap", domain, str(plist_path))
@@ -328,7 +336,7 @@ def uninstall(
     _plist_reader_fn = _plist_reader(install_dir, plist_path)
 
     def _remove_plist() -> None:
-        launchctl("bootout", f"gui/{os.getuid()}/{LAUNCHD_LABEL}")
+        launchctl("bootout", f"{_launchd_domain()}/{LAUNCHD_LABEL}")
         plist_path.unlink(missing_ok=True)
         removed.append(str(plist_path))
 
