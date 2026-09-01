@@ -126,12 +126,68 @@ def main(argv: list[str] | None = None) -> None:
         help="install this theme — copies it to ~/.claude/themes/ and sets theme in "
         "~/.claude/settings.json. See `pinky install --help` for the list.",
     )
+    parser.add_argument(
+        "--live-docs",
+        action="store_true",
+        help="install the live board/log viewer — bundled MkDocs tooling copied to "
+        "~/.local/share/pinky/live-docs/, board mounts generated, and (macOS) a launchd agent "
+        "loaded so the site is served after boot",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="with --live-docs: replace a launchd agent at the target path even if pinky did not "
+        "pose it (default: refuse and leave it alone)",
+    )
+    parser.add_argument(
+        "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--live-docs-uninstall", action="store_true", help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--live-docs-status", action="store_true", help=argparse.SUPPRESS
+    )
     args, _ = parser.parse_known_args(argv)
 
     if args.doctor:
         from . import doctor
 
         raise SystemExit(1 if doctor.run_doctor(fix=args.fix) else 0)
+
+    if (
+        args.live_docs
+        or args.live_docs_serve
+        or args.live_docs_uninstall
+        or args.live_docs_status
+    ):
+        from . import live_docs
+
+        if args.live_docs_serve:
+            live_docs.serve()
+            return
+        if args.live_docs_uninstall:
+            removed = live_docs.uninstall()
+            print(
+                "removed:\n  " + "\n  ".join(removed)
+                if removed
+                else "nothing pinky posed to remove"
+            )
+            return
+        if args.live_docs_status:
+            print(f"live-docs: {live_docs.status().value}")
+            return
+        try:
+            result = live_docs.install(force=args.force)
+        except live_docs.LiveDocsConflict as exc:
+            print(exc, file=sys.stderr)
+            raise SystemExit(1) from exc
+        print(f"live-docs installed → {result.install_dir}")
+        print(f"  mounts: {', '.join(result.mounts) or '(none found)'}")
+        print(f"  service: {result.service}")
+        if result.service != "loaded":
+            print(f"  `pinky docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        return
 
     if args.plugin is not None:
         # 1. Fetch the plugin's files (and enable it at user scope) via Claude Code's own command.

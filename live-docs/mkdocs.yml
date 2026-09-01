@@ -1,0 +1,41 @@
+site_name: Boards Kanban & Agents Logs
+extra:
+  generator: false
+  status:
+    idea: Idea
+    todo: To Do
+    selected: Selected
+    in-progress: In Progress
+    done: Done
+    blocked: Blocked
+theme:
+  name: material
+  font:
+    text: DM Sans
+    code: JetBrains Mono
+  palette:
+    primary: custom
+    accent: custom
+    scheme: default
+  features:
+    - navigation.tabs
+    #- navigation.sections
+    - navigation.prune
+    - navigation.indexes
+    - navigation.path
+    - navigation.top
+    - navigation.instant
+    - navigation.footer
+    - toc.integrate
+docs_dir: docs
+site_dir: .cache/live-docs-site
+markdown_extensions:
+  - md_in_html
+hooks:
+  - hooks.py
+plugins:
+  - search
+  - awesome-nav
+extra_css:
+  - stylesheets/board.css
+copyright: Copyright &copy; 2026 pinky-and-co
