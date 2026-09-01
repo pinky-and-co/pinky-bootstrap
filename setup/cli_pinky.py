@@ -147,6 +147,10 @@ def cmd_drift(args: argparse.Namespace) -> None:
     setup_main(["--check-drift"])
 
 
+def cmd_doctor(args: argparse.Namespace) -> None:
+    setup_main(["--doctor", *(["--fix"] if args.fix else [])])
+
+
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
@@ -160,17 +164,24 @@ def cmd_install(args: argparse.Namespace) -> None:
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
         setup_main(argv)
-        return
-    if args.output_style:
+    elif args.output_style:
         setup_main(["--output-style", args.output_style])
-        return
-    if args.theme:
+    elif args.theme:
         setup_main(["--theme", args.theme])
-        return
-    argv = ["--rules"]
-    if args.yes:
-        argv.append("--yes")
-    setup_main(argv)
+    else:
+        argv = ["--rules"]
+        if args.yes:
+            argv.append("--yes")
+        setup_main(argv)
+
+    # Preflight advisory (FR-0024-19) : après chaque chemin d'install — surtout `--plugin`, qui
+    # active un plugin dont personne n'a vérifié les nouveaux prérequis. On rapporte les manquants
+    # sans jamais faire échouer l'install : `run_doctor` est appelé directement, son code de
+    # retour est ignoré.
+    from . import doctor
+
+    print()
+    doctor.run_doctor(fix=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -261,6 +272,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("drift", help="🧭 report repo vs source drift")
     p.set_defaults(func=cmd_drift)
+
+    p = sub.add_parser(
+        "doctor",
+        help="🩺 check the prerequisites installed plugins assume (binaries, Ollama, API keys)",
+    )
+    p.add_argument(
+        "--fix",
+        action="store_true",
+        help="offer to `brew install` each missing binary and Ollama",
+    )
+    p.set_defaults(func=cmd_doctor)
 
     return parser
 
