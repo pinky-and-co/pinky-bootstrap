@@ -41,8 +41,12 @@ orientation only.
   cooldown window against a freshly compromised dependency republished on PyPI, one of the few
   lines `distribute()` writes into a file it otherwise only reads (`EXCLUDE_NEWER_DAYS` /
   `render_pyproject_with_exclude_newer` in `setup/precommit.py`). `pinky distribute --repo <name>`
-  (or `--all`) recomputes it to 3 days before *today*, so renewing the window is running the
-  distribution again, not a hand-typed date in 12 files. What stays manual (chantier 0024, `##
-  Items ouverts`): nothing schedules that rerun — no job renews it on its own, so a repo that
-  never gets redistributed keeps an aging cutoff. A stale date only makes the window more
-  conservative, never silently permissive, so this decays safely, not dangerously.
+  (or `--all`) recomputes it to 3 days before *today* — but that alone does **not** renew the
+  window: `uv.lock` still carries the old cutoff, and a repo outside `CI_NO_LOCK_REPOS` (which use
+  `--locked` in CI) fails with "the lockfile needs to be updated" until `uv lock` is run in that
+  repo too (measured chantier 0024, first renewal, 2026-09-01 — 4 of 9 repos). **Renewing the
+  window is `pinky distribute --repo <name>` THEN `uv lock` in that repo**, not distribution alone.
+  What stays manual (chantier 0024, `## Items ouverts`): nothing schedules that rerun — no job
+  renews it on its own, so a repo that never gets redistributed keeps an aging cutoff. A stale date
+  only makes the window more conservative, never silently permissive, so this decays safely, not
+  dangerously.
