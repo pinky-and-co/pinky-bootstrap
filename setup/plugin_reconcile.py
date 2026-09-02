@@ -377,16 +377,12 @@ def apply_reconcile(workspace_root: Path) -> None:
             _purge_other_enables(spec, state, label_map, keep={str(Path.home())})
             decision = "user"
         elif answer == "p":
-            roots = run_marketplace_wizard(workspace_root, plugin_id, marketplace)
-            if roots == [Path.home()]:  # user picked "u" inside the wizard after all
-                _ensure_user_enabled(spec, state)
-                _purge_other_enables(spec, state, label_map, keep={str(Path.home())})
-                decision = "user"
-            else:
-                _purge_other_enables(
-                    spec, state, label_map, keep={str(r) for r in roots}
-                )
-                decision = "project:" + ",".join(sorted(str(r) for r in roots))
+            # this loop's own prompt already asked user/project — the wizard skips its Q1
+            roots = run_marketplace_wizard(
+                workspace_root, plugin_id, marketplace, skip_scope_question=True
+            )
+            _purge_other_enables(spec, state, label_map, keep={str(r) for r in roots})
+            decision = "project:" + ",".join(sorted(str(r) for r in roots))
         elif answer == "x":
             if input(f"  uninstall {spec} everywhere? [y/N]: ").strip().lower() not in (
                 "y",

@@ -77,7 +77,11 @@ def _parse_indices(answer: str, count: int) -> list[int]:
 
 
 def run_marketplace_wizard(
-    workspace_root: Path, plugin_id: str, marketplace: str | None = None
+    workspace_root: Path,
+    plugin_id: str,
+    marketplace: str | None = None,
+    *,
+    skip_scope_question: bool = False,
 ) -> list[Path]:
     """Interactive scope picker: Q1 (user/project) -> Q2 (depth, project only) -> Q3 (which
     targets at that depth — one or several) -> enable the plugin at each. Returns the roots it
@@ -86,6 +90,10 @@ def run_marketplace_wizard(
     User scope: the plugin is already enabled there by `install_plugin_files` — nothing to do but
     report it (`[Path.home()]`). Project scope: `plugin_install.enable_at_project` per target;
     the caller then drops the fetch-time user-scope enable if it was not there before.
+
+    `skip_scope_question`: the caller already asked `user` vs `project` and got `project` (the
+    `pinky plugins reconcile --apply` loop, whose own per-plugin prompt covers Q1) — go straight to
+    the depth+targets picker. Never returns `[Path.home()]` on this path.
 
     Never guesses in a non-interactive shell (no tty) — errors instead, same discipline as the
     `--rules` confirmation flow in `setup/cli.py`.
@@ -97,13 +105,14 @@ def run_marketplace_wizard(
         )
         raise SystemExit(1)
 
-    scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
-    if scope == "u":
-        # déjà activé au scope user par install_plugin_files — rien à réécrire.
-        return [Path.home()]
-    if scope != "p":
-        print(f"Unknown scope: {scope!r}", file=sys.stderr)
-        raise SystemExit(1)
+    if not skip_scope_question:
+        scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
+        if scope == "u":
+            # déjà activé au scope user par install_plugin_files — rien à réécrire.
+            return [Path.home()]
+        if scope != "p":
+            print(f"Unknown scope: {scope!r}", file=sys.stderr)
+            raise SystemExit(1)
 
     depth_prompt = " / ".join(f"{d}={label}" for d, label in _DEPTH_LABELS.items())
     depth_answer = input(f"Depth — {depth_prompt}: ").strip()

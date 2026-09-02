@@ -374,11 +374,11 @@ def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkey
         ws / "pinky-lib" / "pinky-snowpark" / ".claude" / "settings.json",
         {"pc-x@mp": True},
     )
-    # wizard: project → depth 1 → pick "pinky-lib" (the group)
+    # answer `p` → wizard skips its own scope question → depth 1 → pick "pinky-lib" (the group)
     group_idx = sorted(
         p.name for p in ws.iterdir() if p.is_dir() and not p.name.startswith(".")
     ).index("pinky-lib")
-    _answers(monkeypatch, ["p", "p", "1", str(group_idx)])
+    _answers(monkeypatch, ["p", "1", str(group_idx)])
 
     apply_reconcile(ws)
 
@@ -389,6 +389,34 @@ def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkey
     assert _enabled_in(ws / "pinky-lib" / ".claude" / "settings.json") == {
         "pc-x@mp": True
     }
+
+
+def test_apply_project_answer_asks_the_scope_question_only_once(
+    apply_world, monkeypatch
+):
+    """The double-question card: answering `p` in the `--apply` loop must not make
+    `run_marketplace_wizard` re-ask `(u)ser/(p)roject` — it goes straight to depth+targets."""
+    user_claude, ws, _sim = apply_world
+    _write_enabled(user_claude / "settings.json", {"pc-y@mp": True})
+    group_idx = sorted(
+        p.name for p in ws.iterdir() if p.is_dir() and not p.name.startswith(".")
+    ).index("pinky-lib")
+    prompts: list[str] = []
+    answers = iter(["p", "1", str(group_idx)])
+
+    def fake_input(prompt=""):
+        prompts.append(prompt)
+        return next(answers)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    apply_reconcile(ws)
+
+    assert not any("Scope —" in p for p in prompts)  # wizard Q1 never shown
+    assert sum("target —" in p for p in prompts) == 1  # asked exactly once
+    assert _enabled_in(ws / "pinky-lib" / ".claude" / "settings.json") == {
+        "pc-y@mp": True
+    }
+    assert "pc-y@mp" not in _enabled_in(user_claude / "settings.json")
 
 
 def test_apply_purge_removes_the_registry_entry_of_a_parasitic_project_enable(
