@@ -232,10 +232,17 @@ def test_report_on_an_empty_audit_says_so(capsys):
 
 class _ClaudeCliSim:
     """Faithful stand-in for `claude plugin install/uninstall` — reproduces the measured on-disk
-    effect (2026-09-02) so the whole chain runs, and records every argv+cwd for oracles."""
+    effect (2026-09-02) so the whole chain runs, and records every argv+cwd for oracles.
 
-    def __init__(self, home: Path):
+    Maintains **both** files the real CLI writes: the scoped `settings.json` `enabledPlugins` key
+    and the `installed_plugins.json` registry entry (`{scope, projectPath}`). `_pop_key` touching
+    only the first is exactly the gap this card closes — the sim has to model the second for a
+    test to see it.
+    """
+
+    def __init__(self, home: Path, registry: Path):
         self.home = home
+        self.registry = registry
         self.calls: list[tuple[list[str], Path | None]] = []
 
     def __call__(self, cmd, **kw):
@@ -264,20 +271,46 @@ class _ClaudeCliSim:
         else:
             enabled.pop(spec, None)
         settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        self._registry_entry(spec, scope, cwd, on=on)
+
+    def _registry_entry(self, spec, scope, cwd, *, on):
+        reg = (
+            json.loads(self.registry.read_text(encoding="utf-8"))
+            if self.registry.is_file()
+            else {"version": 2, "plugins": {}}
+        )
+        entries = reg["plugins"].setdefault(spec, [])
+        entry = {"scope": scope}
+        if scope != "user" and cwd is not None:
+            entry["projectPath"] = str(cwd)
+        if on:
+            if entry not in entries:
+                entries.append(entry)
+        else:
+            entries[:] = [e for e in entries if e != entry]
+            if not entries:
+                reg["plugins"].pop(spec, None)
+        self.registry.parent.mkdir(parents=True, exist_ok=True)
+        self.registry.write_text(json.dumps(reg, indent=2) + "\n", encoding="utf-8")
 
 
 @pytest.fixture
 def apply_world(world, monkeypatch):
     """`world` + a fake `Path.home()` aligned with its `_USER_CLAUDE`, a redirected ledger, a tty,
-    and the `claude` CLI simulator."""
+    and the `claude` CLI simulator. `setup.rules.INSTALLED_PLUGINS_PATH` is repointed at the same
+    fixture registry so `resolve_targets_for_plugin` reads what the sim writes."""
+    from setup import rules
+
     user_claude, ws = world
     home = user_claude.parent
+    registry = user_claude / "plugins" / "installed_plugins.json"
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
     monkeypatch.setattr(
         state_file, "STATE_FILE_PATH", user_claude / "install-state.json"
     )
+    monkeypatch.setattr(rules, "INSTALLED_PLUGINS_PATH", registry)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    sim = _ClaudeCliSim(home)
+    sim = _ClaudeCliSim(home, registry)
     monkeypatch.setattr(subprocess, "run", sim)
     return user_claude, ws, sim
 
@@ -356,6 +389,47 @@ def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkey
     assert _enabled_in(ws / "pinky-lib" / ".claude" / "settings.json") == {
         "pc-x@mp": True
     }
+
+
+def test_apply_purge_removes_the_registry_entry_of_a_parasitic_project_enable(
+    apply_world, monkeypatch
+):
+    """The `pc-pypi` fallout: a plugin kept at `user` that also carries a parasitic project
+    enable *with* an `installed_plugins.json` entry (a dependency install) — purging must clear
+    that entry, not just the settings key, or `resolve_targets_for_plugin` (setup/rules.py) keeps
+    shipping the plugin's rules to the ghost dir."""
+    from setup.rules import resolve_targets_for_plugin
+
+    user_claude, ws, sim = apply_world
+    repo = ws / "pinky-lib" / "pinky-core"
+    _write_enabled(user_claude / "settings.json", {"pc-dep@mp": True})
+    _write_enabled(repo / ".claude" / "settings.json", {"pc-dep@mp": True})
+    _write_registry(
+        user_claude,
+        {
+            "pc-dep@mp": [
+                {"scope": "user"},
+                {"scope": "project", "projectPath": str(repo)},
+            ]
+        },
+    )
+    _answers(monkeypatch, ["u"])  # keep pc-dep at user
+
+    apply_reconcile(ws)
+
+    # settings key gone from the repo, kept at user
+    assert "pc-dep@mp" not in _enabled_in(repo / ".claude" / "settings.json")
+    assert _enabled_in(user_claude / "settings.json") == {"pc-dep@mp": True}
+    # registry entry gone — the whole point of the card
+    reg = json.loads((user_claude / "plugins" / "installed_plugins.json").read_text())
+    assert reg["plugins"]["pc-dep@mp"] == [{"scope": "user"}]
+    # and rules.py no longer resolves the ghost dir
+    assert resolve_targets_for_plugin("pc-dep", ws) == [ws]
+    # removal went through `claude plugin uninstall --scope project`, cwd = the repo
+    assert (
+        ["claude", "plugin", "uninstall", "pc-dep@mp", "--scope", "project", "--yes"],
+        repo,
+    ) in sim.calls
 
 
 def test_apply_uninstall_refused_leaves_the_plugin_untouched(apply_world, monkeypatch):

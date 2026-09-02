@@ -234,6 +234,27 @@ def _pop_key(settings_file: Path, spec: str) -> bool:
     return True
 
 
+def _uninstall_at_scope(spec: str, scope: str, cwd: Path | None) -> None:
+    """`claude plugin uninstall <spec> --scope <scope>` — the CLI clears both the `enabledPlugins`
+    key and the `installed_plugins.json` entry at that scope, which `_pop_key` alone cannot."""
+    subprocess.run(
+        ["claude", "plugin", "uninstall", spec, "--scope", scope, "--yes"],
+        check=True,
+        cwd=str(cwd) if cwd else None,
+    )
+
+
+def _project_scopes_by_dir(state: PluginState) -> dict[Path, str]:
+    """`{resolved projectPath: scope}` for every non-user registry entry — a project/local
+    directory that has real installed files, not just a bare `@inline` settings key."""
+    by_dir: dict[Path, str] = {}
+    for scoped in state.installed_scopes:
+        scope, _, path = scoped.partition(":")
+        if path:
+            by_dir[Path(path).resolve()] = scope
+    return by_dir
+
+
 def _purge_other_enables(
     spec: str,
     state: PluginState,
@@ -241,16 +262,33 @@ def _purge_other_enables(
     *,
     keep: set[str],
 ) -> None:
-    """Remove every `enabledPlugins` key for `spec` whose directory is not in `keep` (absolute
-    paths). `keep` holds `str(Path.home())` for a user target, the chosen project dirs otherwise."""
+    """Remove every enable for `spec` whose directory is not in `keep`. `keep` holds
+    `str(Path.home())` for a user target, the chosen project dirs otherwise.
+
+    A directory that also has a registry entry (a real project/local install, e.g. one pulled in
+    as a dependency) is removed with `claude plugin uninstall --scope <scope>` so the
+    `installed_plugins.json` entry goes too — `setup/rules.py::resolve_targets_for_plugin` reads
+    that registry, so a lingering entry keeps shipping the plugin's rules to a ghost dir. A bare
+    `@inline` key (no registry entry) is popped straight out of its settings file.
+    """
+    keep_resolved = {Path(k).resolve() for k in keep}
+    scope_by_dir = _project_scopes_by_dir(state)
     for label in {*state.enabled_at, *state.disabled_at}:
         settings = label_map.get(label)
         if settings is None:
             continue
-        if str(settings.parent.parent) in keep:
+        target_dir = settings.parent.parent.resolve()
+        if target_dir in keep_resolved:
             continue
         if label == "user" and state.is_user_enabled:
             plugin_install.drop_user_scope(*_spec_parts(spec))
+        elif target_dir in scope_by_dir:
+            _uninstall_at_scope(spec, scope_by_dir[target_dir], target_dir)
+            state_file.record_posed(
+                f"enabledPlugins:{spec}@{settings}",
+                path=str(settings),
+                value="reconcile-removed",
+            )
         else:
             _pop_key(settings, spec)
 
@@ -263,11 +301,7 @@ def _uninstall_everywhere(
     the first loop is empty and it is popped straight out of its file."""
     for scoped in state.installed_scopes:
         scope, _, path = scoped.partition(":")
-        subprocess.run(
-            ["claude", "plugin", "uninstall", spec, "--scope", scope, "--yes"],
-            check=True,
-            cwd=path or None,
-        )
+        _uninstall_at_scope(spec, scope, Path(path) if path else None)
     for label in {*state.enabled_at, *state.disabled_at}:
         if label in label_map:
             _pop_key(label_map[label], spec)
