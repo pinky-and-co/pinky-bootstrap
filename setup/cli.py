@@ -103,8 +103,8 @@ def main(argv: list[str] | None = None) -> None:
         "--plugin",
         default=None,
         metavar="PLUGIN_ID",
-        help="enable this plugin — runs the interactive scope wizard (user/project, depth, "
-        "target) then merges enabledPlugins into the chosen <root>/.claude/settings.json",
+        help="enable this plugin — runs the interactive scope wizard (user/project, depth, one "
+        "or more targets) then enables it at each via `claude plugin install --scope project`",
     )
     parser.add_argument(
         "--marketplace",
@@ -190,19 +190,36 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.plugin is not None:
-        # 1. Fetch the plugin's files (and enable it at user scope) via Claude Code's own command.
+        # Was it already a legit global enable before we touch anything? Decides whether the
+        # fetch-time user-scope enable is ours to drop later.
+        was_user_enabled = plugin_install.is_user_enabled(args.plugin, args.marketplace)
+        # 1. Fetch the plugin's files (transient user-scope enable) via Claude Code's own command.
         plugin_install.install_plugin_files(args.plugin, args.marketplace)
         install_path = plugin_install.resolve_install_path(
             args.plugin, args.marketplace
         )
         # 2a. A plugin that ships a status line: `statusLine` has no plugin-manifest slot, so wire
-        #     it (user scope — a cross-session UI preference, ADR-0001). No depth question to ask.
+        #     it (user scope — a cross-session UI preference, ADR-0001). The user-scope enable
+        #     from step 1 is correct here, so it stays. No depth question to ask.
         written = plugin_install.set_status_lines(install_path)
         if written:
             print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
             return
-        # 2b. Any other plugin: the wizard places `enabledPlugins` at the chosen workspace depth.
-        run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
+        # 2b. Any other plugin: the wizard enables it at the chosen targets (one or several) via
+        #     `claude plugin install --scope project`. We own the user-scope lifecycle: drop the
+        #     fetch-time enable once real targets are placed — or on any wizard refusal — but
+        #     never when it was a legitimate global enable to begin with.
+        try:
+            roots = run_marketplace_wizard(
+                WORKSPACE_ROOT, args.plugin, args.marketplace
+            )
+        except SystemExit:
+            if not was_user_enabled:
+                plugin_install.drop_user_scope(args.plugin, args.marketplace)
+            raise
+        if roots != [Path.home()] and not was_user_enabled:
+            plugin_install.drop_user_scope(args.plugin, args.marketplace)
+        print(f"enabled at: {', '.join(str(r) for r in roots)}")
         return
 
     if args.output_style is not None:

@@ -1,22 +1,28 @@
-"""setup/plugin_scope.py — where a plugin/marketplace gets enabled.
+"""setup/plugin_scope.py — which directories a plugin gets enabled at.
 
-`enabledPlugins` resolves per git repo root, not always user-level (ADR-0001, corrigé 2026-08-21) —
+`enabledPlugins` resolves per directory, not always user-level (ADR-0001, corrigé 2026-08-21) —
 `.claude/settings.json` at a directory applies to any session started under it, crossing nested
-`.git` boundaries on the way down (not just within one repo). A plugin can therefore be enabled at
-the workspace root, at a group directory (`pinky-lib/` — not itself a git repo, several repos
-nested under it), or at one specific repo — same merge logic at every level.
+`.git` boundaries on the way down. A plugin can therefore be enabled at the workspace root, at a
+group directory (`pinky-lib/` — not itself a git repo, several repos nested under it), or at one
+specific repo, or several of these at once.
 
-`enable_plugin`'s `root` is `Path.home()` for user scope, or any project/group/repo directory for
-project scope — the merge target is always `<root>/.claude/settings.json`.
+The wizard picks those targets; the enable itself is `claude plugin install --scope project` run
+from each target (`plugin_install.enable_at_project`), never a hand-rolled `enabledPlugins` merge —
+Claude Code's own command writes `<target>/.claude/settings.json` and the registry entry together
+(measured 2026-09-02). User scope is the other branch: the plugin the user keeps global stays where
+`install_plugin_files` already enabled it.
+
+The wizard only *picks and enables targets*; the user-scope lifecycle (dropping the fetch-time
+transient enable) is the caller's — it captured `is_user_enabled` before the fetch and knows
+whether that is safe, and it must also undo on a wizard `SystemExit`, which this function cannot.
 """
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
-from . import state_file
+from . import plugin_install
 
 _DEPTH_LABELS = {
     0: "workspace root",
@@ -55,40 +61,31 @@ def list_targets_at_depth(workspace_root: Path, depth: int) -> list[Path]:
     raise ValueError(f"depth {depth} not supported (0-2)")
 
 
-def _settings_path(root: Path) -> Path:
-    return root / ".claude" / "settings.json"
-
-
-def enable_plugin(root: Path, plugin_id: str, marketplace: str | None = None) -> None:
-    """Merge `enabledPlugins[key] = True` into `<root>/.claude/settings.json`.
-
-    Never overwrites the file — reads what's there (if anything) and merges only this one key,
-    same discipline as the rest of this repo's settings.json writers. Records the write in the
-    installer's ledger (`setup.state_file`).
-    """
-    key = f"{plugin_id}@{marketplace}" if marketplace else plugin_id
-    settings_path = _settings_path(root)
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    data = (
-        json.loads(settings_path.read_text(encoding="utf-8"))
-        if settings_path.is_file()
-        else {}
-    )
-    enabled = data.setdefault("enabledPlugins", {})
-    enabled[key] = True
-    settings_path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    state_file.record_posed(
-        f"enabledPlugins:{key}@{root}", path=str(settings_path), value="true"
-    )
+def _parse_indices(answer: str, count: int) -> list[int]:
+    """Space- or comma-separated 0-based indices, each within [0, count). Raises on anything else
+    so the wizard errors rather than enabling a plugin at a target the user did not name."""
+    tokens = answer.replace(",", " ").split()
+    if not tokens:
+        raise ValueError("no target picked")
+    picked = []
+    for tok in tokens:
+        idx = int(tok)  # ValueError propagates — same discipline as the depth answer
+        if not 0 <= idx < count:
+            raise ValueError(f"index {idx} out of range 0-{count - 1}")
+        picked.append(idx)
+    return picked
 
 
 def run_marketplace_wizard(
     workspace_root: Path, plugin_id: str, marketplace: str | None = None
-) -> Path:
+) -> list[Path]:
     """Interactive scope picker: Q1 (user/project) -> Q2 (depth, project only) -> Q3 (which
-    target at that depth) -> `enable_plugin()`. Returns the root it enabled the plugin at.
+    targets at that depth — one or several) -> enable the plugin at each. Returns the roots it
+    enabled the plugin at.
+
+    User scope: the plugin is already enabled there by `install_plugin_files` — nothing to do but
+    report it (`[Path.home()]`). Project scope: `plugin_install.enable_at_project` per target;
+    the caller then drops the fetch-time user-scope enable if it was not there before.
 
     Never guesses in a non-interactive shell (no tty) — errors instead, same discipline as the
     `--rules` confirmation flow in `setup/cli.py`.
@@ -102,31 +99,39 @@ def run_marketplace_wizard(
 
     scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
     if scope == "u":
-        root = Path.home()
-    elif scope == "p":
-        depth_prompt = " / ".join(f"{d}={label}" for d, label in _DEPTH_LABELS.items())
-        depth_answer = input(f"Depth — {depth_prompt}: ").strip()
-        try:
-            depth = int(depth_answer)
-        except ValueError:
-            print(f"Unknown depth: {depth_answer!r}", file=sys.stderr)
-            raise SystemExit(1) from None
-        targets = list_targets_at_depth(workspace_root, depth)
-        if not targets:
-            print(f"No target found at depth {depth}.", file=sys.stderr)
-            raise SystemExit(1)
-        for i, target in enumerate(targets):
-            print(f"  {i}) {target.name}")
-        choice = input("Pick a target (index): ").strip()
-        try:
-            root = targets[int(choice)]
-        except (ValueError, IndexError):
-            print(f"Invalid choice: {choice!r}", file=sys.stderr)
-            raise SystemExit(1) from None
-    else:
+        # déjà activé au scope user par install_plugin_files — rien à réécrire.
+        return [Path.home()]
+    if scope != "p":
         print(f"Unknown scope: {scope!r}", file=sys.stderr)
         raise SystemExit(1)
 
-    enable_plugin(root, plugin_id, marketplace)
-    print(f"Enabled {plugin_id} at {root}")
-    return root
+    depth_prompt = " / ".join(f"{d}={label}" for d, label in _DEPTH_LABELS.items())
+    depth_answer = input(f"Depth — {depth_prompt}: ").strip()
+    try:
+        depth = int(depth_answer)
+    except ValueError:
+        print(f"Unknown depth: {depth_answer!r}", file=sys.stderr)
+        raise SystemExit(1) from None
+    try:
+        targets = list_targets_at_depth(workspace_root, depth)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1) from None
+    if not targets:
+        print(f"No target found at depth {depth}.", file=sys.stderr)
+        raise SystemExit(1)
+
+    for i, target in enumerate(targets):
+        print(f"  {i}) {target.name}")
+    choice = input("Pick one or more targets (indices, space-separated): ").strip()
+    try:
+        picked = _parse_indices(choice, len(targets))
+    except ValueError as exc:
+        print(f"Invalid choice: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+    roots = [targets[i] for i in picked]
+    for root in roots:
+        plugin_install.enable_at_project(plugin_id, root, marketplace)
+        print(f"Enabled {plugin_id} at {root}")
+    return roots

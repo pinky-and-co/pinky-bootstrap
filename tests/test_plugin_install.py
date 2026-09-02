@@ -105,6 +105,111 @@ def test_install_plugin_files_propagates_an_install_failure(monkeypatch):
         plugin_install.install_plugin_files("pc-statusline", "mp")
 
 
+# --- is_user_enabled -------------------------------------------------------------------
+
+
+def test_is_user_enabled_true_when_the_key_is_set(home):
+    (home / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"pc-snow@mp": True}}), encoding="utf-8"
+    )
+    assert plugin_install.is_user_enabled("pc-snow", "mp") is True
+
+
+def test_is_user_enabled_false_when_absent_or_no_settings_file(home):
+    assert plugin_install.is_user_enabled("pc-snow", "mp") is False  # no file at all
+    (home / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"other@mp": True}}), encoding="utf-8"
+    )
+    assert plugin_install.is_user_enabled("pc-snow", "mp") is False
+
+
+def test_is_user_enabled_false_when_the_value_is_literally_false(home):
+    (home / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"pc-snow@mp": False}}), encoding="utf-8"
+    )
+    assert plugin_install.is_user_enabled("pc-snow", "mp") is False
+
+
+# --- enable_at_project ------------------------------------------------------------------
+
+
+def test_enable_at_project_installs_from_the_target_dir(home, monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(
+        subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or None
+    )
+    target = tmp_path / "pinky-lib" / "pinky-core"
+    target.mkdir(parents=True)
+
+    plugin_install.enable_at_project("pc-snow", target, "pinky-agentic-plugins")
+
+    cmd, kw = calls[0]
+    assert cmd == [
+        "claude",
+        "plugin",
+        "install",
+        "pc-snow@pinky-agentic-plugins",
+        "--scope",
+        "project",
+        "--yes",
+    ]
+    assert kw["cwd"] == target
+    assert kw["check"] is True
+
+
+def test_enable_at_project_records_the_ledger_at_the_target(
+    home, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: None)
+    target = tmp_path / "pinky-core"
+    plugin_install.enable_at_project("pc-snow", target, "mp")
+
+    raw = json.loads((home / "ledger.json").read_text())
+    entry = raw[f"enabledPlugins:pc-snow@mp@{target}"]
+    assert entry["path"] == str(target / ".claude" / "settings.json")
+    assert entry["value"] == "true"
+
+
+def test_enable_at_project_without_marketplace_uses_bare_id(
+    home, monkeypatch, tmp_path
+):
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: calls.append(cmd) or None)
+    plugin_install.enable_at_project("pc-snow", tmp_path / "r")
+    assert calls[0][3] == "pc-snow"
+
+
+# --- drop_user_scope -------------------------------------------------------------------
+
+
+def test_drop_user_scope_uninstalls_the_user_entry(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or None
+    )
+    plugin_install.drop_user_scope("pc-snow", "mp")
+    cmd, kw = calls[0]
+    assert cmd == [
+        "claude",
+        "plugin",
+        "uninstall",
+        "pc-snow@mp",
+        "--scope",
+        "user",
+        "--yes",
+    ]
+    assert kw["check"] is True
+
+
+def test_drop_user_scope_propagates_a_failure(monkeypatch):
+    def run(cmd, **kw):
+        raise subprocess.CalledProcessError(1, cmd)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError):
+        plugin_install.drop_user_scope("pc-snow")
+
+
 # --- resolve_install_path ----------------------------------------------------------------
 
 
