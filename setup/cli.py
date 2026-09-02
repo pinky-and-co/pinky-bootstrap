@@ -140,6 +140,18 @@ def main(argv: list[str] | None = None) -> None:
         "pose it (default: refuse and leave it alone)",
     )
     parser.add_argument(
+        "--plugins-reconcile",
+        action="store_true",
+        help="audit where every known plugin is enabled / has files / ships a status line, "
+        "then write nothing (the `pinky plugins reconcile` report)",
+    )
+    parser.add_argument(
+        "--plugins-reconcile-apply",
+        action="store_true",
+        help="interactive: place each plugin (user / project / uninstall / skip) and purge "
+        "every enable that does not match (`pinky plugins reconcile --apply`)",
+    )
+    parser.add_argument(
         "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
     )
     parser.add_argument(
@@ -187,6 +199,17 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  service: {result.service}")
         if result.service != "loaded":
             print(f"  `pinky docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        return
+
+    if args.plugins_reconcile or args.plugins_reconcile_apply:
+        from . import plugin_reconcile
+
+        if args.plugins_reconcile_apply:
+            plugin_reconcile.apply_reconcile(WORKSPACE_ROOT)
+        else:
+            plugin_reconcile.print_audit_report(
+                plugin_reconcile.audit_plugins(WORKSPACE_ROOT)
+            )
         return
 
     if args.plugin is not None:

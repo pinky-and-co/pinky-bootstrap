@@ -67,6 +67,13 @@ def record_posed(key: str, path: str, value: str) -> None:
     _save_entries(entries)
 
 
+def posed_value(key: str) -> str | None:
+    """The value the installer last recorded for `key`, or None if it never posed one. Lets a
+    replayable command (`pinky plugins reconcile --apply`) read back its own prior decision."""
+    entry = _load_entries().get(key)
+    return entry.value if entry else None
+
+
 def status_of(key: str, current_reader: Callable[[], str | None]) -> EntryStatus:
     """Resolve one entry's status against the ledger.
 
