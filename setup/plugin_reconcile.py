@@ -53,13 +53,17 @@ class PluginState:
 
 def _scope_label(directory: Path, workspace_root: Path) -> str:
     """A short label for a settings.json location: ``.`` for the workspace root, otherwise the
-    path relative to it (``pinky-lib``, ``pinky-lib/pinky-core``)."""
+    path relative to it (``pinky-lib``, ``pinky-lib/pinky-core``).
+
+    Always ``/``-separated (``as_posix``) — the label is a stable identifier (audit output,
+    ledger decision keys), never an OS path, so it must not vary between POSIX and Windows.
+    """
     if directory == workspace_root:
         return "."
     try:
-        return str(directory.relative_to(workspace_root))
+        return directory.relative_to(workspace_root).as_posix()
     except ValueError:
-        return str(directory)
+        return directory.as_posix()
 
 
 def _settings_locations(workspace_root: Path) -> list[tuple[str, Path]]:
