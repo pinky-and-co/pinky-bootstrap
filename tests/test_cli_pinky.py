@@ -179,6 +179,18 @@ def test_drift_dispatch(monkeypatch):
     assert calls == [["--check-drift"]]
 
 
+def test_plugins_reconcile_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["plugins", "reconcile"])
+    assert calls == [["--plugins-reconcile"]]
+
+
+def test_plugins_reconcile_apply_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["plugins", "reconcile", "--apply"])
+    assert calls == [["--plugins-reconcile-apply"]]
+
+
 # `render`/`into`/`install` sub-commands (the dead CLAUDE.md render engine's CLI surface) were
 # removed 2026-08-17 along with `install_from_profile`/`install_into_repo`/`install_provider`.
 # `check-public` (the public-corpus leak guard's CLI surface) was removed with the profile/corpus

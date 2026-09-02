@@ -162,6 +162,11 @@ def cmd_docs(args: argparse.Namespace) -> None:
     setup_main([f"--live-docs-{args.action}"])
 
 
+def cmd_plugins(args: argparse.Namespace) -> None:
+    flag = f"--plugins-{args.action}"
+    setup_main([f"{flag}-apply"] if args.apply else [flag])
+
+
 def cmd_install(args: argparse.Namespace) -> None:
     """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
 
@@ -309,6 +314,23 @@ def build_parser() -> argparse.ArgumentParser:
         "uninstall: remove what `pinky install --live-docs` posed",
     )
     p.set_defaults(func=cmd_docs)
+
+    p = sub.add_parser(
+        "plugins",
+        help="🧩 audit / reconcile where each plugin is enabled across the workspace",
+    )
+    p.add_argument(
+        "action",
+        choices=["reconcile"],
+        help="reconcile: per-plugin audit of where it is enabled / has files / ships a "
+        "status line (writes nothing)",
+    )
+    p.add_argument(
+        "--apply",
+        action="store_true",
+        help="with reconcile: interactively place each plugin and purge non-matching enables",
+    )
+    p.set_defaults(func=cmd_plugins)
 
     p = sub.add_parser(
         "doctor",
