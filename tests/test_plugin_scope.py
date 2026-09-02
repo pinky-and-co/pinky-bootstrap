@@ -1,21 +1,24 @@
-"""`setup/plugin_scope.py` — where a plugin/marketplace gets enabled.
+"""`setup/plugin_scope.py` — which directories a plugin gets enabled at.
 
-`enabledPlugins` scopes by git-repo-root, not always user-level (ADR-0001, corrigé 2026-08-21) —
-a plugin can be enabled at the workspace root, at a group directory (`pinky-lib/`, not itself a
-git repo), or at one specific repo. Same merge logic at every level (`root/.claude/settings.json`),
-including the user-scope case (`root = Path.home()`).
+`enabledPlugins` scopes by directory, not always user-level (ADR-0001, corrigé 2026-08-21). The
+wizard picks the targets; the enable is `claude plugin install --scope project` run from each one.
+
+Boundary fake only: `subprocess.run` (the `claude` CLI) is replaced by `_ClaudeCliSim`, which
+reproduces the measured filesystem effect of `claude plugin install/uninstall` (2026-09-02) —
+`--scope user` writes `~/.claude/settings.json`, `--scope project` writes `<cwd>/.claude/
+settings.json`, `uninstall --scope user` removes the user key. `run_marketplace_wizard` stays real.
 """
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup.plugin_scope import (
-    enable_plugin,
-    list_targets_at_depth,
-    run_marketplace_wizard,
-)
+from setup import state_file
+from setup.plugin_scope import list_targets_at_depth, run_marketplace_wizard
 
 
 def _canned_input(monkeypatch, answers):
@@ -39,6 +42,68 @@ def _workspace(tmp_path: Path) -> Path:
     return root
 
 
+def _enabled(settings_json: Path) -> dict:
+    if not settings_json.is_file():
+        return {}
+    return json.loads(settings_json.read_text(encoding="utf-8")).get(
+        "enabledPlugins", {}
+    )
+
+
+class _ClaudeCliSim:
+    """Faithful stand-in for `claude plugin …` — reproduces the measured on-disk effect so a test
+    proves the whole chain, not a mock of it. Records every argv+cwd for oracle assertions."""
+
+    def __init__(self, fake_home: Path):
+        self.fake_home = fake_home
+        self.calls: list[tuple[list[str], Path | None]] = []
+
+    def __call__(self, cmd, **kw):
+        cwd = Path(kw["cwd"]) if kw.get("cwd") else None
+        self.calls.append((list(cmd), cwd))
+        if cmd[:3] == ["claude", "plugin", "install"]:
+            spec = cmd[3]
+            scope = cmd[cmd.index("--scope") + 1]
+            root = self.fake_home if scope == "user" else cwd
+            self._toggle(root / ".claude" / "settings.json", spec, on=True)
+        elif cmd[:3] == ["claude", "plugin", "uninstall"]:
+            spec = cmd[3]
+            scope = cmd[cmd.index("--scope") + 1]
+            root = self.fake_home if scope == "user" else cwd
+            self._toggle(root / ".claude" / "settings.json", spec, on=False)
+        # `claude plugin update` — no-op
+        return subprocess.CompletedProcess(cmd, 0)
+
+    @staticmethod
+    def _toggle(settings: Path, spec: str, *, on: bool) -> None:
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        data = (
+            json.loads(settings.read_text(encoding="utf-8"))
+            if settings.is_file()
+            else {}
+        )
+        enabled = data.setdefault("enabledPlugins", {})
+        if on:
+            enabled[spec] = True
+        else:
+            enabled.pop(spec, None)
+        settings.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+@pytest.fixture
+def sim(tmp_path, monkeypatch):
+    """`claude` CLI simulator + a fake home + a redirected ledger. `install_plugin_files` has
+    already run in these tests, so seed the transient user-scope enable it leaves behind."""
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    cli = _ClaudeCliSim(fake_home)
+    monkeypatch.setattr(subprocess, "run", cli)
+    return cli
+
+
 # ── list_targets_at_depth ───────────────────────────────────────────────────
 
 
@@ -55,118 +120,156 @@ def test_depth_1_lists_every_top_level_dir_repo_or_group(tmp_path):
 
 def test_depth_1_ignores_dotfile_directories(tmp_path):
     root = _workspace(tmp_path)
-    targets = list_targets_at_depth(root, depth=1)
-    assert ".hidden" not in {p.name for p in targets}
+    assert ".hidden" not in {p.name for p in list_targets_at_depth(root, depth=1)}
 
 
 def test_depth_2_lists_repos_nested_under_depth_1_groups_only(tmp_path):
     root = _workspace(tmp_path)
     targets = list_targets_at_depth(root, depth=2)
-    # bootstrap is itself a repo at depth 1 (no depth-2 descent into it); pinky-lib is a group.
+    # bootstrap is itself a repo at depth 1 (no depth-2 descent); pinky-lib is a group.
     assert {p.name for p in targets} == {"pinky-core", "pinky-snowpark"}
 
 
 def test_unsupported_depth_raises(tmp_path):
-    root = _workspace(tmp_path)
-    import pytest
-
     with pytest.raises(ValueError):
-        list_targets_at_depth(root, depth=3)
+        list_targets_at_depth(_workspace(tmp_path), depth=3)
 
 
-# ── enable_plugin ────────────────────────────────────────────────────────────
+# ── run_marketplace_wizard — project scope, one target ──────────────────────
 
 
-def test_enable_plugin_writes_settings_json_at_target(tmp_path):
-    target = tmp_path / "pinky-lib"
-    target.mkdir()
-    enable_plugin(target, "pc-statusline", marketplace="pinky-agentic-plugins")
-
-    settings_path = target / ".claude" / "settings.json"
-    data = json.loads(settings_path.read_text(encoding="utf-8"))
-    assert data["enabledPlugins"]["pc-statusline@pinky-agentic-plugins"] is True
-
-
-def test_enable_plugin_merges_never_overwrites_existing_settings(tmp_path):
-    target = tmp_path / "pinky-lib"
-    settings_path = target / ".claude"
-    settings_path.mkdir(parents=True)
-    (settings_path / "settings.json").write_text(
-        json.dumps(
-            {"someOtherKey": "keep-me", "enabledPlugins": {"already-here": True}}
-        ),
-        encoding="utf-8",
-    )
-
-    enable_plugin(target, "pc-statusline")
-
-    data = json.loads((settings_path / "settings.json").read_text(encoding="utf-8"))
-    assert data["someOtherKey"] == "keep-me"
-    assert data["enabledPlugins"]["already-here"] is True
-    assert data["enabledPlugins"]["pc-statusline"] is True
-
-
-def test_enable_plugin_user_scope_is_the_same_merge_at_home(tmp_path, monkeypatch):
-    import setup.plugin_scope as plugin_scope_module
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setattr(Path, "home", lambda: fake_home)
-
-    enable_plugin(plugin_scope_module.Path.home(), "pc-statusline")
-
-    data = json.loads(
-        (fake_home / ".claude" / "settings.json").read_text(encoding="utf-8")
-    )
-    assert data["enabledPlugins"]["pc-statusline"] is True
-
-
-# ── run_marketplace_wizard — Q1 (user/project) -> Q2 (depth) -> Q3 (target) ──
-
-
-def test_wizard_user_scope_skips_depth_and_target_questions(tmp_path, monkeypatch):
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    monkeypatch.setattr(Path, "home", lambda: fake_home)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    _canned_input(monkeypatch, ["u"])  # only Q1 — no depth/target prompt for user scope
-
-    root = run_marketplace_wizard(tmp_path / "workspace", "pc-statusline")
-
-    assert root == fake_home
-    data = json.loads(
-        (fake_home / ".claude" / "settings.json").read_text(encoding="utf-8")
-    )
-    assert data["enabledPlugins"]["pc-statusline"] is True
-
-
-def test_wizard_project_scope_depth_1_picks_a_group(tmp_path, monkeypatch):
+def test_wizard_project_scope_enables_at_the_single_picked_target(
+    sim, tmp_path, monkeypatch
+):
     root_ws = _workspace(tmp_path)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # Q1: project, Q2: depth 1, Q3: pick index of "pinky-lib" among sorted(["bootstrap", "pinky-lib"])
-    _canned_input(monkeypatch, ["p", "1", "1"])
+    _canned_input(
+        monkeypatch, ["p", "1", "0"]
+    )  # project, depth 1, index 0 == "bootstrap"
 
-    chosen = run_marketplace_wizard(root_ws, "pc-statusline")
+    roots = run_marketplace_wizard(root_ws, "pc-snow")
 
-    assert chosen == root_ws / "pinky-lib"
-    data = json.loads(
-        (chosen / ".claude" / "settings.json").read_text(encoding="utf-8")
-    )
-    assert data["enabledPlugins"]["pc-statusline"] is True
+    assert roots == [root_ws / "bootstrap"]
+    assert _enabled(root_ws / "bootstrap" / ".claude" / "settings.json") == {
+        "pc-snow": True
+    }
+    # the wizard picks and enables targets only — it never touches user scope (caller's job)
+    assert not any("user" in c for c, _ in sim.calls)
+
+
+def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeypatch):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "2", "0"])  # depth 2, index 0 == "pinky-core"
+
+    run_marketplace_wizard(root_ws, "pc-snow", "pinky-agentic-plugins")
+
+    assert _enabled(
+        root_ws / "pinky-lib" / "pinky-core" / ".claude" / "settings.json"
+    ) == {"pc-snow@pinky-agentic-plugins": True}
+    assert not (
+        root_ws / "pinky-lib" / "pinky-snowpark" / ".claude" / "settings.json"
+    ).exists()
+
+
+# ── run_marketplace_wizard — project scope, several targets ─────────────────
+
+
+def test_wizard_project_scope_multi_target_enables_at_each(sim, tmp_path, monkeypatch):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "2", "0 1"])  # both nested repos
+
+    roots = run_marketplace_wizard(root_ws, "pc-snow", "mp")
+
+    assert {r.name for r in roots} == {"pinky-core", "pinky-snowpark"}
+    for name in ("pinky-core", "pinky-snowpark"):
+        assert _enabled(root_ws / "pinky-lib" / name / ".claude" / "settings.json") == {
+            "pc-snow@mp": True
+        }
+
+
+def test_wizard_multi_target_accepts_comma_separated_indices(
+    sim, tmp_path, monkeypatch
+):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "1", "0,1"])
+
+    roots = run_marketplace_wizard(root_ws, "pc-snow")
+
+    assert {r.name for r in roots} == {"bootstrap", "pinky-lib"}
+
+
+# ── run_marketplace_wizard — the exact `claude` calls (oracle) ──────────────
+
+
+def test_wizard_project_scope_call_sequence_is_pinned(sim, tmp_path, monkeypatch):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "2", "0 1"])
+
+    run_marketplace_wizard(root_ws, "pc-snow", "mp")
+
+    core = root_ws / "pinky-lib" / "pinky-core"
+    snow = root_ws / "pinky-lib" / "pinky-snowpark"
+    # one `--scope project` install per picked target, run from that target — and nothing else.
+    assert sim.calls == [
+        (
+            [
+                "claude",
+                "plugin",
+                "install",
+                "pc-snow@mp",
+                "--scope",
+                "project",
+                "--yes",
+            ],
+            core,
+        ),
+        (
+            [
+                "claude",
+                "plugin",
+                "install",
+                "pc-snow@mp",
+                "--scope",
+                "project",
+                "--yes",
+            ],
+            snow,
+        ),
+    ]
+
+
+def test_wizard_user_scope_issues_no_claude_call_at_all(sim, tmp_path, monkeypatch):
+    _canned_input(monkeypatch, ["u"])
+    roots = run_marketplace_wizard(_workspace(tmp_path), "pc-statusline")
+    assert roots == [tmp_path / "home"]
+    assert (
+        sim.calls == []
+    )  # the fetch already enabled it at user scope — nothing to redo
+
+
+# ── run_marketplace_wizard — refusals ──────────────────────────────────────
 
 
 def test_wizard_non_interactive_shell_errors_instead_of_guessing(monkeypatch, tmp_path):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    import pytest
-
     with pytest.raises(SystemExit):
         run_marketplace_wizard(tmp_path, "pc-statusline")
 
 
-def test_wizard_unknown_scope_answer_errors(tmp_path, monkeypatch):
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+def test_wizard_unknown_scope_answer_errors(sim, tmp_path, monkeypatch):
     _canned_input(monkeypatch, ["nonsense"])
-    import pytest
-
     with pytest.raises(SystemExit):
         run_marketplace_wizard(tmp_path, "pc-statusline")
+
+
+def test_wizard_out_of_range_target_index_errors(sim, tmp_path, monkeypatch):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "1", "9"])
+    with pytest.raises(SystemExit):
+        run_marketplace_wizard(root_ws, "pc-snow")
+
+
+def test_wizard_empty_target_pick_errors(sim, tmp_path, monkeypatch):
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "1", "  "])
+    with pytest.raises(SystemExit):
+        run_marketplace_wizard(root_ws, "pc-snow")

@@ -60,10 +60,11 @@ tests/_local/
 *.anon.csv
 *.anon.json
 *.anon.parquet
-# Arbre généré par le moteur — jamais versionné, SAUF policies.json qui est une
-# déclaration du repo (branch_workflow, languages) lue par les hooks et les skills.
-.claude/*
-!.claude/policies.json
+# .claude/ : settings.json (plugins activés = propriété du repo, écrit par `claude plugin
+# install --scope project`) et settings.pinky.json (déclaration du repo lue par hooks/skills)
+# sont versionnés ; settings.local.json est machine-local, worktrees/ est généré.
+.claude/settings.local.json
+.claude/worktrees/
 # live-docs/ ne versionne que les 3 fichiers d'outillage (hooks.py, mkdocs.yml,
 # stylesheets/board.css) — test_bundled_source_carries_only_tooling en est le garde-fou. Les
 # montages de boards vivent sous ~/.local/share/pinky/live-docs/docs/, jamais ici ; ceci couvre

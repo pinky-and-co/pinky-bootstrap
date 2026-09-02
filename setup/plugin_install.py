@@ -1,15 +1,27 @@
-"""setup/plugin_install.py — fetch a plugin's files, then wire what a plugin manifest can't carry.
+"""setup/plugin_install.py — fetch a plugin's files, then place its enablement where it belongs.
 
-`claude plugin install` (Claude Code's own command) fetches a plugin into
-`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` and enables it. One thing it does not
-do that this workspace needs: the main-session `statusLine` key is not readable from a plugin's
-bundled `settings.json` — Claude Code reads only `agent` and `subagentStatusLine` there (verified
-2026-08-28) — so a plugin that ships a status line still needs an explicit `statusLine` entry
-pointing at its installed script.
+`claude plugin install --scope <s>` (Claude Code's own command) both fetches a plugin into
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` and enables it — there is no fetch-only
+mode. Where the enablement lands is `--scope` × cwd (measured 2026-09-02):
 
-That entry is an absolute path with the plugin version in it, so `set_status_lines` re-resolves it
-from the install registry (never a guessed path) on every `pinky install` run — the
-replayable-converger model. Re-run after `claude plugin update <plugin>`.
+- `--scope user` → `~/.claude/settings.json` `enabledPlugins`.
+- `--scope project` run from dir X → `X/.claude/settings.json` `enabledPlugins`, plus a registry
+  entry `{scope: project, projectPath: X}`. Repeated from other dirs, the entries accumulate; the
+  files are fetched once and shared across scopes.
+
+So a plugin useful only in some repos (`pc-snow` on data repos, not everywhere) is enabled by
+running `claude plugin install --scope project` from each of those dirs — not by a hand-rolled
+`enabledPlugins` merge. `install_plugin_files` still fetches at user scope first so the caller can
+inspect the plugin (does it ship a status line?); `drop_user_scope` removes that transient user
+entry once the real project targets are enabled.
+
+One thing `claude plugin install` does not do that this workspace needs: the main-session
+`statusLine` key is not readable from a plugin's bundled `settings.json` — Claude Code reads only
+`agent` and `subagentStatusLine` there (verified 2026-08-28) — so a plugin that ships a status line
+still needs an explicit `statusLine` entry pointing at its installed script. That entry is an
+absolute path with the plugin version in it, so `set_status_lines` re-resolves it from the install
+registry (never a guessed path) on every `pinky install` run — the replayable-converger model.
+Re-run after `claude plugin update <plugin>`.
 """
 
 from __future__ import annotations
@@ -24,20 +36,82 @@ _REGISTRY = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
+def _spec(plugin_id: str, marketplace: str | None) -> str:
+    return f"{plugin_id}@{marketplace}" if marketplace else plugin_id
+
+
+def is_user_enabled(plugin_id: str, marketplace: str | None = None) -> bool:
+    """Is the plugin already `true` in `~/.claude/settings.json` `enabledPlugins` before we touch
+    anything? The caller captures this before `install_plugin_files` so it can tell a
+    fetch-time transient enable (safe to drop) from a legitimate global one (must not touch)."""
+    if not _USER_SETTINGS.is_file():
+        return False
+    enabled = json.loads(_USER_SETTINGS.read_text(encoding="utf-8")).get(
+        "enabledPlugins", {}
+    )
+    return enabled.get(_spec(plugin_id, marketplace)) is True
+
+
 def install_plugin_files(plugin_id: str, marketplace: str | None = None) -> None:
     """Shell out to `claude plugin install` — fetch + enable at user scope — then `update`, so a
     re-run picks up a changed plugin (both are `restart required to apply`, like the rest of D2).
+
+    The user-scope enable is transient for any plugin that ends up project-scoped: it exists so
+    the caller can `resolve_install_path` + inspect the fetched files, and `drop_user_scope`
+    removes it afterwards. For a plugin the user keeps at user scope (a status line, a global
+    preference) it stays.
 
     `check=True` on install: a failure there must stop the flow, never leave the caller wiring
     settings for a plugin whose files never landed. `update` is best-effort (it errors when the
     plugin is brand-new and already current).
     """
-    spec = f"{plugin_id}@{marketplace}" if marketplace else plugin_id
+    spec = _spec(plugin_id, marketplace)
     subprocess.run(
         ["claude", "plugin", "install", spec, "--scope", "user", "--yes"],
         check=True,
     )
     subprocess.run(["claude", "plugin", "update", spec], check=False)
+
+
+def enable_at_project(
+    plugin_id: str, target: Path, marketplace: str | None = None
+) -> None:
+    """Enable the plugin at exactly `target` — `claude plugin install --scope project` run with
+    `cwd=target`, so `enabledPlugins` lands in `target/.claude/settings.json` and nowhere else.
+
+    The plugin's files are already cached from `install_plugin_files`; this call adds a
+    `{scope: project, projectPath: target}` registry entry and the settings write. Records the
+    write in the installer's ledger (`setup.state_file`), same key shape the old hand-rolled
+    merge used.
+    """
+    spec = _spec(plugin_id, marketplace)
+    subprocess.run(
+        ["claude", "plugin", "install", spec, "--scope", "project", "--yes"],
+        check=True,
+        cwd=target,
+    )
+    state_file.record_posed(
+        f"enabledPlugins:{spec}@{target}",
+        path=str(target / ".claude" / "settings.json"),
+        value="true",
+    )
+
+
+def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
+    """Uninstall the plugin at user scope — `claude plugin uninstall --scope user` removes the
+    user `enabledPlugins` key and the user registry entry; the cached files stay because any
+    project entries reference the same `installPath` (measured 2026-09-02).
+
+    Dumb primitive: it always uninstalls. The caller decides whether that is safe — it drops the
+    entry only when it captured `is_user_enabled() is False` before the fetch, so a legitimate
+    pre-existing global enablement is never stripped. `check=True` — a plugin left enabled at
+    user scope *and* at a project target is the parasitic global activation this flow avoids.
+    """
+    spec = _spec(plugin_id, marketplace)
+    subprocess.run(
+        ["claude", "plugin", "uninstall", spec, "--scope", "user", "--yes"],
+        check=True,
+    )
 
 
 def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path:

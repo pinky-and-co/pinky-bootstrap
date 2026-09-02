@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-08-28 13:18*
+*Update date : 2026-09-02 10:05*
 
 ```bash
 pinky install --plugin <plugin-id> --marketplace <marketplace>
@@ -8,8 +8,10 @@ pinky install --plugin <plugin-id> --marketplace <marketplace>
 One command. It:
 
 1. **Fetches the plugin's files** — shells out to `claude plugin install <plugin-id>@<marketplace>
-   --scope user --yes` (then `claude plugin update`, so a re-run picks up a changed plugin). This
-   also enables the plugin at user scope.
+   --scope user --yes` (then `claude plugin update`, so a re-run picks up a changed plugin). There
+   is no fetch-only mode, so this also enables the plugin at user scope — **transiently**: for a
+   plugin that ends up project-scoped, step 2 drops that user enable once the real targets are
+   placed. It stays only for a plugin you keep at user scope (a status line).
 
 2. **Then, one of two things:**
    - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes
@@ -17,16 +19,18 @@ One command. It:
      scripts (resolved from `~/.claude/plugins/installed_plugins.json`, never a guessed path). The
      main-session `statusLine` key has no plugin-manifest slot — only `agent` and
      `subagentStatusLine` are read from a plugin's bundled `settings.json` — so `pinky` wires it
-     explicitly. User scope: a status line is a cross-session preference (ADR-0001). Re-run after
-     `claude plugin update` — the path carries the plugin version.
-   - **Any other plugin** → an interactive wizard places `enabledPlugins["<id>@<marketplace>"] =
-     true` at a chosen workspace depth (root / a group like `pinky-lib/` / a repo nested under a
-     group), because Claude Code's own `--scope` only knows user/project/local, not this
-     workspace's hierarchy. Merged into `<target>/.claude/settings.json`, that one key only.
-
-     > **Known overlap** (chantier 0023, à reconcilier) : step 1's `--scope user` already enables
-     > the plugin at user level, so the wizard's narrower placement is additive, not exclusive. The
-     > wizard needs a rework to fetch-without-enabling for the depth case.
+     explicitly. User scope: a status line is a cross-session preference (ADR-0001), so the step-1
+     enable is correct and stays. Re-run after `claude plugin update` — the path carries the
+     plugin version.
+   - **Any other plugin** → an interactive wizard asks **user or project**, then (project) a depth
+     (root / a group like `pinky-lib/` / a repo nested under a group) and **one or more targets**
+     at that depth. Each target gets `claude plugin install --scope project` run from its own
+     directory — Claude Code's own command writes `<target>/.claude/settings.json` `enabledPlugins`
+     and a `{scope: project, projectPath: <target>}` registry entry (measured 2026-09-02); `pinky`
+     no longer hand-merges the key. `pinky` then drops the transient user-scope enable from step 1
+     — unless the plugin was already a legitimate global enable before the command ran, in which
+     case it is left alone. A wizard refusal (bad answer, no tty) undoes the step-1 enable the same
+     way.
 
 ## During plugin development — local marketplace instead of GitHub
 
