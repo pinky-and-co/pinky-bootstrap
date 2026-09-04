@@ -32,6 +32,18 @@ def _plugin(root: Path, name: str, *, skills: dict[str, str]) -> Path:
     return plugin_dir
 
 
+def _lsp_plugin(root: Path, name: str, *, command: str) -> Path:
+    """A fake installed-plugin dir shipping a `.lsp.json` — the `.lsp.json`-derived counterpart of
+    `_plugin` (`allowed-tools`-derived)."""
+    plugin_dir = root / name
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / ".lsp.json").write_text(
+        json.dumps({"python": {"command": command, "args": ["--stdio"]}}),
+        encoding="utf-8",
+    )
+    return plugin_dir
+
+
 def _registry(path: Path, dirs: list[Path]) -> None:
     path.write_text(
         json.dumps(
@@ -116,6 +128,47 @@ def test_check_binaries_maps_known_brew_formula(tmp_path, monkeypatch):
 
     assert check.name == "rg"
     assert "brew install ripgrep" in check.detail
+
+
+def test_required_lsp_binaries_lists_the_command_and_attributes_it(tmp_path):
+    a = _lsp_plugin(tmp_path, "pyright-fork", command="pyright-langserver")
+    reqs = doctor.required_lsp_binaries([("pyright-fork", a)])
+    assert reqs == {"pyright-langserver": ["pyright-fork"]}
+
+
+def test_check_binaries_merges_allowed_tools_and_lsp_sources(tmp_path, monkeypatch):
+    plugin = _plugin(tmp_path, "pc-alpha", skills={"one": "Bash(rg:*)"})
+    lsp_plugin = _lsp_plugin(tmp_path, "pyright-fork", command="pyright-langserver")
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+
+    checks = {
+        c.name: c
+        for c in doctor.check_binaries(
+            [("pc-alpha", plugin), ("pyright-fork", lsp_plugin)]
+        )
+    }
+
+    assert set(checks) == {"rg", "pyright-langserver"}
+    assert checks["pyright-langserver"].detail == (
+        "npm install -g pyright (requis par : pyright-fork)"
+    )
+
+
+def test_check_binaries_a_binary_required_by_both_sources_lists_both_plugins(
+    tmp_path, monkeypatch
+):
+    allowed_tools_side = _plugin(
+        tmp_path, "pc-alpha", skills={"one": "Bash(pyright-langserver:*)"}
+    )
+    lsp_side = _lsp_plugin(tmp_path, "pyright-fork", command="pyright-langserver")
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: "/usr/bin/x")
+
+    (check,) = doctor.check_binaries(
+        [("pc-alpha", allowed_tools_side), ("pyright-fork", lsp_side)]
+    )
+
+    assert check.name == "pyright-langserver"
+    assert "pc-alpha" in check.detail and "pyright-fork" in check.detail
 
 
 def test_installed_plugins_names_from_key_skips_a_missing_path(tmp_path):
@@ -379,6 +432,56 @@ def test_apply_fixes_no_brew_runs_nothing(monkeypatch, capsys):
     assert calls == []
     assert installed == []
     assert "brew` absent" in capsys.readouterr().out
+
+
+def test_apply_fixes_npm_installs_a_missing_lsp_binary(monkeypatch):
+    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    calls: list[list[str]] = []
+
+    installed = doctor.apply_fixes(
+        [
+            doctor.Check(
+                "binary",
+                "pyright-langserver",
+                False,
+                "npm install -g pyright (requis par : pyright-fork)",
+            )
+        ],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == [["npm", "install", "-g", "pyright"]]
+    assert installed == ["pyright"]
+
+
+def test_apply_fixes_partitions_per_tool_brew_runs_npm_skips(monkeypatch):
+    """Only `brew` is on PATH — the brew-fixable check still runs, the npm one degrades to a
+    manual instruction instead of blocking the whole batch (FR-0024-18, extended: the fixes no
+    longer share one package manager)."""
+    monkeypatch.setattr(
+        doctor.shutil,
+        "which",
+        lambda name: "/opt/homebrew/bin/brew" if name == "brew" else None,
+    )
+    calls: list[list[str]] = []
+
+    installed = doctor.apply_fixes(
+        [
+            doctor.Check("binary", "rg", False, "brew install ripgrep"),
+            doctor.Check(
+                "binary",
+                "pyright-langserver",
+                False,
+                "npm install -g pyright (requis par : pyright-fork)",
+            ),
+        ],
+        runner=calls.append,
+        confirm=lambda prompt: True,
+    )
+
+    assert calls == [["brew", "install", "ripgrep"]]
+    assert installed == ["ripgrep"]
 
 
 def test_apply_fixes_declined_prompt_skips(monkeypatch):

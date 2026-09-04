@@ -23,12 +23,14 @@ import json
 import os
 import re
 import shutil
-import subprocess  # nosec B404 — `brew`/`security`, fixed argv, never shell=True
+import subprocess  # nosec B404 — `brew`/`npm`/`security`, fixed argv, never shell=True
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+
+from . import plugin_install
 
 _CLAUDE_DIR = Path.home() / ".claude"
 INSTALLED_PLUGINS_PATH = _CLAUDE_DIR / "plugins" / "installed_plugins.json"
@@ -76,6 +78,14 @@ AMBIENT_BINARIES = frozenset(
 # own name (`brew install <name>`), which errors visibly when there is no such formula — the
 # user's signal to install it another way.
 _BREW_FORMULA = {"rg": "ripgrep"}
+
+# Binary name → full install command, for the (so far rare) case where `brew install <name>` is
+# not the remedy — a language-server binary declared in a plugin's `.lsp.json` ships through its
+# own ecosystem's package manager. `pyright-langserver` is npm's `pyright` package, not a brew
+# formula (measured 2026-09-04, migration to `pyright@claude-code-lsps` — ADR-0007).
+_INSTALL_COMMAND: dict[str, list[str]] = {
+    "pyright-langserver": ["npm", "install", "-g", "pyright"],
+}
 
 _BIN_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -192,22 +202,51 @@ def required_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list[str
     return {b: sorted(names) for b, names in sorted(by_binary.items())}
 
 
+def required_lsp_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list[str]]:
+    """Non-ambient binary → sorted names of the plugins whose `.lsp.json` declares it.
+
+    A separate source from `required_binaries` (`allowed-tools`-derived) — an `.lsp.json`'s
+    `command` is not frontmatter, `plugin_install.lsp_server_commands` reads it directly. Merged
+    with the other source in `check_binaries`, so a binary needed by both lists every plugin.
+    """
+    by_binary: dict[str, set[str]] = {}
+    for name, plugin_dir in plugins:
+        for binary in plugin_install.lsp_server_commands(plugin_dir) - AMBIENT_BINARIES:
+            by_binary.setdefault(binary, set()).add(name)
+    return {b: sorted(names) for b, names in sorted(by_binary.items())}
+
+
+def _install_hint(binary: str) -> str:
+    """The human-readable install instruction for `binary` — `_INSTALL_COMMAND` when its remedy
+    is not brew, else `brew install <formula>` (the long-standing default)."""
+    if binary in _INSTALL_COMMAND:
+        return " ".join(_INSTALL_COMMAND[binary])
+    return f"brew install {_BREW_FORMULA.get(binary, binary)}"
+
+
 def check_binaries(
     plugins: Iterable[tuple[str, Path]] | None = None,
 ) -> list[Check]:
-    """One Check per required binary — ``ok`` when ``shutil.which`` finds it."""
+    """One Check per required binary — ``ok`` when ``shutil.which`` finds it. Merges the
+    `allowed-tools`-derived set with the `.lsp.json`-derived one (`required_lsp_binaries`)."""
     if plugins is None:
         plugins = installed_plugins()
+    plugins = list(plugins)
+    by_binary: dict[str, set[str]] = {}
+    for binary, names in required_binaries(plugins).items():
+        by_binary.setdefault(binary, set()).update(names)
+    for binary, names in required_lsp_binaries(plugins).items():
+        by_binary.setdefault(binary, set()).update(names)
     checks: list[Check] = []
-    for binary, needed_by in required_binaries(plugins).items():
+    for binary in sorted(by_binary):
+        needed_by = sorted(by_binary[binary])
         ok = shutil.which(binary) is not None
         by = ", ".join(needed_by)
-        if ok:
-            detail = f"requis par : {by}"
-        else:
-            detail = (
-                f"brew install {_BREW_FORMULA.get(binary, binary)} (requis par : {by})"
-            )
+        detail = (
+            f"requis par : {by}"
+            if ok
+            else f"{_install_hint(binary)} (requis par : {by})"
+        )
         checks.append(Check("binary", binary, ok, detail))
     return checks
 
@@ -364,13 +403,24 @@ def format_report(checks: list[Check]) -> str:
     return "\n".join(lines)
 
 
-def _fix_formula(check: Check) -> str | None:
-    """The `brew` formula that would satisfy `check`, or None when brew is not the remedy
-    (an API key, an un-pulled Ollama model — FR-0024-18)."""
+def _fix_command(check: Check) -> tuple[list[str], str] | None:
+    """The command that would satisfy `check`, paired with the label for the "installé" summary —
+    or None when nothing here is the remedy (an API key, an un-pulled Ollama model — FR-0024-18).
+
+    A binary's command comes from `_INSTALL_COMMAND` when it is declared there (a non-brew
+    remedy — an `.lsp.json` binary via npm, so far), else the long-standing `brew install
+    <formula>` default. Both package managers are handled the same way from here on: `apply_fixes`
+    checks each command's own tool is on PATH, never a blanket `brew`-only gate (FR-0024-18,
+    extended — the fixes no longer share one tool).
+    """
     if check.category == "binary":
-        return _BREW_FORMULA.get(check.name, check.name)
+        if check.name in _INSTALL_COMMAND:
+            command = _INSTALL_COMMAND[check.name]
+            return command, command[-1]
+        formula = _BREW_FORMULA.get(check.name, check.name)
+        return ["brew", "install", formula], formula
     if check.category == "ollama" and check.name == "endpoint":
-        return "ollama"
+        return ["brew", "install", "ollama"], "ollama"
     return None
 
 
@@ -380,29 +430,41 @@ def apply_fixes(
     runner: Callable[[list[str]], object] | None = None,
     confirm: Callable[[str], bool] | None = None,
 ) -> list[str]:
-    """Prompt for and run ``brew install`` for each fixable missing Check. Returns formulae run.
+    """Prompt for and run the fix command for each fixable missing Check. Returns the labels run.
 
-    No-ops for API keys and Ollama models. When ``brew`` is absent from PATH, prints the manual
-    steps and runs nothing.
+    No-ops for API keys and Ollama models. A check whose own package manager (`brew`, `npm`, ...)
+    is absent from PATH degrades to a manual instruction — never a blanket refusal for every
+    check, since a batch can mix tools.
     """
     run = runner or (
         lambda argv: subprocess.run(argv, check=False)  # nosec B603 — fixed argv
     )
     ask = confirm or (lambda prompt: input(prompt).strip().lower() == "y")
-    if not shutil.which("brew"):
-        print("`brew` absent du PATH — à installer manuellement :")
-        for check in missing:
+    fixable: list[tuple[Check, list[str], str]] = []
+    manual: list[Check] = []
+    manual_tools: set[str] = set()
+    for check in missing:
+        resolved = _fix_command(check)
+        if resolved is None:
+            continue
+        command, label = resolved
+        if shutil.which(command[0]):
+            fixable.append((check, command, label))
+        else:
+            manual.append(check)
+            manual_tools.add(command[0])
+    if manual:
+        print(
+            f"`{'`, `'.join(sorted(manual_tools))}` absent du PATH — à installer manuellement :"
+        )
+        for check in manual:
             if check.detail:
                 print(f"  {check.name} : {check.detail}")
-        return []
     installed: list[str] = []
-    for check in missing:
-        formula = _fix_formula(check)
-        if formula is None:
-            continue
-        if ask(f"brew install {formula} ? [y/N] "):
-            run(["brew", "install", formula])
-            installed.append(formula)
+    for check, command, label in fixable:
+        if ask(f"{' '.join(command)} ? [y/N] "):
+            run(command)
+            installed.append(label)
     return installed
 
 

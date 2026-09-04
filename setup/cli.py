@@ -234,7 +234,7 @@ def main(argv: list[str] | None = None) -> None:
         #     never when it was a legitimate global enable to begin with.
         try:
             roots = run_marketplace_wizard(
-                WORKSPACE_ROOT, args.plugin, args.marketplace
+                WORKSPACE_ROOT, args.plugin, args.marketplace, install_path=install_path
             )
         except SystemExit:
             if not was_user_enabled:

@@ -82,6 +82,7 @@ def run_marketplace_wizard(
     marketplace: str | None = None,
     *,
     skip_scope_question: bool = False,
+    install_path: Path | None = None,
 ) -> list[Path]:
     """Interactive scope picker: Q1 (user/project) -> Q2 (depth, project only) -> Q3 (which
     targets at that depth — one or several) -> enable the plugin at each. Returns the roots it
@@ -95,6 +96,12 @@ def run_marketplace_wizard(
     `pinky plugins reconcile --apply` loop, whose own per-plugin prompt covers Q1) — go straight to
     the depth+targets picker. Never returns `[Path.home()]` on this path.
 
+    `install_path`: the plugin's already-fetched files (caller resolves it — `resolve_install_path`
+    needs a populated registry that a wizard call site does not always have to hand). When it
+    ships a language server (`plugin_install.ships_lsp_server`), `ENABLE_LSP_TOOL` gets wired at
+    every scope this call enables — the same gap `statusLine` closes for a status-line plugin.
+    `None` (every pre-existing caller) skips this step, never guesses.
+
     Never guesses in a non-interactive shell (no tty) — errors instead, same discipline as the
     `--rules` confirmation flow in `setup/cli.py`.
     """
@@ -105,10 +112,16 @@ def run_marketplace_wizard(
         )
         raise SystemExit(1)
 
+    ships_lsp = install_path is not None and plugin_install.ships_lsp_server(
+        install_path
+    )
+
     if not skip_scope_question:
         scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
         if scope == "u":
-            # déjà activé au scope user par install_plugin_files — rien à réécrire.
+            # déjà activé au scope user par install_plugin_files — rien à réécrire côté plugin.
+            if ships_lsp:
+                plugin_install.ensure_lsp_tool_enabled(Path.home())
             return [Path.home()]
         if scope != "p":
             print(f"Unknown scope: {scope!r}", file=sys.stderr)
@@ -142,5 +155,7 @@ def run_marketplace_wizard(
     roots = [targets[i] for i in picked]
     for root in roots:
         plugin_install.enable_at_project(plugin_id, root, marketplace)
+        if ships_lsp:
+            plugin_install.ensure_lsp_tool_enabled(root)
         print(f"Enabled {plugin_id} at {root}")
     return roots

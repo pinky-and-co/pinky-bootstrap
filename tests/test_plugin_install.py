@@ -297,3 +297,83 @@ def test_set_status_lines_handles_a_plugin_with_only_the_main_script(home):
     assert plugin_install.set_status_lines(plugin_dir) == ["statusLine"]
     data = json.loads((home / "settings.json").read_text())
     assert "subagentStatusLine" not in data
+
+
+# --- ships_lsp_server --------------------------------------------------------------------
+
+
+def test_ships_lsp_server_true_when_a_dot_lsp_json_file_is_present(tmp_path):
+    plugin_dir = tmp_path / "pyright"
+    plugin_dir.mkdir()
+    (plugin_dir / ".lsp.json").write_text("{}", encoding="utf-8")
+    assert plugin_install.ships_lsp_server(plugin_dir) is True
+
+
+def test_ships_lsp_server_false_for_a_plugin_without_one(tmp_path):
+    plugin_dir = tmp_path / "plain"
+    (plugin_dir / "skills").mkdir(parents=True)
+    assert plugin_install.ships_lsp_server(plugin_dir) is False
+
+
+# --- lsp_server_commands -----------------------------------------------------------------
+
+
+def test_lsp_server_commands_reads_the_command_of_every_language_entry(tmp_path):
+    plugin_dir = tmp_path / "pyright"
+    plugin_dir.mkdir()
+    (plugin_dir / ".lsp.json").write_text(
+        json.dumps(
+            {
+                "python": {"command": "pyright-langserver", "args": ["--stdio"]},
+                "pyi": {"command": "pyright-langserver", "args": ["--stdio"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert plugin_install.lsp_server_commands(plugin_dir) == {"pyright-langserver"}
+
+
+def test_lsp_server_commands_empty_for_a_plugin_without_lsp_json(tmp_path):
+    plugin_dir = tmp_path / "plain"
+    plugin_dir.mkdir()
+    assert plugin_install.lsp_server_commands(plugin_dir) == set()
+
+
+def test_lsp_server_commands_tolerates_malformed_json(tmp_path):
+    plugin_dir = tmp_path / "broken"
+    plugin_dir.mkdir()
+    (plugin_dir / ".lsp.json").write_text("not json", encoding="utf-8")
+    assert plugin_install.lsp_server_commands(plugin_dir) == set()
+
+
+# --- ensure_lsp_tool_enabled --------------------------------------------------------------
+
+
+def test_ensure_lsp_tool_enabled_writes_env_at_the_target(tmp_path):
+    target = tmp_path / "pinky-lib"
+    plugin_install.ensure_lsp_tool_enabled(target)
+    data = json.loads((target / ".claude" / "settings.json").read_text())
+    assert data["env"] == {"ENABLE_LSP_TOOL": "1"}
+
+
+def test_ensure_lsp_tool_enabled_preserves_existing_keys_and_env_vars(tmp_path):
+    target = tmp_path / "pinky-lib"
+    settings = target / ".claude" / "settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps({"enabledPlugins": {"pc-snow@mp": True}, "env": {"OTHER_VAR": "x"}}),
+        encoding="utf-8",
+    )
+    plugin_install.ensure_lsp_tool_enabled(target)
+    data = json.loads(settings.read_text())
+    assert data["enabledPlugins"] == {"pc-snow@mp": True}
+    assert data["env"] == {"OTHER_VAR": "x", "ENABLE_LSP_TOOL": "1"}
+
+
+def test_ensure_lsp_tool_enabled_records_the_ledger(home, tmp_path):
+    target = tmp_path / "pinky-lib"
+    plugin_install.ensure_lsp_tool_enabled(target)
+    raw = json.loads((home / "ledger.json").read_text())
+    entry = raw[f"env.ENABLE_LSP_TOOL@{target}"]
+    assert entry["path"] == str(target / ".claude" / "settings.json")
+    assert entry["value"] == "1"
