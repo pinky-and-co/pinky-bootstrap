@@ -149,6 +149,62 @@ def _merge_user_settings(updates: dict[str, object]) -> None:
     )
 
 
+def ships_lsp_server(install_path: Path) -> bool:
+    """Does the installed plugin carry a language-server config on disk (`*.lsp.json`)? The
+    signal `ensure_lsp_tool_enabled` needs before it writes anything — independent of which
+    marketplace the plugin came from, so it stays correct if the official marketplace's
+    propagation bug (measured 2026-09-04: only LICENSE/README land in the cache) ever gets fixed
+    upstream. A plugin whose files never carried this config, from any source, is a no-op here.
+    """
+    return any(install_path.rglob("*.lsp.json"))
+
+
+def lsp_server_commands(install_path: Path) -> set[str]:
+    """Every `command` an installed plugin's `*.lsp.json` file(s) declare — the binaries a working
+    language server needs on PATH (`pyright-langserver` for `pyright`, ...). `setup/doctor.py`'s
+    `required_lsp_binaries` reads this to check they are actually installed, the same way
+    `required_binaries` already checks `allowed-tools` binaries — a separate source, not a
+    duplicate of `ships_lsp_server`, which only answers presence, not which binaries.
+    """
+    commands: set[str] = set()
+    for lsp_json in install_path.rglob("*.lsp.json"):
+        try:
+            data = json.loads(lsp_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for entry in data.values():
+            if isinstance(entry, dict) and isinstance(entry.get("command"), str):
+                commands.add(entry["command"])
+    return commands
+
+
+def ensure_lsp_tool_enabled(target: Path) -> None:
+    """`ENABLE_LSP_TOOL` has no plugin-manifest slot — like `statusLine` — so a plugin that ships
+    a language server needs it wired explicitly, at the same scope (`target`) the plugin itself
+    was enabled at. `target == Path.home()` writes `~/.claude/settings.json`, same as any other
+    scope: `env` is an ordinary settings key and follows the normal precedence stack.
+
+    Merges into `env`, preserving any other var already there, and records the write in the
+    ledger — same discipline as `set_status_lines`.
+    """
+    settings_path = target / ".claude" / "settings.json"
+    data = (
+        json.loads(settings_path.read_text(encoding="utf-8"))
+        if settings_path.is_file()
+        else {}
+    )
+    data.setdefault("env", {})["ENABLE_LSP_TOOL"] = "1"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    state_file.record_posed(
+        f"env.ENABLE_LSP_TOOL@{target}", path=str(settings_path), value="1"
+    )
+
+
 def set_status_lines(install_path: Path) -> list[str]:
     """If `install_path` ships `scripts/statusline.py`, point `statusLine` (and
     `subagentStatusLine` when the script is there too) at the installed scripts, merged into

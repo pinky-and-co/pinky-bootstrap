@@ -273,3 +273,69 @@ def test_wizard_empty_target_pick_errors(sim, tmp_path, monkeypatch):
     _canned_input(monkeypatch, ["p", "1", "  "])
     with pytest.raises(SystemExit):
         run_marketplace_wizard(root_ws, "pc-snow")
+
+
+# ── run_marketplace_wizard — ENABLE_LSP_TOOL wiring ─────────────────────────
+
+
+def _lsp_plugin(tmp_path: Path) -> Path:
+    plugin_dir = tmp_path / "installed" / "pyright"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / ".lsp.json").write_text("{}", encoding="utf-8")
+    return plugin_dir
+
+
+def test_wizard_project_scope_wires_lsp_tool_env_when_the_plugin_ships_one(
+    sim, tmp_path, monkeypatch
+):
+    root_ws = _workspace(tmp_path)
+    install_path = _lsp_plugin(tmp_path)
+    _canned_input(monkeypatch, ["p", "1", "0"])  # project, depth 1, "bootstrap"
+
+    run_marketplace_wizard(
+        root_ws, "pyright", "claude-code-lsps", install_path=install_path
+    )
+
+    data = json.loads((root_ws / "bootstrap" / ".claude" / "settings.json").read_text())
+    assert data["env"] == {"ENABLE_LSP_TOOL": "1"}
+
+
+def test_wizard_project_scope_skips_lsp_env_without_install_path(
+    sim, tmp_path, monkeypatch
+):
+    """No `install_path` given (existing callers, unchanged) — never guess, never write it."""
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "1", "0"])
+
+    run_marketplace_wizard(root_ws, "pc-snow")
+
+    data = json.loads((root_ws / "bootstrap" / ".claude" / "settings.json").read_text())
+    assert "env" not in data
+
+
+def test_wizard_project_scope_skips_lsp_env_for_a_plugin_without_one(
+    sim, tmp_path, monkeypatch
+):
+    root_ws = _workspace(tmp_path)
+    plain = tmp_path / "installed" / "pc-snow"
+    plain.mkdir(parents=True)
+    _canned_input(monkeypatch, ["p", "1", "0"])
+
+    run_marketplace_wizard(root_ws, "pc-snow", install_path=plain)
+
+    data = json.loads((root_ws / "bootstrap" / ".claude" / "settings.json").read_text())
+    assert "env" not in data
+
+
+def test_wizard_user_scope_wires_lsp_tool_env_when_the_plugin_ships_one(
+    sim, tmp_path, monkeypatch
+):
+    install_path = _lsp_plugin(tmp_path)
+    _canned_input(monkeypatch, ["u"])
+
+    run_marketplace_wizard(
+        _workspace(tmp_path), "pyright", "claude-code-lsps", install_path=install_path
+    )
+
+    data = json.loads((tmp_path / "home" / ".claude" / "settings.json").read_text())
+    assert data["env"] == {"ENABLE_LSP_TOOL": "1"}

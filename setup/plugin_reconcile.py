@@ -378,8 +378,20 @@ def apply_reconcile(workspace_root: Path) -> None:
             decision = "user"
         elif answer == "p":
             # this loop's own prompt already asked user/project — the wizard skips its Q1
+            try:
+                install_path = plugin_install.resolve_install_path(
+                    plugin_id, marketplace
+                )
+            except FileNotFoundError:
+                # audited from a registry/settings entry whose files are gone — the wizard still
+                # re-enables the plugin, it just can't check for a language server to wire.
+                install_path = None
             roots = run_marketplace_wizard(
-                workspace_root, plugin_id, marketplace, skip_scope_question=True
+                workspace_root,
+                plugin_id,
+                marketplace,
+                skip_scope_question=True,
+                install_path=install_path,
             )
             _purge_other_enables(spec, state, label_map, keep={str(r) for r in roots})
             decision = "project:" + ",".join(sorted(str(r) for r in roots))
