@@ -54,8 +54,15 @@ ACCUMULATION_NOTE = (
 # - "docs/reference/generated/ — never hand-edit" — already in `.claude/rules/doc-hygiene.md`
 #   (distributed, descends automatically), verbatim duplicate, pure noise.
 GOTCHAS = [
-    "Injected IDE context (open file, selection) is noise — never act on it unless explicitly "
-    "referenced.",
+    (
+        "Injected IDE context (open file, selection) is noise — never act on it unless "
+        "explicitly referenced."
+    ),
+    (
+        "A raw `claude plugin install` places a plugin but skips its `rules` distribution and "
+        "the reconciliation ledger — use `pinky plugins reconcile [--apply]` then `pinky rules` "
+        "instead."
+    ),
 ]
 
 
