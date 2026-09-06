@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import state_file
+from setup import plugin_install, state_file
 from setup.plugin_scope import list_targets_at_depth, run_marketplace_wizard
 
 
@@ -92,11 +92,12 @@ class _ClaudeCliSim:
 
 @pytest.fixture
 def sim(tmp_path, monkeypatch):
-    """`claude` CLI simulator + a fake home + a redirected ledger. `install_plugin_files` has
-    already run in these tests, so seed the transient user-scope enable it leaves behind."""
     fake_home = tmp_path / "home"
     (fake_home / ".claude").mkdir(parents=True)
     monkeypatch.setattr(Path, "home", lambda: fake_home)
+    monkeypatch.setattr(
+        plugin_install, "_USER_SETTINGS", fake_home / ".claude" / "settings.json"
+    )
     monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     cli = _ClaudeCliSim(fake_home)
@@ -285,7 +286,7 @@ def _lsp_plugin(tmp_path: Path) -> Path:
     return plugin_dir
 
 
-def test_wizard_project_scope_wires_lsp_tool_env_when_the_plugin_ships_one(
+def test_wizard_project_scope_wires_lsp_tool_env_at_user_scope(
     sim, tmp_path, monkeypatch
 ):
     root_ws = _workspace(tmp_path)
@@ -296,8 +297,15 @@ def test_wizard_project_scope_wires_lsp_tool_env_when_the_plugin_ships_one(
         root_ws, "pyright", "claude-code-lsps", install_path=install_path
     )
 
-    data = json.loads((root_ws / "bootstrap" / ".claude" / "settings.json").read_text())
-    assert data["env"] == {"ENABLE_LSP_TOOL": "1"}
+    # ENABLE_LSP_TOOL est toujours user scope, même si le plugin lui est project-scoped
+    home_settings = json.loads(
+        (tmp_path / "home" / ".claude" / "settings.json").read_text()
+    )
+    assert home_settings["env"] == {"ENABLE_LSP_TOOL": "1"}
+    project_settings = json.loads(
+        (root_ws / "bootstrap" / ".claude" / "settings.json").read_text()
+    )
+    assert "env" not in project_settings
 
 
 def test_wizard_project_scope_skips_lsp_env_without_install_path(

@@ -40,6 +40,18 @@ def _spec(plugin_id: str, marketplace: str | None) -> str:
     return f"{plugin_id}@{marketplace}" if marketplace else plugin_id
 
 
+def _run_claude(
+    args: list[str], cwd: Path | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """Every call to `claude` passes through here — output is captured and never displayed
+    directly. `check=True` (default) already raises CalledProcessError with the CLI's stdout/
+    stderr attached — subprocess.run does that itself with capture_output=True, nothing to
+    re-raise here."""
+    return subprocess.run(
+        ["claude", *args], cwd=cwd, capture_output=True, text=True, check=check
+    )
+
+
 def is_user_enabled(plugin_id: str, marketplace: str | None = None) -> bool:
     """Is the plugin already `true` in `~/.claude/settings.json` `enabledPlugins` before we touch
     anything? The caller captures this before `install_plugin_files` so it can tell a
@@ -66,11 +78,8 @@ def install_plugin_files(plugin_id: str, marketplace: str | None = None) -> None
     plugin is brand-new and already current).
     """
     spec = _spec(plugin_id, marketplace)
-    subprocess.run(
-        ["claude", "plugin", "install", spec, "--scope", "user", "--yes"],
-        check=True,
-    )
-    subprocess.run(["claude", "plugin", "update", spec], check=False)
+    _run_claude(["plugin", "install", spec, "--scope", "user", "--yes"])
+    _run_claude(["plugin", "update", spec], check=False)
 
 
 def enable_at_project(
@@ -108,10 +117,7 @@ def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
     user scope *and* at a project target is the parasitic global activation this flow avoids.
     """
     spec = _spec(plugin_id, marketplace)
-    subprocess.run(
-        ["claude", "plugin", "uninstall", spec, "--scope", "user", "--yes"],
-        check=True,
-    )
+    _run_claude(["plugin", "uninstall", spec, "--scope", "user", "--yes"])
 
 
 def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path:
@@ -180,28 +186,26 @@ def lsp_server_commands(install_path: Path) -> set[str]:
     return commands
 
 
-def ensure_lsp_tool_enabled(target: Path) -> None:
+def ensure_lsp_tool_enabled() -> None:
     """`ENABLE_LSP_TOOL` has no plugin-manifest slot — like `statusLine` — so a plugin that ships
-    a language server needs it wired explicitly, at the same scope (`target`) the plugin itself
-    was enabled at. `target == Path.home()` writes `~/.claude/settings.json`, same as any other
-    scope: `env` is an ordinary settings key and follows the normal precedence stack.
-
-    Merges into `env`, preserving any other var already there, and records the write in the
-    ledger — same discipline as `set_status_lines`.
+    a language server needs it wired explicitly. Always user scope (`~/.claude/settings.json`):
+    the plugin's own files are never git-transferable (no fetch-only mode, cache is local-only —
+    see module docstring), so anyone who needs the LSP tool functional runs a local install
+    regardless, which already sets this as a side effect — scoping it to the plugin's target
+    would only add drift with no onboarding benefit.
     """
-    settings_path = target / ".claude" / "settings.json"
     data = (
-        json.loads(settings_path.read_text(encoding="utf-8"))
-        if settings_path.is_file()
+        json.loads(_USER_SETTINGS.read_text(encoding="utf-8"))
+        if _USER_SETTINGS.is_file()
         else {}
     )
     data.setdefault("env", {})["ENABLE_LSP_TOOL"] = "1"
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(
+    _USER_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    _USER_SETTINGS.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     state_file.record_posed(
-        f"env.ENABLE_LSP_TOOL@{target}", path=str(settings_path), value="1"
+        "env.ENABLE_LSP_TOOL@user", path=str(_USER_SETTINGS), value="1"
     )
 
 

@@ -2,7 +2,7 @@
 title: "0007"
 ---
 # ADR-0007 — `pyright@claude-code-lsps` (fork communautaire) au lieu de `pyright-lsp@claude-plugins-official`
-*Update date : 2026-09-04 00:00*
+*Update date : 2026-09-06 00:00*
 
 Status: accepted
 Date: 2026-09-04
@@ -46,16 +46,22 @@ oubliée :
   installés — signal indépendant de la marketplace source (couvre aussi bien le fork qu'un futur
   fix upstream de l'officiel, si son mécanisme de propagation venait à livrer le même genre de
   fichier).
-- `plugin_install.ensure_lsp_tool_enabled(target)` pose `env.ENABLE_LSP_TOOL=1` au même scope que le
-  plugin — `ENABLE_LSP_TOOL` n'a pas de slot dans le manifeste de plugin, même trou que `statusLine`
-  déjà comblé par `set_status_lines`.
+- `plugin_install.ensure_lsp_tool_enabled()` pose `env.ENABLE_LSP_TOOL=1` en user scope
+  (`~/.claude/settings.json`) — `ENABLE_LSP_TOOL` n'a pas de slot dans le manifeste de plugin, même
+  trou que `statusLine` déjà comblé par `set_status_lines`. *Correctif 2026-09-06 : la version
+  initiale la posait au scope du plugin (`target`) — incohérent avec `set_status_lines`, son propre
+  précédent cité, qui écrit toujours en user scope. Sans bénéfice réel : les fichiers d'un plugin ne
+  sont jamais git-transférables (pas de mode fetch-only, cache local uniquement), donc quiconque a
+  besoin du LSP fonctionnel relance de toute façon une install locale qui pose le flag comme effet
+  de bord, peu importe le scope choisi au départ.
 - Câblé dans `plugin_scope.run_marketplace_wizard`, le seul point qui active un plugin à un scope,
   pour les deux appelants (`pinky install --plugin` et `pinky plugins reconcile --apply`).
 
 ## Conséquences
 
-- Les 3 repos (`bootstrap`, `pinky-lib`, `pluto`) ont `pyright@claude-code-lsps: true` +
-  `env.ENABLE_LSP_TOOL: "1"` dans leur `.claude/settings.json`, posés par le wizard, pas à la main.
+- Les 3 repos (`bootstrap`, `pinky-lib`, `pluto`) ont `pyright@claude-code-lsps: true` dans leur
+  `.claude/settings.json`, posé par le wizard, pas à la main. `env.ENABLE_LSP_TOOL: "1"` est posé
+  une seule fois, en user scope (`~/.claude/settings.json`).
 - `pyright-lsp@claude-plugins-official` désactivé aux 3 scopes projet + décision `uninstall`
   enregistrée dans le ledger (`~/.claude/pinky-install-state.json`,
   `reconcile:pyright-lsp@claude-plugins-official`) — un futur `reconcile --apply` ne le réactivera

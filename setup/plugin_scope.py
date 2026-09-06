@@ -121,7 +121,7 @@ def run_marketplace_wizard(
         if scope == "u":
             # déjà activé au scope user par install_plugin_files — rien à réécrire côté plugin.
             if ships_lsp:
-                plugin_install.ensure_lsp_tool_enabled(Path.home())
+                plugin_install.ensure_lsp_tool_enabled()
             return [Path.home()]
         if scope != "p":
             print(f"Unknown scope: {scope!r}", file=sys.stderr)
@@ -156,6 +156,6 @@ def run_marketplace_wizard(
     for root in roots:
         plugin_install.enable_at_project(plugin_id, root, marketplace)
         if ships_lsp:
-            plugin_install.ensure_lsp_tool_enabled(root)
+            plugin_install.ensure_lsp_tool_enabled()
         print(f"Enabled {plugin_id} at {root}")
     return roots
