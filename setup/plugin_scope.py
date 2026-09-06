@@ -26,38 +26,55 @@ from . import plugin_install
 
 _DEPTH_LABELS = {
     0: "workspace root",
-    1: "top-level dir (repo or group)",
-    2: "repo nested under a group",
+    1: "group",
+    2: "repo",
 }
+
+
+def _is_repo(p: Path) -> bool:
+    """Whether `p` is the root of a git repo."""
+    return (p / ".git").exists()
+
+
+def _collect(root: Path) -> tuple[list[Path], list[Path]]:
+    """Recursively partition `root`'s subtree into groups and repos.
+
+    A repo is pruned once found — its own subtree is never descended into.
+    Dotfile dirs are excluded. Depth is unbounded: a group at any nesting
+    level is included as long as a repo exists somewhere below it.
+    """
+    groups: list[Path] = []
+    repos: list[Path] = []
+    for p in sorted(root.iterdir()):
+        if not p.is_dir() or p.name.startswith("."):
+            continue
+        if _is_repo(p):
+            repos.append(p)
+            continue  # élagage : repo, rien à descendre en dessous
+        sub_groups, sub_repos = _collect(p)
+        if sub_repos:
+            groups.append(p)  # au moins un repo quelque part dans le sous-arbre
+        groups.extend(sub_groups)
+        repos.extend(sub_repos)
+    return groups, repos
 
 
 def list_targets_at_depth(workspace_root: Path, depth: int) -> list[Path]:
     """Eligible install targets at `depth` under `workspace_root`.
 
     - 0: the workspace root itself.
-    - 1: every top-level directory (a repo directly, or a group of repos) — dotfile dirs excluded.
-    - 2: repos nested one level under a depth-1 GROUP only (a depth-1 dir that is itself a repo has
-      nothing further to descend into).
+    - 1: every directory, at any nesting level, that has at least one repo
+      somewhere in its subtree (a "group") — repos themselves excluded.
+    - 2: every directory that is itself a git repo (`.git` present), at any
+      nesting level.
     """
     if depth == 0:
         return [workspace_root]
+    groups, repos = _collect(workspace_root)
     if depth == 1:
-        return [
-            p
-            for p in sorted(workspace_root.iterdir())
-            if p.is_dir() and not p.name.startswith(".")
-        ]
+        return groups
     if depth == 2:
-        targets: list[Path] = []
-        for group in list_targets_at_depth(workspace_root, 1):
-            if (group / ".git").exists():
-                continue  # a repo itself, not a group — nothing nested to list
-            targets += [
-                p
-                for p in sorted(group.iterdir())
-                if p.is_dir() and (p / ".git").exists()
-            ]
-        return targets
+        return repos
     raise ValueError(f"depth {depth} not supported (0-2)")
 
 

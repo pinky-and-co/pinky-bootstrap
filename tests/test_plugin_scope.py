@@ -113,10 +113,10 @@ def test_depth_0_is_the_workspace_root_itself(tmp_path):
     assert list_targets_at_depth(root, depth=0) == [root]
 
 
-def test_depth_1_lists_every_top_level_dir_repo_or_group(tmp_path):
+def test_depth_1_lists_top_level_groups_only(tmp_path):
     root = _workspace(tmp_path)
     targets = list_targets_at_depth(root, depth=1)
-    assert {p.name for p in targets} == {"bootstrap", "pinky-lib"}
+    assert {p.name for p in targets} == {"pinky-lib"}
 
 
 def test_depth_1_ignores_dotfile_directories(tmp_path):
@@ -124,11 +124,11 @@ def test_depth_1_ignores_dotfile_directories(tmp_path):
     assert ".hidden" not in {p.name for p in list_targets_at_depth(root, depth=1)}
 
 
-def test_depth_2_lists_repos_nested_under_depth_1_groups_only(tmp_path):
+def test_depth_2_lists_every_repo_regardless_of_nesting(tmp_path):
     root = _workspace(tmp_path)
     targets = list_targets_at_depth(root, depth=2)
-    # bootstrap is itself a repo at depth 1 (no depth-2 descent); pinky-lib is a group.
-    assert {p.name for p in targets} == {"pinky-core", "pinky-snowpark"}
+    # bootstrap is a top-level repo; pinky-core/pinky-snowpark are nested under the pinky-lib group.
+    assert {p.name for p in targets} == {"bootstrap", "pinky-core", "pinky-snowpark"}
 
 
 def test_unsupported_depth_raises(tmp_path):
@@ -144,8 +144,8 @@ def test_wizard_project_scope_enables_at_the_single_picked_target(
 ):
     root_ws = _workspace(tmp_path)
     _canned_input(
-        monkeypatch, ["p", "1", "0"]
-    )  # project, depth 1, index 0 == "bootstrap"
+        monkeypatch, ["p", "2", "0"]
+    )  # project, depth 2, index 0 == "bootstrap"
 
     roots = run_marketplace_wizard(root_ws, "pc-snow")
 
@@ -159,7 +159,7 @@ def test_wizard_project_scope_enables_at_the_single_picked_target(
 
 def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "0"])  # depth 2, index 0 == "pinky-core"
+    _canned_input(monkeypatch, ["p", "2", "1"])  # depth 2, index 1 == "pinky-core"
 
     run_marketplace_wizard(root_ws, "pc-snow", "pinky-agentic-plugins")
 
@@ -176,7 +176,7 @@ def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeyp
 
 def test_wizard_project_scope_multi_target_enables_at_each(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "0 1"])  # both nested repos
+    _canned_input(monkeypatch, ["p", "2", "1 2"])  # both nested repos
 
     roots = run_marketplace_wizard(root_ws, "pc-snow", "mp")
 
@@ -191,11 +191,11 @@ def test_wizard_multi_target_accepts_comma_separated_indices(
     sim, tmp_path, monkeypatch
 ):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "1", "0,1"])
+    _canned_input(monkeypatch, ["p", "2", "0,1"])
 
     roots = run_marketplace_wizard(root_ws, "pc-snow")
 
-    assert {r.name for r in roots} == {"bootstrap", "pinky-lib"}
+    assert {r.name for r in roots} == {"bootstrap", "pinky-core"}
 
 
 # ── run_marketplace_wizard — the exact `claude` calls (oracle) ──────────────
@@ -203,7 +203,7 @@ def test_wizard_multi_target_accepts_comma_separated_indices(
 
 def test_wizard_project_scope_call_sequence_is_pinned(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "0 1"])
+    _canned_input(monkeypatch, ["p", "2", "1 2"])
 
     run_marketplace_wizard(root_ws, "pc-snow", "mp")
 
@@ -291,7 +291,7 @@ def test_wizard_project_scope_wires_lsp_tool_env_at_user_scope(
 ):
     root_ws = _workspace(tmp_path)
     install_path = _lsp_plugin(tmp_path)
-    _canned_input(monkeypatch, ["p", "1", "0"])  # project, depth 1, "bootstrap"
+    _canned_input(monkeypatch, ["p", "2", "0"])  # project, depth 2, "bootstrap"
 
     run_marketplace_wizard(
         root_ws, "pyright", "claude-code-lsps", install_path=install_path
@@ -313,7 +313,7 @@ def test_wizard_project_scope_skips_lsp_env_without_install_path(
 ):
     """No `install_path` given (existing callers, unchanged) — never guess, never write it."""
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "1", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     run_marketplace_wizard(root_ws, "pc-snow")
 
@@ -327,7 +327,7 @@ def test_wizard_project_scope_skips_lsp_env_for_a_plugin_without_one(
     root_ws = _workspace(tmp_path)
     plain = tmp_path / "installed" / "pc-snow"
     plain.mkdir(parents=True)
-    _canned_input(monkeypatch, ["p", "1", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     run_marketplace_wizard(root_ws, "pc-snow", install_path=plain)
 
