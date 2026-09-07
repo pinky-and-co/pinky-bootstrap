@@ -2,19 +2,15 @@
 # =============================================================================
 # COMMIT-MSG HOOK
 # =============================================================================
-# Format: <emoji> <type>: <description>
-#   ticket (optional) : Closes: #42 | Refs: #42
+# Format: <emoji> <type>[!]: <description>
+#   ticket (optional)   : Closes: #42 | Refs: #42
+#   breaking (optional) : `!` after type, and/or a `BREAKING CHANGE: <description>`
+#                         footer as the last block of the message
 #
 # Special case: 💾 save: <description> [skip ci]
 #
 # Distributed from pinky-workspace/core/hooks/ — do not edit in place; edit the
 # source and re-run setup.py.
-#
-# No scope group (2026-07-10): a per-repo scope vocabulary (scopes.yaml + a
-# scopes-local.txt file in every repo + a generated AGENT.md block) turned out
-# to cost more mechanism than the git-log grep value it bought — most local
-# scopes were just a finer-grained restatement of a single generic bucket.
-# Dropped; `type` is the categorization axis that stays.
 # =============================================================================
 
 COMMIT_MSG_FILE=$1
@@ -132,7 +128,6 @@ case "$EMOJI" in
     💸) allowed_type="chore" ;;
     🚀) allowed_type="release" ;;
     🔖) allowed_type="release" ;;
-    💥) allowed_type="breaking" ;;
     *)
         echo "❌ Emoji '$EMOJI' not in mapping."
         echo "   See CLAUDE.md for the full emoji ↔ type table."
@@ -148,21 +143,35 @@ if [ "$TYPE" != "$allowed_type" ]; then
 fi
 
 # Validate full format
-TYPES="feat|fix|docs|style|refactor|move|perf|test|revert|build|chore|release|breaking"
-PATTERN="^.+ (${TYPES}): .{3,}"
+TYPES="feat|fix|docs|style|refactor|move|perf|test|revert|build|chore|release"
+PATTERN="^.+ (${TYPES})!?: .{3,}"
 
 if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
     echo "❌ Invalid commit format."
     echo ""
-    echo "   Format : <emoji> <type>: <description>"
+    echo "   Format : <emoji> <type>[!]: <description>"
     echo ""
     echo "   Examples:"
     echo "     ✨ feat: add manifest variable resolution"
     echo "     🐛 fix: handle missing warehouse field"
     echo "     🔧 chore: add release workflow"
     echo "     📝 docs: add plan command usage"
+    echo "     ♻️ refactor!: rename upload_packages signature"
     echo "     💾 save: core/manifest.py in progress [skip ci]"
     exit 1
+fi
+
+# Breaking-change footer — spec requires exact uppercase casing, and it can
+# land anywhere in the body, so this checks the full file, not just the header.
+COMMIT_MSG_FULL=$(cat "$COMMIT_MSG_FILE")
+
+if echo "$COMMIT_MSG_FULL" | grep -qiE "^BREAKING CHANGE:"; then
+    if ! echo "$COMMIT_MSG_FULL" | grep -qE "^BREAKING CHANGE: .{3,}"; then
+        echo "❌ Malformed BREAKING CHANGE footer."
+        echo "   Must be exactly: BREAKING CHANGE: <description>"
+        echo "   Case-sensitive — this exact casing is what tooling keys off for a major bump."
+        exit 1
+    fi
 fi
 
 exit 0
