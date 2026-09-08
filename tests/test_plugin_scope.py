@@ -347,3 +347,25 @@ def test_wizard_user_scope_wires_lsp_tool_env_when_the_plugin_ships_one(
 
     data = json.loads((tmp_path / "home" / ".claude" / "settings.json").read_text())
     assert data["env"] == {"ENABLE_LSP_TOOL": "1"}
+
+
+def test_wizard_wires_lsp_tool_env_once_for_several_targets(sim, tmp_path, monkeypatch):
+    """`ENABLE_LSP_TOOL` is one user-scope key — enabling the plugin at several project targets
+    writes it once, not once per target (it used to sit inside the per-target loop)."""
+    root_ws = _workspace(tmp_path)
+    install_path = _lsp_plugin(tmp_path)
+    calls: list[int] = []
+    real = plugin_install.ensure_lsp_tool_enabled
+    monkeypatch.setattr(
+        plugin_install,
+        "ensure_lsp_tool_enabled",
+        lambda: (calls.append(1), real())[1],
+    )
+    _canned_input(monkeypatch, ["p", "2", "1 2"])  # project, depth 2, two nested repos
+
+    roots = run_marketplace_wizard(
+        root_ws, "pyright", "claude-code-lsps", install_path=install_path
+    )
+
+    assert len(roots) == 2
+    assert calls == [1]

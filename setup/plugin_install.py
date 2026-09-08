@@ -43,10 +43,12 @@ def _spec(plugin_id: str, marketplace: str | None) -> str:
 def _run_claude(
     args: list[str], cwd: Path | None = None, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    """Every call to `claude` passes through here — output is captured and never displayed
-    directly. `check=True` (default) already raises CalledProcessError with the CLI's stdout/
-    stderr attached — subprocess.run does that itself with capture_output=True, nothing to
-    re-raise here."""
+    """Run a `claude` subcommand with its output captured (never streamed to this process's
+    stdout/stderr). The fetch/enable helpers in this module go through here; `enable_at_project`
+    and `plugin_reconcile`'s own `claude` calls do not. `check=True` (default) raises
+    `CalledProcessError` with the CLI's stdout/stderr on the exception — a caller that surfaces
+    the failure to a human must print `e.stderr` itself, `CalledProcessError.__str__` shows only
+    the exit code."""
     return subprocess.run(
         ["claude", *args], cwd=cwd, capture_output=True, text=True, check=check
     )

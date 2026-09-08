@@ -172,7 +172,8 @@ def run_marketplace_wizard(
     roots = [targets[i] for i in picked]
     for root in roots:
         plugin_install.enable_at_project(plugin_id, root, marketplace)
-        if ships_lsp:
-            plugin_install.ensure_lsp_tool_enabled()
         print(f"Enabled {plugin_id} at {root}")
+    # `ENABLE_LSP_TOOL` is a single user-scope key — write it once, not once per target.
+    if ships_lsp and roots:
+        plugin_install.ensure_lsp_tool_enabled()
     return roots
