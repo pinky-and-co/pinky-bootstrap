@@ -73,3 +73,4 @@ live-docs/docs/
 
 # Claude Code local session state (permission-change skill), not source
 .claude/.guard-state.json
+.headroom_wrap_settings.lock
