@@ -117,40 +117,51 @@ def test_settings_local_plugin_ids_malformed_json_is_empty(tmp_path):
 # ── enable_plugin_local — already_enabled vs real failure ──────────────────
 
 
-def _fake_run(returncode: int, stderr: str):
+def _fake_run(returncode: int, stderr: str, calls: list | None = None):
     def run(cmd, **kw):
+        if calls is not None:
+            calls.append((cmd, kw))
         return subprocess.CompletedProcess(cmd, returncode, stdout="", stderr=stderr)
 
     return run
 
 
-def test_enable_plugin_local_success(monkeypatch):
+def test_enable_plugin_local_runs_claude_from_the_given_cwd(monkeypatch, tmp_path):
+    calls: list = []
+    monkeypatch.setattr(subprocess, "run", _fake_run(0, "", calls))
+    psl.enable_plugin_local("x@mp", cwd=tmp_path)
+    cmd, kw = calls[0]
+    assert cmd == ["claude", "plugin", "enable", "-s", "local", "x@mp"]
+    assert kw["cwd"] == tmp_path
+
+
+def test_enable_plugin_local_success(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", _fake_run(0, ""))
-    result = psl.enable_plugin_local("x@mp")
+    result = psl.enable_plugin_local("x@mp", cwd=tmp_path)
     assert result == psl.EnableResult(success=True, already_enabled=False, stderr="")
 
 
-def test_enable_plugin_local_already_enabled_is_not_a_failure(monkeypatch):
+def test_enable_plugin_local_already_enabled_is_not_a_failure(monkeypatch, tmp_path):
     stderr = '✘ Failed to enable plugin "x@mp": Plugin "x@mp" is already enabled at local scope'
     monkeypatch.setattr(subprocess, "run", _fake_run(1, stderr))
-    result = psl.enable_plugin_local("x@mp")
+    result = psl.enable_plugin_local("x@mp", cwd=tmp_path)
     assert result.success is False
     assert result.already_enabled is True
 
 
-def test_enable_plugin_local_real_error_is_a_failure(monkeypatch):
+def test_enable_plugin_local_real_error_is_a_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "run", _fake_run(1, "marketplace not found"))
-    result = psl.enable_plugin_local("x@mp")
+    result = psl.enable_plugin_local("x@mp", cwd=tmp_path)
     assert result.success is False
     assert result.already_enabled is False
 
 
-def test_enable_plugin_local_missing_cli_is_a_failure(monkeypatch):
+def test_enable_plugin_local_missing_cli_is_a_failure(monkeypatch, tmp_path):
     def boom(*_a, **_kw):
         raise FileNotFoundError("claude")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    result = psl.enable_plugin_local("x@mp")
+    result = psl.enable_plugin_local("x@mp", cwd=tmp_path)
     assert result == psl.EnableResult(
         success=False, already_enabled=False, stderr="claude"
     )
