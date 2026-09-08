@@ -76,7 +76,8 @@ def env(tmp_path, monkeypatch):
     )
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     # the fetched plugin ships no status line -> the flow proceeds to the wizard
-    plugin_dir = tmp_path / "cache" / "pc-snow"
+    monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
+    plugin_dir = tmp_path / "cache" / "mp" / "pc-snow" / "0.1.0"
     (plugin_dir / "skills").mkdir(parents=True)
     monkeypatch.setattr(
         plugin_install, "resolve_install_path", lambda *a, **k: plugin_dir
@@ -246,3 +247,18 @@ def test_rescope_keeps_a_pre_existing_user_global_enable(env, monkeypatch):
 
     assert _user_enabled(env.home, "pc-snow") is True
     assert not _uninstalled(env.sim)
+
+
+# ── step 0: --force cache-bust ────────────────────────────────────────────
+
+
+def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
+    # env's `resolve_install_path` returns a real dir under the patched _CACHE_ROOT
+    install = plugin_install.resolve_install_path("pc-snow")
+    assert install.exists()
+    _canned_input(monkeypatch, ["u"])
+
+    cli.main(["--plugin", "pc-snow", "--marketplace", "mp", "--force"])
+
+    assert not install.exists()  # cache dir removed before the fetch
+    assert "cache cleared for pc-snow@mp" in capsys.readouterr().out

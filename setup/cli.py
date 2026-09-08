@@ -137,7 +137,9 @@ def main(argv: list[str] | None = None) -> None:
         "--force",
         action="store_true",
         help="with --live-docs: replace a launchd agent at the target path even if pinky did not "
-        "pose it (default: refuse and leave it alone)",
+        "pose it (default: refuse and leave it alone). With --plugin: delete the plugin's cache "
+        "directory first so the fetch re-pulls the working tree instead of keeping a stale build "
+        "(dev-only — see docs/how-to/install-plugin.md)",
     )
     parser.add_argument(
         "--plugins-reconcile",
@@ -225,6 +227,11 @@ def main(argv: list[str] | None = None) -> None:
         # Was it already a legit global enable before we touch anything? Decides whether the
         # fetch-time user-scope enable is ours to drop later.
         was_user_enabled = plugin_install.is_user_enabled(args.plugin, args.marketplace)
+        # 0. Dev cache-bust: `claude plugin install`/`update` only ever fills an absent cache dir,
+        #    so a plugin pinned at 0.1.0 can go on serving a stale build after an edit, no signal.
+        #    `--force` deletes it first — a no-op on a first install (nothing cached yet).
+        if args.force and plugin_install.force_refetch(args.plugin, args.marketplace):
+            print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # 1. Fetch the plugin's files (transient user-scope enable) via Claude Code's own command.
         plugin_install.install_plugin_files(args.plugin, args.marketplace)
         install_path = plugin_install.resolve_install_path(

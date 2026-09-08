@@ -23,6 +23,7 @@ def home(tmp_path, monkeypatch):
     settings = tmp_path / "settings.json"
     monkeypatch.setattr(plugin_install, "_REGISTRY", registry)
     monkeypatch.setattr(plugin_install, "_USER_SETTINGS", settings)
+    monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
     monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
     return tmp_path
 
@@ -95,14 +96,50 @@ def test_install_plugin_files_without_marketplace_uses_bare_id(monkeypatch):
     assert calls[0][3] == "pc-statusline"
 
 
-def test_install_plugin_files_propagates_an_install_failure(monkeypatch):
+def test_install_plugin_files_propagates_an_install_failure(monkeypatch, capsys):
     def run(cmd, **kw):
         if kw.get("check"):
-            raise subprocess.CalledProcessError(1, cmd)
+            raise subprocess.CalledProcessError(
+                1, cmd, stderr="marketplace 'mp' not found\n"
+            )
 
     monkeypatch.setattr(subprocess, "run", run)
     with pytest.raises(subprocess.CalledProcessError):
         plugin_install.install_plugin_files("pc-statusline", "mp")
+
+    # the CLI's own stderr is shown, not swallowed behind a bare traceback
+    assert "marketplace 'mp' not found" in capsys.readouterr().err
+
+
+# --- force_refetch (dev cache-bust) ------------------------------------------
+
+
+def test_force_refetch_removes_a_cache_dir_and_reports_true(home):
+    install = home / "cache" / "mp" / "pc-x" / "0.1.0"
+    install.mkdir(parents=True)
+    (install / "SKILL.md").write_text("x", encoding="utf-8")
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", install)
+
+    assert plugin_install.force_refetch("pc-x", "mp") is True
+    assert not install.exists()
+
+
+def test_force_refetch_is_false_when_nothing_is_cached(home):
+    (home / "installed_plugins.json").write_text(
+        json.dumps({"version": 2, "plugins": {}}), encoding="utf-8"
+    )
+    assert plugin_install.force_refetch("pc-x", "mp") is False
+
+
+def test_force_refetch_refuses_a_path_outside_the_cache_root(home, capsys):
+    # a registry pointing at a real working tree, not the cache — must never be rmtree'd
+    working_tree = home / "repos" / "pc-x"
+    (working_tree / ".claude-plugin").mkdir(parents=True)
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", working_tree)
+
+    assert plugin_install.force_refetch("pc-x", "mp") is False
+    assert working_tree.exists()
+    assert "refusing --force" in capsys.readouterr().err
 
 
 # --- is_user_enabled -------------------------------------------------------------------

@@ -27,12 +27,16 @@ Re-run after `claude plugin update <plugin>`.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from . import state_file
 
-_REGISTRY = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+_PLUGINS_DIR = Path.home() / ".claude" / "plugins"
+_REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
+_CACHE_ROOT = _PLUGINS_DIR / "cache"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
@@ -76,11 +80,18 @@ def install_plugin_files(plugin_id: str, marketplace: str | None = None) -> None
     preference) it stays.
 
     `check=True` on install: a failure there must stop the flow, never leave the caller wiring
-    settings for a plugin whose files never landed. `update` is best-effort (it errors when the
-    plugin is brand-new and already current).
+    settings for a plugin whose files never landed. The CLI's own stderr (which
+    `CalledProcessError` carries but its `str()` drops) is printed before the error propagates,
+    so the caller sees *why* the fetch failed, not just a bare traceback. `update` is best-effort
+    (it errors when the plugin is brand-new and already current).
     """
     spec = _spec(plugin_id, marketplace)
-    _run_claude(["plugin", "install", spec, "--scope", "user", "--yes"])
+    try:
+        _run_claude(["plugin", "install", spec, "--scope", "user", "--yes"])
+    except subprocess.CalledProcessError as exc:
+        if exc.stderr:
+            print(exc.stderr, end="", file=sys.stderr)
+        raise
     _run_claude(["plugin", "update", spec], check=False)
 
 
@@ -238,3 +249,29 @@ def set_status_lines(install_path: Path) -> list[str]:
     for key, path in scripts.items():
         state_file.record_posed(key, path=str(_USER_SETTINGS), value=str(path))
     return list(scripts)
+
+
+def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
+    """Delete the plugin's cache directory so the next `claude plugin install`/`update` re-pulls
+    it — the automated form of the manual `rm -rf ~/.claude/plugins/cache/<mp>/<plugin>/<ver>/`
+    needed when editing a plugin pinned at `0.1.0` during dev (`claude` only ever fills an absent
+    cache dir). Returns True when a directory was removed, False when there was nothing to remove.
+
+    The path comes from `installed_plugins.json` `installPath`, which this function does not
+    control. It removes it **only** when it resolves under `~/.claude/plugins/cache/` — a
+    registry pointing anywhere else (a hand-edit, a future `directory`-source layout that maps a
+    plugin onto its own working tree) is refused rather than `rmtree`'d.
+    """
+    try:
+        install_path = resolve_install_path(plugin_id, marketplace).resolve()
+    except FileNotFoundError:
+        return False
+    if not install_path.is_relative_to(_CACHE_ROOT.resolve()):
+        print(
+            f"⚠️  refusing --force: {install_path} is not under {_CACHE_ROOT} — "
+            "delete it by hand if that is really what you want",
+            file=sys.stderr,
+        )
+        return False
+    shutil.rmtree(install_path)
+    return True

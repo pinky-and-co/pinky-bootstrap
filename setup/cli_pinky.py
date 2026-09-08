@@ -181,6 +181,8 @@ def cmd_install(args: argparse.Namespace) -> None:
             argv += ["--marketplace", args.marketplace]
         if args.yes:
             argv.append("--yes")
+        if args.force:
+            argv.append("--force")
         setup_main(argv)
     elif args.output_style:
         setup_main(["--output-style", args.output_style])
@@ -286,7 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--force",
         action="store_true",
-        help="with --live-docs: replace a launchd agent pinky did not install",
+        help="with --live-docs: replace a launchd agent pinky did not install. "
+        "with --plugin: bust the plugin's cache dir before fetching (dev cache-bust)",
     )
     p.set_defaults(func=cmd_install)
 

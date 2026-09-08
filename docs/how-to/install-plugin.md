@@ -1,8 +1,8 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-08 12:00*
+*Update date : 2026-09-08 22:16*
 
 ```bash
-pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes]
+pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes] [--force]
 ```
 
 One command. It:
@@ -12,6 +12,14 @@ One command. It:
    is no fetch-only mode, so this also enables the plugin at user scope — **transiently**: for a
    plugin that ends up project-scoped, step 2 drops that user enable once the real targets are
    placed. It stays only for a plugin you keep at user scope (a status line).
+
+   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
+   <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
+   cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual release) keeps
+   serving the stale build after you edit its working tree — `--force` is the automated form of
+   the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete only happens when
+   the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
+   refused, not removed.
 
 2. **Then, one of two things:**
    - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes

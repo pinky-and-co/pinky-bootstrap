@@ -160,6 +160,12 @@ def test_install_dispatch_plugin_with_marketplace(monkeypatch):
     ]
 
 
+def test_install_dispatch_plugin_threads_yes_and_force(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["install", "--plugin", "pc-x", "--yes", "--force"])
+    assert calls == [["--plugin", "pc-x", "--yes", "--force"]]
+
+
 def test_rules_dispatch_default_workspace(monkeypatch):
     # No positional workspace -> bare `--rules` (setup.cli's own const=WORKSPACE_ROOT kicks in).
     calls = _captured_argv(monkeypatch)
