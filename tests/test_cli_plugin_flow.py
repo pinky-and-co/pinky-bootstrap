@@ -75,7 +75,9 @@ def env(tmp_path, monkeypatch):
     sim = _ClaudeCliSim(home)
     monkeypatch.setattr(subprocess, "run", sim)
     ws = tmp_path / "workspace"
-    (ws / "pinky-core" / ".git").mkdir(parents=True)  # one pickable depth-1 target
+    (ws / "pinky-core" / ".git").mkdir(
+        parents=True
+    )  # one pickable depth-2 target (a repo)
     monkeypatch.setattr(cli, "WORKSPACE_ROOT", ws)
     return SimpleNamespace(sim=sim, home=home, ws=ws)
 
@@ -100,7 +102,7 @@ def _uninstalled(sim: _ClaudeCliSim) -> bool:
 
 
 def test_project_scope_drops_the_fetch_time_user_enable(env, monkeypatch):
-    _canned_input(monkeypatch, ["p", "1", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -119,7 +121,7 @@ def test_project_scope_drops_the_fetch_time_user_enable(env, monkeypatch):
 
 def test_project_scope_preserves_a_pre_existing_global_enable(env, monkeypatch):
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)  # predates the command
-    _canned_input(monkeypatch, ["p", "1", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -141,7 +143,7 @@ def test_wizard_refusal_undoes_the_fetch_time_enable(env, monkeypatch):
 
 def test_wizard_refusal_leaves_a_pre_existing_global_enable_alone(env, monkeypatch):
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
-    _canned_input(monkeypatch, ["p", "1", "99"])  # out-of-range -> SystemExit
+    _canned_input(monkeypatch, ["p", "2", "99"])  # out-of-range -> SystemExit
 
     with pytest.raises(SystemExit):
         cli.main(["--plugin", "pc-snow"])

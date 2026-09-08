@@ -349,31 +349,26 @@ def test_lsp_server_commands_tolerates_malformed_json(tmp_path):
 # --- ensure_lsp_tool_enabled --------------------------------------------------------------
 
 
-def test_ensure_lsp_tool_enabled_writes_env_at_the_target(tmp_path):
-    target = tmp_path / "pinky-lib"
-    plugin_install.ensure_lsp_tool_enabled(target)
-    data = json.loads((target / ".claude" / "settings.json").read_text())
+def test_ensure_lsp_tool_enabled_writes_env_at_user_scope(home):
+    plugin_install.ensure_lsp_tool_enabled()
+    data = json.loads((home / "settings.json").read_text())
     assert data["env"] == {"ENABLE_LSP_TOOL": "1"}
 
 
-def test_ensure_lsp_tool_enabled_preserves_existing_keys_and_env_vars(tmp_path):
-    target = tmp_path / "pinky-lib"
-    settings = target / ".claude" / "settings.json"
-    settings.parent.mkdir(parents=True)
-    settings.write_text(
+def test_ensure_lsp_tool_enabled_preserves_existing_keys_and_env_vars(home):
+    (home / "settings.json").write_text(
         json.dumps({"enabledPlugins": {"pc-snow@mp": True}, "env": {"OTHER_VAR": "x"}}),
         encoding="utf-8",
     )
-    plugin_install.ensure_lsp_tool_enabled(target)
-    data = json.loads(settings.read_text())
+    plugin_install.ensure_lsp_tool_enabled()
+    data = json.loads((home / "settings.json").read_text())
     assert data["enabledPlugins"] == {"pc-snow@mp": True}
     assert data["env"] == {"OTHER_VAR": "x", "ENABLE_LSP_TOOL": "1"}
 
 
-def test_ensure_lsp_tool_enabled_records_the_ledger(home, tmp_path):
-    target = tmp_path / "pinky-lib"
-    plugin_install.ensure_lsp_tool_enabled(target)
+def test_ensure_lsp_tool_enabled_records_the_ledger(home):
+    plugin_install.ensure_lsp_tool_enabled()
     raw = json.loads((home / "ledger.json").read_text())
-    entry = raw[f"env.ENABLE_LSP_TOOL@{target}"]
-    assert entry["path"] == str(target / ".claude" / "settings.json")
+    entry = raw["env.ENABLE_LSP_TOOL@user"]
+    assert entry["path"] == str(home / "settings.json")
     assert entry["value"] == "1"
