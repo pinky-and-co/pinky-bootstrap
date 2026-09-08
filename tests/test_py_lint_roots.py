@@ -86,6 +86,16 @@ def test_flat_layout_excludes_hidden_and_cache_dirs(tmp_path):
     assert setup.precommit._py_lint_roots(tmp_path) == []
 
 
+def test_flat_layout_drops_loose_file_shadowed_by_same_name_package(tmp_path):
+    """mypy resolves `setup.py` and `setup/` to the same module name and hard-errors the moment
+    both are on its file list — the package wins, the loose shim is dropped."""
+    (tmp_path / "setup.py").write_text("", encoding="utf-8")
+    p = tmp_path / "setup" / "cli.py"
+    p.parent.mkdir(parents=True)
+    p.write_text("", encoding="utf-8")
+    assert setup.precommit._py_lint_roots(tmp_path) == ["setup/"]
+
+
 def test_flat_layout_with_no_py_at_all_is_empty(tmp_path):
     assert setup.precommit._py_lint_roots(tmp_path) == []
 

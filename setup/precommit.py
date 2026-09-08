@@ -161,6 +161,12 @@ def _py_lint_roots(repo: Path) -> list[str]:
     never authored by this repo — same exclusion `resolve_extras` already applies) and `tests/`
     (covered separately, never part of this hook set). A dir keeps its trailing `/` in the result,
     a loose file does not — the marker `_py_lint_files_pattern`/`_py_lint_bandit_args` key off.
+
+    A loose file `X.py` is dropped when the package `X/` is ALSO discovered — mypy resolves both
+    to the same module name and hard-errors ("Duplicate module named X") the moment both are on
+    its file list (hit live: `pinky-bootstrap` ships both `setup/` — the real package — and the
+    legacy `setup.py` pip shim). The package wins; the loose file is what a bare `pip install .`
+    clone falls back to, not the thing worth type-checking twice.
     """
     if (repo / "src").is_dir():
         return ["src/"]
@@ -176,6 +182,8 @@ def _py_lint_roots(repo: Path) -> list[str]:
         if rel.parts[0] in skip_top:
             continue
         roots.add(rel.parts[0] if len(rel.parts) == 1 else f"{rel.parts[0]}/")
+    dirs = {r[:-1] for r in roots if r.endswith("/")}
+    roots = {r for r in roots if not (r.endswith(".py") and r[: -len(".py")] in dirs)}
     return sorted(roots)
 
 
