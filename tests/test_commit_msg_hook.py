@@ -1,0 +1,117 @@
+"""Tests comportementaux du hook `commit-msg` — exécution réelle, pas invariant statique.
+
+Ce hook garde le format des messages de commit sur TOUS les repos distribués. Le parsing des
+breaking changes conformes à la spec Conventional Commits (`<type>!:` sur le header, et/ou un
+footer `BREAKING CHANGE:`) a été ajouté sans aucun test — or un portier ne se prouve pas en
+lisant son code, seulement en le faisant accepter puis bloquer. Chaque cas écrit le message dans
+un fichier temporaire, lance le hook comme git le lance (`bash commit-msg <file>`) et n'assertionne
+que sur le code de sortie ; un cas de rejet fige aussi la sortie complète du hook (oracle, `core/rules/base/tests.md`).
+"""
+
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+HOOK = Path(__file__).parent.parent / "hygiene" / "hooks" / "commit-msg"
+
+
+def _resolve_bash() -> str:
+    """Le bash avec lequel invoquer `commit-msg`.
+
+    Sur Windows, un `"bash"` nu résolu par le PATH peut tomber sur le stub WSL de System32 au lieu
+    du bash de Git — même piège que `test_run_tests_hook.py`, même parade : préférer explicitement
+    le `bash.exe` livré à côté de `git.exe`.
+    """
+    if sys.platform != "win32":
+        return "bash"
+    git = shutil.which("git")
+    if git:
+        candidate = Path(git).resolve().parent.parent / "bin" / "bash.exe"
+        if candidate.exists():
+            return str(candidate)
+    return "bash"
+
+
+def run_hook(tmp_path: Path, message: str) -> subprocess.CompletedProcess[str]:
+    """Le hook, lancé comme pre-commit le lance : bash, avec le chemin du fichier de message en `$1`."""
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    msg_file.write_text(message, encoding="utf-8")
+    return subprocess.run(
+        [_resolve_bash(), str(HOOK), str(msg_file)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
+# ── Accepté ─────────────────────────────────────────────────────────────────
+
+ACCEPTED = [
+    pytest.param("✨ feat: add manifest variable resolution", id="plain-feat"),
+    pytest.param("♻️ refactor: extract stage upload logic", id="plain-refactor"),
+    pytest.param("💾 save: core/manifest.py in progress [skip ci]", id="save"),
+    pytest.param("Merge branch 'main' into feature/x", id="merge"),
+    pytest.param("♻️ refactor!: rename upload_packages signature", id="bang-refactor"),
+    pytest.param("🔧 chore!: drop the legacy config key", id="bang-chore"),
+    pytest.param(
+        "♻️ refactor!: rename upload_packages signature\n"
+        "\n"
+        "BREAKING CHANGE: upload_packages now takes (bucket, key) instead of (path).",
+        id="bang-and-footer",
+    ),
+    pytest.param(
+        "🐛 fix: handle missing region\n"
+        "\n"
+        "BREAKING CHANGE: the region field is now required in every profile.",
+        id="footer-without-bang",
+    ),
+]
+
+
+@pytest.mark.parametrize("message", ACCEPTED)
+def test_accepted(tmp_path, message):
+    """Un message conforme sort avec le code 0."""
+    result = run_hook(tmp_path, message)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+# ── Rejeté ──────────────────────────────────────────────────────────────────
+
+REJECTED = [
+    pytest.param("♻️ refactor!:", id="bang-empty-description"),
+    pytest.param("♻️ refactor !: rename x", id="space-before-bang"),
+    pytest.param(
+        "💥 breaking: rename upload_packages signature", id="dropped-breaking-type"
+    ),
+    pytest.param(
+        "🐛 fix: handle missing region\n\nBREAKING CHANGE: ab", id="footer-too-short"
+    ),
+    pytest.param(
+        "🐛 fix: handle missing region\n\nBreaking change: the region field is now required.",
+        id="footer-wrong-case",
+    ),
+]
+
+
+@pytest.mark.parametrize("message", REJECTED)
+def test_rejected(tmp_path, message):
+    """Un message non conforme sort avec un code non nul."""
+    result = run_hook(tmp_path, message)
+    assert result.returncode != 0, result.stdout + result.stderr
+
+
+def test_wrong_case_footer_full_output(tmp_path):
+    """Oracle : le rejet d'un footer mal casé pine la sortie entière du hook, pas un fragment."""
+    result = run_hook(
+        tmp_path,
+        "🐛 fix: handle missing region\n\nBreaking change: the region field is now required.",
+    )
+    assert result.returncode == 1
+    assert result.stdout == (
+        "❌ Malformed BREAKING CHANGE footer.\n"
+        "   Must be exactly: BREAKING CHANGE: <description>\n"
+        "   Case-sensitive — this exact casing is what tooling keys off for a major bump.\n"
+    )
