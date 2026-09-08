@@ -1,8 +1,8 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-02 10:05*
+*Update date : 2026-09-08 22:16*
 
 ```bash
-pinky install --plugin <plugin-id> --marketplace <marketplace>
+pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes] [--force]
 ```
 
 One command. It:
@@ -12,6 +12,14 @@ One command. It:
    is no fetch-only mode, so this also enables the plugin at user scope — **transiently**: for a
    plugin that ends up project-scoped, step 2 drops that user enable once the real targets are
    placed. It stays only for a plugin you keep at user scope (a status line).
+
+   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
+   <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
+   cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual release) keeps
+   serving the stale build after you edit its working tree — `--force` is the automated form of
+   the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete only happens when
+   the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
+   refused, not removed.
 
 2. **Then, one of two things:**
    - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes
@@ -31,6 +39,20 @@ One command. It:
      — unless the plugin was already a legitimate global enable before the command ran, in which
      case it is left alone. A wizard refusal (bad answer, no tty) undoes the step-1 enable the same
      way.
+
+3. **Rescopes — removes an enable the new targets no longer cover.** Before steps 1–2 run, `pinky`
+   snapshots where this plugin is currently enabled. Once the wizard's targets are known, any
+   snapshotted scope that isn't among them is removed too — a real `claude plugin uninstall
+   --scope <scope>` per stale scope, so re-running `--plugin` with different targets no longer
+   leaves the old ones silently enabled forever. It only fires when there is something to remove,
+   and it asks first:
+   ```
+   Also remove <plugin-id> from: <stale-scope-1>, <stale-scope-2>? [y/N]
+   ```
+   `--yes` skips the prompt and confirms. In a non-interactive shell without `--yes`, nothing is
+   removed — `pinky` prints what's left in place instead of guessing. A scope where the plugin is
+   explicitly set to `false` (a deliberate "parent wins, off here" opt-out) is **not** touched:
+   an install only ever adds a scope, it does not undo an opt-out.
 
 ## During plugin development — local marketplace instead of GitHub
 
@@ -79,7 +101,8 @@ CLI distribution command does, `directory`-source or not.
 
 `enabledPlugins` does **not** trigger an automatic download — a plugin listed there has no effect
 until it's already installed locally (`claude plugin install` first). `pinky install --plugin`
-therefore assumes the plugin is already installed; it only handles *where* it's enabled.
+therefore assumes the plugin is already installed; it only handles *where* it's enabled (and, as
+of step 3, where it's no longer supposed to be).
 
 ## Where a plugin can be scoped, concretely
 
@@ -101,3 +124,13 @@ applies to sessions started in any repo nested under it. Three real targets, one
 - **Does not refresh a stale `statusLine` path on its own after `claude plugin update`** — the
   written path carries the plugin version, so re-run `pinky install --plugin <id>` to re-resolve it
   (it reads the live path from `installed_plugins.json` every run).
+- **Does not see a scope inside a git repo nested in another git repo.** The scope scan
+  (`plugin_scope._collect`) prunes at the first `.git` it meets and never descends into a repo, so
+  a `.claude/settings.json` in a repo-within-a-repo is invisible to both the rescope snapshot and
+  `pinky plugins reconcile`, and stays untouched however you rescope. Group nesting itself is
+  unbounded — a group many levels down still counts.
+- **Does not know when a scope is required by another plugin's declared dependency.** Step 3 only
+  ever purges the plugin you're installing — rescoping `pc-craft` never touches `pc-privacy`'s
+  scopes even when `pc-craft` declares `pc-privacy` in its `.claude-plugin/plugin.json`
+  `dependencies`. `pinky plugins reconcile` surfaces that as `required by: pc-craft` on the
+  dependency's block; this command does not warn you before you remove such a scope yourself.

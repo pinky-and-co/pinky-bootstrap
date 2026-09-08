@@ -137,7 +137,9 @@ def main(argv: list[str] | None = None) -> None:
         "--force",
         action="store_true",
         help="with --live-docs: replace a launchd agent at the target path even if pinky did not "
-        "pose it (default: refuse and leave it alone)",
+        "pose it (default: refuse and leave it alone). With --plugin: delete the plugin's cache "
+        "directory first so the fetch re-pulls the working tree instead of keeping a stale build "
+        "(dev-only — see docs/how-to/install-plugin.md)",
     )
     parser.add_argument(
         "--plugins-reconcile",
@@ -213,9 +215,23 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.plugin is not None:
+        from . import plugin_reconcile
+
+        # Snapshot BEFORE touching anything — same discipline as apply_reconcile's own loop (audit
+        # once, act, purge against the pre-action snapshot). `spec` mirrors plugin_install._spec's
+        # format exactly; it stays private there, this is cheap enough not to warrant exporting it.
+        spec = f"{args.plugin}@{args.marketplace}" if args.marketplace else args.plugin
+        label_map = plugin_reconcile.label_to_settings(WORKSPACE_ROOT)
+        prior_state = plugin_reconcile.audit_plugins(WORKSPACE_ROOT).get(spec)
+
         # Was it already a legit global enable before we touch anything? Decides whether the
         # fetch-time user-scope enable is ours to drop later.
         was_user_enabled = plugin_install.is_user_enabled(args.plugin, args.marketplace)
+        # 0. Dev cache-bust: `claude plugin install`/`update` only ever fills an absent cache dir,
+        #    so a plugin pinned at 0.1.0 can go on serving a stale build after an edit, no signal.
+        #    `--force` deletes it first — a no-op on a first install (nothing cached yet).
+        if args.force and plugin_install.force_refetch(args.plugin, args.marketplace):
+            print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # 1. Fetch the plugin's files (transient user-scope enable) via Claude Code's own command.
         plugin_install.install_plugin_files(args.plugin, args.marketplace)
         install_path = plugin_install.resolve_install_path(
@@ -242,6 +258,35 @@ def main(argv: list[str] | None = None) -> None:
             raise
         if roots != [Path.home()] and not was_user_enabled:
             plugin_install.drop_user_scope(args.plugin, args.marketplace)
+
+        # 3. Rescope: any scope this plugin was *enabled* at before, outside what was just picked,
+        #    is a leftover from a previous run's choice — not something to keep accumulating
+        #    silently (the bug this flow used to have). Left alone:
+        #    - a `disabled_at` key — a deliberate opt-out, and an install only ever adds a scope
+        #      (include_disabled=False);
+        #    - the user scope when the plugin was already a legitimate global enable before the
+        #      command (same signal `drop_user_scope` above respects) — that predates this run,
+        #      it is not a leftover to sweep.
+        #    Confirm before removing, since the caller may think an install is purely additive.
+        keep = {str(Path.home())} if roots == [Path.home()] else {str(r) for r in roots}
+        if was_user_enabled:
+            keep.add(str(Path.home()))
+        if prior_state is not None:
+            removed = plugin_reconcile.stale_labels(
+                prior_state, label_map, keep=keep, include_disabled=False
+            )
+            if removed:
+                prompt = f"Also remove {args.plugin} from: {', '.join(removed)}? [y/N] "
+                confirmed = args.yes or (
+                    sys.stdin.isatty() and input(prompt).strip().lower() == "y"
+                )
+                if confirmed:
+                    plugin_reconcile.purge_other_enables(
+                        spec, prior_state, label_map, keep=keep, include_disabled=False
+                    )
+                else:
+                    print(f"left unchanged at: {', '.join(removed)}")
+
         print(f"enabled at: {', '.join(str(r) for r in roots)}")
         return
 

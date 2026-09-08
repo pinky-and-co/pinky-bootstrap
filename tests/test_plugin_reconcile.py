@@ -150,6 +150,110 @@ def test_ships_status_line_false_without_the_script_or_without_a_registry_entry(
     assert audit_plugins(ws)["plain@mp"].ships_status_line is False
 
 
+# ── required_by: a scope kept alive by another plugin's declared dependency ──
+
+
+def _install_with_manifest(tmp_path: Path, name: str, manifest: dict) -> Path:
+    install = tmp_path / "cache" / name
+    (install / ".claude-plugin").mkdir(parents=True)
+    (install / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    return install
+
+
+def test_required_by_names_the_dependent_for_a_bare_dependency_id(world, tmp_path):
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json", {"pc-craft@mp": True, "pc-privacy@mp": True}
+    )
+    _write_registry(
+        user_claude,
+        {
+            "pc-craft@mp": [{"scope": "user", "installPath": str(craft)}],
+            "pc-privacy@mp": [{"scope": "user", "installPath": str(tmp_path / "nope")}],
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-privacy@mp"].required_by == ("pc-craft",)
+    assert audit["pc-craft@mp"].required_by == ()
+
+
+def test_required_by_matches_a_dependency_written_as_id_at_marketplace(world, tmp_path):
+    """`dependencies` may carry `pc-privacy@pinky-agentic-plugins` — the docstring's own example.
+    Keyed by the bare id, the audit still surfaces `required by: pc-craft` on `pc-privacy`."""
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy@pinky-agentic-plugins"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json",
+        {
+            "pc-craft@pinky-agentic-plugins": True,
+            "pc-privacy@pinky-agentic-plugins": True,
+        },
+    )
+    _write_registry(
+        user_claude,
+        {
+            "pc-craft@pinky-agentic-plugins": [
+                {"scope": "user", "installPath": str(craft)}
+            ]
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-privacy@pinky-agentic-plugins"].required_by == ("pc-craft",)
+
+
+def test_a_missing_or_malformed_manifest_never_crashes_the_audit(world, tmp_path):
+    user_claude, ws = world
+    no_manifest = tmp_path / "cache" / "pc-x"
+    no_manifest.mkdir(parents=True)
+    broken = tmp_path / "cache" / "pc-y"
+    (broken / ".claude-plugin").mkdir(parents=True)
+    (broken / ".claude-plugin" / "plugin.json").write_text(
+        "{ not json", encoding="utf-8"
+    )
+    _write_enabled(user_claude / "settings.json", {"pc-x@mp": True, "pc-y@mp": True})
+    _write_registry(
+        user_claude,
+        {
+            "pc-x@mp": [{"scope": "user", "installPath": str(no_manifest)}],
+            "pc-y@mp": [{"scope": "user", "installPath": str(broken)}],
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-x@mp"].required_by == ()
+    assert audit["pc-y@mp"].required_by == ()
+
+
+def test_report_prints_the_required_by_line(world, tmp_path, capsys):
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json", {"pc-craft@mp": True, "pc-privacy@mp": True}
+    )
+    _write_registry(
+        user_claude, {"pc-craft@mp": [{"scope": "user", "installPath": str(craft)}]}
+    )
+
+    print_audit_report(audit_plugins(ws))
+
+    out = capsys.readouterr().out
+    assert "  required by:     pc-craft" in out
+
+
 # ── resilience ────────────────────────────────────────────────────────────
 
 
@@ -225,6 +329,67 @@ def test_report_lists_every_plugin_shape_and_writes_nothing(world, tmp_path, cap
 def test_report_on_an_empty_audit_says_so(capsys):
     print_audit_report({})
     assert "No plugin found" in capsys.readouterr().out
+
+
+# ── stale_labels — the rescope preview, with and without disabled scopes ────
+
+
+def _state(*, enabled=(), disabled=()) -> plugin_reconcile.PluginState:
+    return plugin_reconcile.PluginState(
+        plugin_id="p@mp",
+        marketplace="mp",
+        enabled_at=tuple(enabled),
+        disabled_at=tuple(disabled),
+        installed_scopes=(),
+        ships_status_line=False,
+    )
+
+
+def test_stale_labels_reports_an_enabled_scope_outside_keep(world):
+    _, ws = world
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(enabled=(".", "pinky-lib/pinky-core"))
+
+    stale = plugin_reconcile.stale_labels(
+        state, label_map, keep={str(ws / "pinky-lib" / "pinky-core")}
+    )
+
+    assert stale == ["."]
+
+
+def test_stale_labels_excludes_disabled_scopes_when_asked(world):
+    _, ws = world
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(enabled=(".",), disabled=("pinky-lib/pinky-core",))
+    keep = {str(ws / "bootstrap" / "pinky-bootstrap")}
+
+    assert plugin_reconcile.stale_labels(state, label_map, keep=keep) == [
+        ".",
+        "pinky-lib/pinky-core",
+    ]
+    assert plugin_reconcile.stale_labels(
+        state, label_map, keep=keep, include_disabled=False
+    ) == ["."]
+
+
+def test_purge_other_enables_include_disabled_false_leaves_the_false_key(world):
+    user_claude, ws = world
+    repo = ws / "pinky-lib" / "pinky-core"
+    _write_enabled(repo / ".claude" / "settings.json", {"p@mp": False})
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(disabled=("pinky-lib/pinky-core",))
+
+    plugin_reconcile.purge_other_enables(
+        "p@mp",
+        state,
+        label_map,
+        keep={str(user_claude.parent)},
+        include_disabled=False,
+    )
+
+    assert json.loads((repo / ".claude" / "settings.json").read_text())[
+        "enabledPlugins"
+    ] == {"p@mp": False}
 
 
 # ── `--apply` — place each plugin, purge the rest (FR-0023-34..39) ──────────
@@ -389,6 +554,23 @@ def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkey
     assert _enabled_in(ws / "pinky-lib" / ".claude" / "settings.json") == {
         "pc-x@mp": True
     }
+
+
+def test_apply_sweeps_a_stale_false_key_when_consolidating_to_user(
+    apply_world, monkeypatch
+):
+    """The other half of the `include_disabled` split: `apply_reconcile` keeps the default
+    (`True`), so consolidating a plugin to one scope clears a stale `false` opt-out too —
+    unlike the `pinky install --plugin` path, which leaves it alone."""
+    user_claude, ws, _sim = apply_world
+    _write_enabled(user_claude / "settings.json", {"pc-x@mp": True})
+    repo_settings = ws / "pinky-lib" / "pinky-core" / ".claude" / "settings.json"
+    _write_enabled(repo_settings, {"pc-x@mp": False})
+    _answers(monkeypatch, ["u"])
+
+    apply_reconcile(ws)
+
+    assert "pc-x@mp" not in _enabled_in(repo_settings)
 
 
 def test_apply_project_answer_asks_the_scope_question_only_once(
