@@ -556,6 +556,23 @@ def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkey
     }
 
 
+def test_apply_sweeps_a_stale_false_key_when_consolidating_to_user(
+    apply_world, monkeypatch
+):
+    """The other half of the `include_disabled` split: `apply_reconcile` keeps the default
+    (`True`), so consolidating a plugin to one scope clears a stale `false` opt-out too —
+    unlike the `pinky install --plugin` path, which leaves it alone."""
+    user_claude, ws, _sim = apply_world
+    _write_enabled(user_claude / "settings.json", {"pc-x@mp": True})
+    repo_settings = ws / "pinky-lib" / "pinky-core" / ".claude" / "settings.json"
+    _write_enabled(repo_settings, {"pc-x@mp": False})
+    _answers(monkeypatch, ["u"])
+
+    apply_reconcile(ws)
+
+    assert "pc-x@mp" not in _enabled_in(repo_settings)
+
+
 def test_apply_project_answer_asks_the_scope_question_only_once(
     apply_world, monkeypatch
 ):

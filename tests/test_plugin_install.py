@@ -142,6 +142,33 @@ def test_force_refetch_refuses_a_path_outside_the_cache_root(home, capsys):
     assert "refusing --force" in capsys.readouterr().err
 
 
+def test_force_refetch_refuses_a_shallow_path_inside_the_cache(home, capsys):
+    # installPath == the whole marketplace dir (2 segments) — rmtree would wipe every plugin
+    marketplace_dir = home / "cache" / "mp"
+    (marketplace_dir / "pc-x" / "0.1.0").mkdir(parents=True)
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", marketplace_dir)
+
+    assert plugin_install.force_refetch("pc-x", "mp") is False
+    assert marketplace_dir.exists()
+    assert "refusing --force" in capsys.readouterr().err
+
+
+def test_force_refetch_refuses_a_cache_entry_symlinked_outside(home, capsys):
+    """The `directory`-source case the docstring promises to handle: the version dir is a symlink
+    to a working tree — `.resolve()` collapses it, the containment check then refuses."""
+    working_tree = home / "repos" / "pc-x"
+    (working_tree / ".claude-plugin").mkdir(parents=True)
+    version_dir = home / "cache" / "mp" / "pc-x" / "0.1.0"
+    version_dir.parent.mkdir(parents=True)
+    version_dir.symlink_to(working_tree, target_is_directory=True)
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", version_dir)
+
+    assert plugin_install.force_refetch("pc-x", "mp") is False
+    assert working_tree.exists()
+    assert version_dir.exists()
+    assert "refusing --force" in capsys.readouterr().err
+
+
 # --- is_user_enabled -------------------------------------------------------------------
 
 

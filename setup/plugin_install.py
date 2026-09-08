@@ -258,18 +258,25 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
     cache dir). Returns True when a directory was removed, False when there was nothing to remove.
 
     The path comes from `installed_plugins.json` `installPath`, which this function does not
-    control. It removes it **only** when it resolves under `~/.claude/plugins/cache/` — a
-    registry pointing anywhere else (a hand-edit, a future `directory`-source layout that maps a
-    plugin onto its own working tree) is refused rather than `rmtree`'d.
+    control. It removes it **only** when it resolves to a `<marketplace>/<plugin>/<version>/` dir
+    (≥ 3 segments) under `~/.claude/plugins/cache/` — a registry pointing anywhere else (a
+    hand-edit, a future `directory`-source layout that maps a plugin onto its own working tree),
+    or at the cache root / a whole marketplace dir, is refused rather than `rmtree`'d.
     """
     try:
         install_path = resolve_install_path(plugin_id, marketplace).resolve()
     except FileNotFoundError:
         return False
-    if not install_path.is_relative_to(_CACHE_ROOT.resolve()):
+    cache_root = _CACHE_ROOT.resolve()
+    inside_a_plugin_version_dir = (
+        install_path != cache_root
+        and install_path.is_relative_to(cache_root)
+        and len(install_path.relative_to(cache_root).parts) >= 3
+    )
+    if not inside_a_plugin_version_dir:
         print(
-            f"⚠️  refusing --force: {install_path} is not under {_CACHE_ROOT} — "
-            "delete it by hand if that is really what you want",
+            f"⚠️  refusing --force: {install_path} is not a plugin cache directory under "
+            f"{_CACHE_ROOT} — delete it by hand if that is really what you want",
             file=sys.stderr,
         )
         return False
