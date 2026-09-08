@@ -9,8 +9,8 @@
 #
 # Special case: 💾 save: <description> [skip ci]
 #
-# Distributed from pinky-workspace/core/hooks/ — do not edit in place; edit the
-# source and re-run setup.py.
+# Distributed by `pinky distribute` from hygiene/hooks/ — do not edit in place;
+# edit the source there.
 # =============================================================================
 
 COMMIT_MSG_FILE=$1
@@ -46,7 +46,7 @@ TYPE=""
 
 if [ -z "$EMOJI" ] || [ -z "$TYPE" ]; then
     echo "❌ Invalid format — missing emoji or type."
-    echo "   Format: <emoji> <type>: <description>"
+    echo "   Format: <emoji> <type>[!]: <description>"
     exit 1
 fi
 
@@ -161,12 +161,15 @@ if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
     exit 1
 fi
 
-# Breaking-change footer — spec requires exact uppercase casing, and it can
-# land anywhere in the body, so this checks the full file, not just the header.
-COMMIT_MSG_FULL=$(cat "$COMMIT_MSG_FILE")
-
-if echo "$COMMIT_MSG_FULL" | grep -qiE "^BREAKING CHANGE:"; then
-    if ! echo "$COMMIT_MSG_FULL" | grep -qE "^BREAKING CHANGE: .{3,}"; then
+# Breaking-change footer — the spec token is case-sensitive (`BREAKING CHANGE`)
+# and can land anywhere in the body, so this checks the whole file, not the
+# header alone. The case-insensitive match only gates the strict check: a
+# start-of-line `Breaking change:` — a mistyped footer, or innocent prose like
+# "Breaking change: none" — is then rejected as malformed. Deliberate, so a
+# footer in the wrong case never passes silently; keep such phrases off the
+# start of a line when you don't mean the footer.
+if grep -qiE "^BREAKING CHANGE:" "$COMMIT_MSG_FILE"; then
+    if ! grep -qE "^BREAKING CHANGE: .{3,}" "$COMMIT_MSG_FILE"; then
         echo "❌ Malformed BREAKING CHANGE footer."
         echo "   Must be exactly: BREAKING CHANGE: <description>"
         echo "   Case-sensitive — this exact casing is what tooling keys off for a major bump."
