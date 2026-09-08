@@ -80,30 +80,44 @@ def test_accepted(tmp_path, message):
 
 # ── Rejeté ──────────────────────────────────────────────────────────────────
 
+# (message, fragment attendu dans la sortie) — le fragment prouve QUE le rejet vient du bon check.
 REJECTED = [
-    pytest.param("♻️ refactor!:", id="bang-empty-description"),
-    pytest.param("♻️ refactor !: rename x", id="space-before-bang"),
+    pytest.param("♻️ refactor!:", "Invalid commit format", id="bang-empty-description"),
     pytest.param(
-        "💥 breaking: rename upload_packages signature", id="dropped-breaking-type"
+        "♻️ refactor !: rename x", "Invalid commit format", id="space-before-bang"
     ),
     pytest.param(
-        "🐛 fix: handle missing region\n\nBREAKING CHANGE: ab", id="footer-too-short"
+        "💥 breaking: rename upload_packages signature",
+        "not in mapping",
+        id="dropped-breaking-type",
+    ),
+    pytest.param(
+        "🐛 fix: handle missing region\n\nBREAKING CHANGE: ab",
+        "Malformed BREAKING CHANGE footer",
+        id="footer-too-short",
     ),
     pytest.param(
         "🐛 fix: handle missing region\n\nBreaking change: the region field is now required.",
+        "Malformed BREAKING CHANGE footer",
         id="footer-wrong-case",
+    ),
+    pytest.param(
+        "🐛 fix: handle missing region\n\nBREAKING-CHANGE: the region field is now required.",
+        "Malformed BREAKING CHANGE footer",
+        id="footer-hyphen-form",
     ),
 ]
 
 
-@pytest.mark.parametrize("message", REJECTED)
-def test_rejected(tmp_path, message):
-    """Un message non conforme sort avec un code non nul."""
+@pytest.mark.parametrize("message, fragment", REJECTED)
+def test_rejected(tmp_path, message, fragment):
+    """Un message non conforme sort non nul, et le message d'erreur cible le bon check."""
     result = run_hook(tmp_path, message)
     assert result.returncode != 0, result.stdout + result.stderr
+    assert fragment in result.stdout, result.stdout + result.stderr
 
 
-def test_wrong_case_footer_full_output(tmp_path):
+def test_malformed_footer_full_output(tmp_path):
     """Oracle : le rejet d'un footer mal casé pine la sortie entière du hook, pas un fragment."""
     result = run_hook(
         tmp_path,
@@ -112,6 +126,6 @@ def test_wrong_case_footer_full_output(tmp_path):
     assert result.returncode == 1
     assert result.stdout == (
         "❌ Malformed BREAKING CHANGE footer.\n"
-        "   Must be exactly: BREAKING CHANGE: <description>\n"
-        "   Case-sensitive — this exact casing is what tooling keys off for a major bump.\n"
+        "   Must be exactly: BREAKING CHANGE: <description>  (one space, both words uppercase)\n"
+        "   BREAKING-CHANGE: and other casings are rejected on purpose — use the space form.\n"
     )

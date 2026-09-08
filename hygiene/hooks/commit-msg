@@ -161,18 +161,19 @@ if ! echo "$COMMIT_MSG" | grep -qE "$PATTERN"; then
     exit 1
 fi
 
-# Breaking-change footer — the spec token is case-sensitive (`BREAKING CHANGE`)
-# and can land anywhere in the body, so this checks the whole file, not the
-# header alone. The case-insensitive match only gates the strict check: a
-# start-of-line `Breaking change:` — a mistyped footer, or innocent prose like
-# "Breaking change: none" — is then rejected as malformed. Deliberate, so a
-# footer in the wrong case never passes silently; keep such phrases off the
-# start of a line when you don't mean the footer.
-if grep -qiE "^BREAKING CHANGE:" "$COMMIT_MSG_FILE"; then
+# Breaking-change footer — one house form only: `BREAKING CHANGE:` (a space,
+# both words uppercase), and it can land anywhere in the file so this checks the
+# whole message, not just the header. The gate is case- and separator-loose so
+# every near-miss is caught rather than passing silently: `BREAKING-CHANGE:`
+# (spec §16's hyphen synonym, deliberately not accepted here), a miscased
+# `Breaking change:`, and innocent start-of-line prose like "Breaking change:
+# none" all trip it and are then rejected by the strict check. Keep such phrases
+# off the start of a line when you don't mean the footer.
+if grep -qiE "^BREAKING[- ]CHANGE:" "$COMMIT_MSG_FILE"; then
     if ! grep -qE "^BREAKING CHANGE: .{3,}" "$COMMIT_MSG_FILE"; then
         echo "❌ Malformed BREAKING CHANGE footer."
-        echo "   Must be exactly: BREAKING CHANGE: <description>"
-        echo "   Case-sensitive — this exact casing is what tooling keys off for a major bump."
+        echo "   Must be exactly: BREAKING CHANGE: <description>  (one space, both words uppercase)"
+        echo "   BREAKING-CHANGE: and other casings are rejected on purpose — use the space form."
         exit 1
     fi
 fi
