@@ -70,3 +70,6 @@ tests/_local/
 # montages de boards vivent sous ~/.local/share/pinky/live-docs/docs/, jamais ici ; ceci couvre
 # le cas d'un `pinky docs serve` lancé par erreur contre le dossier source.
 live-docs/docs/
+
+# Claude Code local session state (permission-change skill), not source
+.claude/.guard-state.json
