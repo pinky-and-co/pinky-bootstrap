@@ -251,9 +251,41 @@ def _spec_parts(spec: str) -> tuple[str, str | None]:
     return plugin_id, (marketplace or None)
 
 
-def _label_to_settings(workspace_root: Path) -> dict[str, Path]:
-    """`enabled_at` / `disabled_at` label → the settings file that carries that key."""
+def label_to_settings(workspace_root: Path) -> dict[str, Path]:
+    """`enabled_at` / `disabled_at` label → the settings file that carries that key. Public: also
+    called from `cli.py`'s `--plugin` flow (rescope-on-reinstall), not just `apply_reconcile`."""
     return dict(_settings_locations(workspace_root))
+
+
+def _rescope_labels(state: PluginState, *, include_disabled: bool) -> set[str]:
+    """The labels a rescope may act on. `include_disabled=False` leaves `disabled_at` alone: a
+    `false` key is a deliberate "parent wins, off here" opt-out, not scope accumulation, so the
+    `pinky install --plugin` path must not silently strip it (it only ever *adds* a scope).
+    `apply_reconcile` passes `True` — consolidating a plugin to one scope is meant to clear stale
+    disables too."""
+    return {*state.enabled_at, *(state.disabled_at if include_disabled else ())}
+
+
+def stale_labels(
+    state: PluginState,
+    label_map: dict[str, Path],
+    *,
+    keep: set[str],
+    include_disabled: bool = True,
+) -> list[str]:
+    """Which of `state`'s enabled (and, unless `include_disabled=False`, disabled) labels fall
+    outside `keep` — the preview `purge_other_enables` doesn't expose on its own, so a caller can
+    show/confirm before acting instead of purging blind. Same directory-matching as
+    `purge_other_enables`, read-only."""
+    keep_resolved = {Path(k).resolve() for k in keep}
+    stale = []
+    for label in _rescope_labels(state, include_disabled=include_disabled):
+        settings = label_map.get(label)
+        if settings is None:
+            continue
+        if settings.parent.parent.resolve() not in keep_resolved:
+            stale.append(label)
+    return sorted(stale)
 
 
 def _pop_key(settings_file: Path, spec: str) -> bool:
@@ -300,15 +332,20 @@ def _project_scopes_by_dir(state: PluginState) -> dict[Path, str]:
     return by_dir
 
 
-def _purge_other_enables(
+def purge_other_enables(
     spec: str,
     state: PluginState,
     label_map: dict[str, Path],
     *,
     keep: set[str],
+    include_disabled: bool = True,
 ) -> None:
     """Remove every enable for `spec` whose directory is not in `keep`. `keep` holds
-    `str(Path.home())` for a user target, the chosen project dirs otherwise.
+    `str(Path.home())` for a user target, the chosen project dirs otherwise. Public: also called
+    from `cli.py`'s `--plugin` flow, not just `apply_reconcile`.
+
+    `include_disabled=False` (the `--plugin` path) leaves `disabled_at` keys untouched — a
+    deliberate opt-out is not scope accumulation. See `_rescope_labels`.
 
     A directory that also has a registry entry (a real project/local install, e.g. one pulled in
     as a dependency) is removed with `claude plugin uninstall --scope <scope>` so the
@@ -318,7 +355,7 @@ def _purge_other_enables(
     """
     keep_resolved = {Path(k).resolve() for k in keep}
     scope_by_dir = _project_scopes_by_dir(state)
-    for label in {*state.enabled_at, *state.disabled_at}:
+    for label in _rescope_labels(state, include_disabled=include_disabled):
         settings = label_map.get(label)
         if settings is None:
             continue
@@ -392,7 +429,7 @@ def apply_reconcile(workspace_root: Path) -> None:
         )
         raise SystemExit(1)
 
-    label_map = _label_to_settings(workspace_root)
+    label_map = label_to_settings(workspace_root)
     for spec, state in audit_plugins(workspace_root).items():
         recorded = state_file.posed_value(_DECISION_PREFIX + spec)
         if recorded is not None and _decision_still_holds(recorded, state, label_map):
@@ -424,7 +461,7 @@ def apply_reconcile(workspace_root: Path) -> None:
             continue
         if answer == "u":
             _ensure_user_enabled(spec, state)
-            _purge_other_enables(spec, state, label_map, keep={str(Path.home())})
+            purge_other_enables(spec, state, label_map, keep={str(Path.home())})
             decision = "user"
         elif answer == "p":
             # this loop's own prompt already asked user/project — the wizard skips its Q1
@@ -443,7 +480,7 @@ def apply_reconcile(workspace_root: Path) -> None:
                 skip_scope_question=True,
                 install_path=install_path,
             )
-            _purge_other_enables(spec, state, label_map, keep={str(r) for r in roots})
+            purge_other_enables(spec, state, label_map, keep={str(r) for r in roots})
             decision = "project:" + ",".join(sorted(str(r) for r in roots))
         elif answer == "x":
             if input(f"  uninstall {spec} everywhere? [y/N]: ").strip().lower() not in (

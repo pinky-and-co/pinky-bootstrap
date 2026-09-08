@@ -179,6 +179,8 @@ def cmd_install(args: argparse.Namespace) -> None:
         argv = ["--plugin", args.plugin]
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
+        if args.yes:
+            argv.append("--yes")
         setup_main(argv)
     elif args.output_style:
         setup_main(["--output-style", args.output_style])

@@ -331,6 +331,67 @@ def test_report_on_an_empty_audit_says_so(capsys):
     assert "No plugin found" in capsys.readouterr().out
 
 
+# ── stale_labels — the rescope preview, with and without disabled scopes ────
+
+
+def _state(*, enabled=(), disabled=()) -> plugin_reconcile.PluginState:
+    return plugin_reconcile.PluginState(
+        plugin_id="p@mp",
+        marketplace="mp",
+        enabled_at=tuple(enabled),
+        disabled_at=tuple(disabled),
+        installed_scopes=(),
+        ships_status_line=False,
+    )
+
+
+def test_stale_labels_reports_an_enabled_scope_outside_keep(world):
+    _, ws = world
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(enabled=(".", "pinky-lib/pinky-core"))
+
+    stale = plugin_reconcile.stale_labels(
+        state, label_map, keep={str(ws / "pinky-lib" / "pinky-core")}
+    )
+
+    assert stale == ["."]
+
+
+def test_stale_labels_excludes_disabled_scopes_when_asked(world):
+    _, ws = world
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(enabled=(".",), disabled=("pinky-lib/pinky-core",))
+    keep = {str(ws / "bootstrap" / "pinky-bootstrap")}
+
+    assert plugin_reconcile.stale_labels(state, label_map, keep=keep) == [
+        ".",
+        "pinky-lib/pinky-core",
+    ]
+    assert plugin_reconcile.stale_labels(
+        state, label_map, keep=keep, include_disabled=False
+    ) == ["."]
+
+
+def test_purge_other_enables_include_disabled_false_leaves_the_false_key(world):
+    user_claude, ws = world
+    repo = ws / "pinky-lib" / "pinky-core"
+    _write_enabled(repo / ".claude" / "settings.json", {"p@mp": False})
+    label_map = plugin_reconcile.label_to_settings(ws)
+    state = _state(disabled=("pinky-lib/pinky-core",))
+
+    plugin_reconcile.purge_other_enables(
+        "p@mp",
+        state,
+        label_map,
+        keep={str(user_claude.parent)},
+        include_disabled=False,
+    )
+
+    assert json.loads((repo / ".claude" / "settings.json").read_text())[
+        "enabledPlugins"
+    ] == {"p@mp": False}
+
+
 # ── `--apply` — place each plugin, purge the rest (FR-0023-34..39) ──────────
 
 
