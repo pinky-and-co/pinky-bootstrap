@@ -18,6 +18,7 @@ import tomllib
 from datetime import date, timedelta
 from pathlib import Path
 
+from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
 from .common import (
     CORE_CI_DIR,
     CORE_HOOKS_DIR,
@@ -31,7 +32,6 @@ from .common import (
     inject_readme_sections_local,
     render_index_home,
 )
-from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
 from .product_scaffold import scaffold_product
 
 # Why check_zws is a floor, not a choice: it was born from an invisible character introduced while
@@ -141,6 +141,70 @@ def mypy_additional_dependencies(repo: Path) -> list[str]:
     return [f"mypy=={MYPY_PIN}", *_repo_runtime_dependencies(repo)]
 
 
+# ── python extra: auto-derived scope for the src/-scoped hooks ───────────────────────────────
+# mypy/bandit/darglint/interrogate/check-typed-api all assumed `src/` — correct for the common
+# case, a silent no-op for a flat-layout repo with a pyproject.toml (measured on the moteur itself,
+# `pinky-bootstrap`: 0 `.py` under `src/`, real code in `setup/`/`hygiene/`/`tools/`/`cli_pinky.py`
+# unchecked since the day it grew a pyproject.toml). Same failure `run-tests`' own `files:` filter
+# had (base.yaml's comment on that hook) — an allowlist of layouts, wrong by default off the list.
+# Fixed the same way: derive the scope from what is on disk, no per-repo table to keep in sync.
+PY_LINT_FILES_PLACEHOLDER = "__PY_LINT_FILES_PATTERN__"
+PY_LINT_BANDIT_ARGS_PLACEHOLDER = "__PY_LINT_BANDIT_ARGS__"
+PY_LINT_INTERROGATE_ARGS_PLACEHOLDER = "__PY_LINT_INTERROGATE_ARGS__"
+
+
+def _py_lint_roots(repo: Path) -> list[str]:
+    """Top-level dirs/files carrying `repo`'s own Python, scoped for the src/-scoped hooks.
+
+    `src/` layout: ``["src/"]`` — unchanged, the historical default. Flat layout (no `src/`): every
+    top-level dir or loose file that owns a `.py` file, minus `scripts/hooks/` (DISTRIBUTED_PATHS,
+    never authored by this repo — same exclusion `resolve_extras` already applies) and `tests/`
+    (covered separately, never part of this hook set). A dir keeps its trailing `/` in the result,
+    a loose file does not — the marker `_py_lint_files_pattern`/`_py_lint_bandit_args` key off.
+    """
+    if (repo / "src").is_dir():
+        return ["src/"]
+    hooks_dir = repo / "scripts" / "hooks"
+    skip_top = {"tests", "__pycache__", "dist", "build"}
+    roots: set[str] = set()
+    for p in repo.rglob("*.py"):
+        rel = p.relative_to(repo)
+        if any(part.startswith(".") for part in rel.parts):
+            continue  # .venv, .git, .mypy_cache…
+        if p.is_relative_to(hooks_dir):
+            continue
+        if rel.parts[0] in skip_top:
+            continue
+        roots.add(rel.parts[0] if len(rel.parts) == 1 else f"{rel.parts[0]}/")
+    return sorted(roots)
+
+
+def _py_lint_files_pattern(roots: list[str]) -> str:
+    """`files:` regex selecting exactly `roots`. No roots (no lintable Python outside
+    scripts/hooks/tests/) gets a pattern that never matches, so the hook stays a clean no-op
+    instead of falling back to pre-commit's default-empty-pattern behaviour (matches everything)."""
+    if not roots:
+        return r"(?!)"
+    return "|".join(
+        f"^{re.escape(r)}" if r.endswith("/") else f"^{re.escape(r)}$" for r in roots
+    )
+
+
+def _py_lint_bandit_args(roots: list[str]) -> str:
+    """bandit's `-r` targets — `pass_filenames: false`, so `files:` only gates whether the hook
+    runs at all, never what bandit itself scans (see the identical reasoning on interrogate)."""
+    targets = (
+        ", ".join(roots) if roots else "/dev/null"
+    )  # dead value — files: gate excludes the hook
+    return f"[-r, {targets}, -ll, --skip, B108]"
+
+
+def _py_lint_interrogate_args(roots: list[str]) -> str:
+    """interrogate's positional targets — same `pass_filenames: false` reasoning as bandit."""
+    targets = ", ".join(roots) if roots else "/dev/null"
+    return f"[{targets}, --ignore-init-method, --ignore-magic, --ignore-module, --ignore-private]"
+
+
 def resolve_extras(repo: Path) -> list[str]:
     """Pick pre-commit extras for a repo from its layout.
 
@@ -212,6 +276,15 @@ def build_precommit_config(repo: Path, extras: list[str]) -> str:
             "[" + ", ".join(f'"{d}"' for d in mypy_additional_dependencies(repo)) + "]"
         )
         text = text.replace(MYPY_DEPS_PLACEHOLDER, deps_yaml)
+    if PY_LINT_FILES_PLACEHOLDER in text:
+        roots = _py_lint_roots(repo)
+        text = text.replace(PY_LINT_FILES_PLACEHOLDER, _py_lint_files_pattern(roots))
+        text = text.replace(
+            PY_LINT_BANDIT_ARGS_PLACEHOLDER, _py_lint_bandit_args(roots)
+        )
+        text = text.replace(
+            PY_LINT_INTERROGATE_ARGS_PLACEHOLDER, _py_lint_interrogate_args(roots)
+        )
     return text
 
 
@@ -256,7 +329,7 @@ PREK_CLAUDE_CLI_STEP = (
 # plugin can only ever import its own files, never a dependency's (`dependencies` orders install,
 # it builds no `sys.path`). Source of truth here, distributed with a checksum manifest so a
 # hand-edited copy is caught at commit time instead of silently drifting from its sibling.
-VENDOR_MAP: dict[str, list[str]] = {
+VENDOR_MAP = {
     "policy_lib.py": [
         "plugins/pc-core/hooks/policy_lib.py",
         "plugins/pc-git/hooks/policy_lib.py",
@@ -280,7 +353,7 @@ CI_DEFAULT_INSTALL_CMD = "uv sync --locked --no-sources --group dev"
 # est plus juste que dupliquer la détection ici — `run-tests` sait déjà résoudre les deux langages,
 # et il reste la seule source de vérité sur « comment ce repo se teste ».
 CI_DEFAULT_TESTS_CMD = "pytest"
-CI_TESTS_OVERRIDES: dict[str, str] = {
+CI_TESTS_OVERRIDES = {
     "pluto-poc-pilot": "bash scripts/hooks/run-tests",
 }
 # Functional extras (validate/address/schedule/xml/lint), not just validate/address — omitting
@@ -288,7 +361,7 @@ CI_TESTS_OVERRIDES: dict[str, str] = {
 # the missing package), deflating the coverage number without ever failing CI. fec is
 # intentionally left out (not exercised by CI). pinky-provider needs --prerelease allow: it
 # depends on pinky-core/pinky-snowpark, both pre-release.
-CI_INSTALL_OVERRIDES: dict[str, str] = {
+CI_INSTALL_OVERRIDES = {
     "pinky-core": (
         "uv sync --locked --extra validate --extra address --extra schedule --extra xml "
         "--extra lint --group dev"

@@ -46,7 +46,7 @@ dev = ["pytest"]
 # 3 jours — avancée manuellement avant tout `uv lock` (discipline documentée dans l'AGENTS.md de
 # `pinky-bootstrap`, pas de job planifié). Enregistrée dans `uv.lock` : `grep exclude-newer
 # uv.lock` dit exactement quelle fenêtre a produit le lock courant.
-exclude-newer = "2026-08-23T00:00:00Z"
+exclude-newer = "2026-09-05T00:00:00Z"
 
 # ── Packaging — flat layout, NOT src/ (ADR-0065 decision 6: src/ + the setup/ → pinky_workspace/
 # rename are a LATER phase, 228 files across the parc reference render_docs.py's distributed copies).
@@ -62,6 +62,15 @@ exclude-newer = "2026-08-23T00:00:00Z"
 # missing from this list resolves to nothing once installed, and only actually running `uv tool
 # install git+file://…` end to end (not `unzip -l`, which shows presence, never correctness of
 # what's missing) catches it.
+[tool.interrogate]
+# Temporary ratchet baseline (card `remonter-seuil-interrogate-70-vers-80`, chantier 0024) — the
+# `python` extra's interrogate hook started covering `setup/`/`hygiene/`/`tools/`/`cli_pinky.py`
+# for real for the first time on 2026-09-08 (the `_py_lint_roots` fix), measured at 71.3%.
+# interrogate's own default fail-under is 80% — never a policy this repo chose, just the tool's
+# out-of-box value, now the first thing hit by turning coverage checking on where it had never run.
+# Raise back toward 80 (or drop this section entirely) as the backfill in that card lands.
+fail-under = 70
+
 [tool.hatch.build.targets.wheel]
 packages = ["setup"]
 

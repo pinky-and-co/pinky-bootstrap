@@ -10,6 +10,7 @@ in its frontmatter — columns = the CHANTIER's status folders, cards = the .md 
 """
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -36,13 +37,15 @@ COLUMN_LABELS = {
 
 
 def on_page_markdown(markdown, page, config, files):
+    """MkDocs hook to inject status summary and kanban board into page markdown."""
     markdown = _inject_status_summary(markdown, page.meta)
     if page.meta.get("board"):
         markdown = markdown + _inject_board(page)
     return markdown
 
 
-def _inject_status_summary(markdown, meta):
+def _inject_status_summary(markdown: str, meta: dict[str, Any]) -> str:
+    """Prepend a summary of card metadata fields to the markdown content."""
     if "status" not in meta:
         return markdown
 
@@ -59,7 +62,7 @@ def _inject_status_summary(markdown, meta):
     return summary + markdown
 
 
-def _read_frontmatter(path: Path) -> dict:
+def _read_frontmatter(path: Path) -> dict[str, Any]:
     """Parse le frontmatter YAML directement sur disque, sans dépendre de page.meta
     d'autres pages (l'ordre de traitement des pages par MkDocs n'est pas garanti,
     donc on ne suppose pas que les cards voisines ont déjà été lues par MkDocs)."""
@@ -78,13 +81,15 @@ def _read_frontmatter(path: Path) -> dict:
         return {}
 
 
-def _card_title(path: Path, meta: dict) -> str:
+def _card_title(path: Path, meta: dict[str, Any]) -> str:
+    """Derive a card title from metadata or path."""
     if meta.get("title"):
         return meta["title"]
     return path.stem.replace("-", " ").replace("_", " ").capitalize()
 
 
 def _inject_board(page) -> str:
+    """Generate and return an HTML kanban board for the chantier."""
     chantier_dir = Path(page.file.abs_src_path).parent
 
     # Index nom_de_card -> colonne, sur tout le chantier. Nécessaire car `sert`
@@ -113,6 +118,7 @@ def _inject_board(page) -> str:
             is_subtask = sert is not None
 
             if is_subtask:
+                assert isinstance(sert, str)
                 parent_col = card_locations.get(sert)
                 if parent_col:
                     type_task = f'<a href="{parent_col}/{sert}" style="color: inherit;"><span class="tabler--subtasks" title="{sert}"></a></span> · '
