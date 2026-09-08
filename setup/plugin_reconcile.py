@@ -40,6 +40,7 @@ class PluginState:
     disabled_at: tuple[str, ...]
     installed_scopes: tuple[str, ...]
     ships_status_line: bool
+    required_by: tuple[str, ...] = ()
 
     @property
     def is_user_enabled(self) -> bool:
@@ -117,11 +118,51 @@ def _install_path_for(entries: list[dict]) -> Path | None:
     return None
 
 
+def _read_manifest(install_path: Path) -> dict:
+    """A plugin's own `.claude-plugin/plugin.json` (the manifest location Claude Code's plugin
+    system requires) — `{}` if absent or malformed, same tolerance as the rest of this module."""
+    manifest = install_path / ".claude-plugin" / "plugin.json"
+    if not manifest.is_file():
+        return {}
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _dependents_by_id(registry: dict[str, list[dict]]) -> dict[str, set[str]]:
+    """Bare plugin id -> the bare ids of every installed plugin whose manifest declares it in
+    `dependencies`. Claude Code resolves and installs these itself (a plugin manifest's
+    `dependencies` field) — a scope that looks orphaned for the dependency (`pc-privacy@user`
+    with no direct reason of its own) can be recognised as required by the dependent
+    (`pc-craft@user`) instead of judged as drift by `audit_plugins`'s caller.
+
+    A `dependencies` entry may be a bare id (`pc-core`) or `id@marketplace`
+    (`pc-privacy@pinky-agentic-plugins`) — both are keyed here by the bare id, since that is what
+    `audit_plugins` looks up (`required_by=dependents.get(bare_id, ())`).
+    """
+    dependents: dict[str, set[str]] = {}
+    for key, entries in registry.items():
+        install_path = _install_path_for(entries)
+        if install_path is None:
+            continue
+        deps = _read_manifest(install_path).get("dependencies", [])
+        if not isinstance(deps, list):
+            continue
+        bare_id = key.split("@", 1)[0]
+        for dep in deps:
+            if isinstance(dep, str):
+                dependents.setdefault(dep.split("@", 1)[0], set()).add(bare_id)
+    return dependents
+
+
 def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
     """One `PluginState` per plugin id found in any settings file's ``enabledPlugins`` or in
     ``installed_plugins.json``. Keyed by ``<id>@<marketplace>``, sorted by key."""
     locations = _settings_locations(workspace_root)
     registry = _read_registry()
+    dependents = _dependents_by_id(registry)
 
     enabled_at: dict[str, set[str]] = {}
     disabled_at: dict[str, set[str]] = {}
@@ -143,6 +184,7 @@ def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
     result: dict[str, PluginState] = {}
     for plugin_id in all_ids:
         marketplace = plugin_id.split("@", 1)[1] if "@" in plugin_id else ""
+        bare_id = plugin_id.split("@", 1)[0]
         install_path = _install_path_for(registry.get(plugin_id, []))
         ships_sl = bool(
             install_path and (install_path / "scripts" / "statusline.py").is_file()
@@ -154,6 +196,7 @@ def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
             disabled_at=tuple(sorted(disabled_at.get(plugin_id, ()))),
             installed_scopes=tuple(sorted(installed_scopes.get(plugin_id, ()))),
             ships_status_line=ships_sl,
+            required_by=tuple(sorted(dependents.get(bare_id, ()))),
         )
     return result
 
@@ -177,6 +220,8 @@ def _print_plugin_block(state: PluginState) -> None:
     )
     if state.ships_status_line:
         print("  ships a status line (moving it breaks the `statusLine` wiring)")
+    if state.required_by:
+        print("  required by:     " + ", ".join(state.required_by))
 
 
 def print_audit_report(audit: dict[str, PluginState]) -> None:
@@ -358,8 +403,13 @@ def apply_reconcile(workspace_root: Path) -> None:
         default = "u" if state.ships_status_line else "s"
         if state.ships_status_line:
             print(
-                "  ⚠  moving a status-line plugin breaks the `statusLine` wiring — "
+                "  ⚠️  moving a status-line plugin breaks the `statusLine` wiring — "
                 "keep it at user unless `pinky install --plugin` will re-wire it."
+            )
+        if state.required_by:
+            print(
+                f"  ⚠️  {', '.join(state.required_by)} declare(s) this as a dependency — "
+                "removing a scope here may break them too."
             )
         raw = (
             input(

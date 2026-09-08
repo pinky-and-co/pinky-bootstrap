@@ -150,6 +150,110 @@ def test_ships_status_line_false_without_the_script_or_without_a_registry_entry(
     assert audit_plugins(ws)["plain@mp"].ships_status_line is False
 
 
+# ── required_by: a scope kept alive by another plugin's declared dependency ──
+
+
+def _install_with_manifest(tmp_path: Path, name: str, manifest: dict) -> Path:
+    install = tmp_path / "cache" / name
+    (install / ".claude-plugin").mkdir(parents=True)
+    (install / ".claude-plugin" / "plugin.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    return install
+
+
+def test_required_by_names_the_dependent_for_a_bare_dependency_id(world, tmp_path):
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json", {"pc-craft@mp": True, "pc-privacy@mp": True}
+    )
+    _write_registry(
+        user_claude,
+        {
+            "pc-craft@mp": [{"scope": "user", "installPath": str(craft)}],
+            "pc-privacy@mp": [{"scope": "user", "installPath": str(tmp_path / "nope")}],
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-privacy@mp"].required_by == ("pc-craft",)
+    assert audit["pc-craft@mp"].required_by == ()
+
+
+def test_required_by_matches_a_dependency_written_as_id_at_marketplace(world, tmp_path):
+    """`dependencies` may carry `pc-privacy@pinky-agentic-plugins` — the docstring's own example.
+    Keyed by the bare id, the audit still surfaces `required by: pc-craft` on `pc-privacy`."""
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy@pinky-agentic-plugins"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json",
+        {
+            "pc-craft@pinky-agentic-plugins": True,
+            "pc-privacy@pinky-agentic-plugins": True,
+        },
+    )
+    _write_registry(
+        user_claude,
+        {
+            "pc-craft@pinky-agentic-plugins": [
+                {"scope": "user", "installPath": str(craft)}
+            ]
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-privacy@pinky-agentic-plugins"].required_by == ("pc-craft",)
+
+
+def test_a_missing_or_malformed_manifest_never_crashes_the_audit(world, tmp_path):
+    user_claude, ws = world
+    no_manifest = tmp_path / "cache" / "pc-x"
+    no_manifest.mkdir(parents=True)
+    broken = tmp_path / "cache" / "pc-y"
+    (broken / ".claude-plugin").mkdir(parents=True)
+    (broken / ".claude-plugin" / "plugin.json").write_text(
+        "{ not json", encoding="utf-8"
+    )
+    _write_enabled(user_claude / "settings.json", {"pc-x@mp": True, "pc-y@mp": True})
+    _write_registry(
+        user_claude,
+        {
+            "pc-x@mp": [{"scope": "user", "installPath": str(no_manifest)}],
+            "pc-y@mp": [{"scope": "user", "installPath": str(broken)}],
+        },
+    )
+
+    audit = audit_plugins(ws)
+
+    assert audit["pc-x@mp"].required_by == ()
+    assert audit["pc-y@mp"].required_by == ()
+
+
+def test_report_prints_the_required_by_line(world, tmp_path, capsys):
+    user_claude, ws = world
+    craft = _install_with_manifest(
+        tmp_path, "pc-craft", {"dependencies": ["pc-privacy"]}
+    )
+    _write_enabled(
+        user_claude / "settings.json", {"pc-craft@mp": True, "pc-privacy@mp": True}
+    )
+    _write_registry(
+        user_claude, {"pc-craft@mp": [{"scope": "user", "installPath": str(craft)}]}
+    )
+
+    print_audit_report(audit_plugins(ws))
+
+    out = capsys.readouterr().out
+    assert "  required by:     pc-craft" in out
+
+
 # ── resilience ────────────────────────────────────────────────────────────
 
 
