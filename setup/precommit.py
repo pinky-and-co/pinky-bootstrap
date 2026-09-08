@@ -987,7 +987,7 @@ DISTRIBUTED_PATHS = (
     ".github/workflows/prek.yml",
 )
 
-# No `(scope)` — hygiene/hooks/commit-msg's PATTERN is strictly `<emoji> <type>: <description>`
+# No `(scope)` — hygiene/hooks/commit-msg's PATTERN is strictly `<emoji> <type>[!]: <description>`
 # (tightened after this constant was last exercised via bulk --commit; a `chore(hooks):` scope
 # fails it, drift caught 2026-07-11 rolling out the docs_identity pitch fields).
 COMMIT_MESSAGE = "🔧 chore: adopt pinky-bootstrap centralized hooks distribution"
