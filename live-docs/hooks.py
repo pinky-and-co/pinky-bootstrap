@@ -1,9 +1,9 @@
 """mkdocs build hooks for the live kanban site.
 
-Card frontmatter (status/date/repos/model/sert/blocked_by, skill `kanban`'s schema) is consumed
-by MkDocs as page metadata and never rendered — mkdocs-material even reads `status:` for its own
-nav badge, which makes the disappearance easy to miss. `on_page_markdown` re-renders it as a
-visible summary line at the top of the page, before the body.
+Card frontmatter (date/repos/model/sert/blocked_by, skill `kanban`'s schema) is consumed by MkDocs
+as page metadata and never rendered. `on_page_markdown` re-renders it as a visible summary line at
+the top of the page, before the body. A card has no `status:` field — its state is the column
+folder it lives in (`0-ideas`…`4-done`); the summary derives the displayed state from that folder.
 
 It also renders a Jira-style board on any CHANTIER index page that opts in with `board: true`
 in its frontmatter — columns = the CHANTIER's status folders, cards = the .md files inside them.
@@ -12,11 +12,10 @@ in its frontmatter — columns = the CHANTIER's status folders, cards = the .md 
 from pathlib import Path
 from typing import Any
 
-import yaml
-
-FIELDS = ["status", "date", "repos", "model", "sert", "blocked_by", "exigences"]
+FIELDS = ["status", "name", "date", "repos", "model", "sert", "blocked_by", "exigences"]
 LABELS = {
     "status": "Status",
+    "name": "Card",
     "date": "Date",
     "repos": "Repositories",
     "model": "Model",
@@ -34,24 +33,43 @@ COLUMN_LABELS = {
     "3-in-progress": "⏳ In Progress",
     "4-done": "✅ Done",
 }
+# La colonne = l'état de la card (plus de champ `status:`). Mapping explicite dossier → état.
+COLUMN_STATUS = {
+    "0-ideas": "idea",
+    "1-todo": "todo",
+    "2-selected-for-dev": "selected",
+    "3-in-progress": "in-progress",
+    "4-done": "done",
+}
 
 
 def on_page_markdown(markdown, page, config, files):
     """MkDocs hook to inject status summary and kanban board into page markdown."""
-    markdown = _inject_status_summary(markdown, page.meta)
+    markdown = _inject_status_summary(markdown, page)
     if page.meta.get("board"):
         markdown = markdown + _inject_board(page)
     return markdown
 
 
-def _inject_status_summary(markdown: str, meta: dict[str, Any]) -> str:
-    """Prepend a summary of card metadata fields to the markdown content."""
-    if "status" not in meta:
+def _inject_status_summary(markdown: str, page) -> str:
+    """Prepend a summary of card metadata fields to the markdown content.
+
+    Gate: the page is a card iff its parent folder is a column dir. `status` is not read from
+    frontmatter — it is derived from that folder via `COLUMN_STATUS`.
+    """
+    src = Path(page.file.abs_src_path)
+    status = COLUMN_STATUS.get(src.parent.name)
+    if status is None:
         return markdown
 
     parts = []
     for field in FIELDS:
-        value = meta.get(field)
+        if field == "status":
+            value = status
+        elif field == "name":
+            value = src.stem
+        else:
+            value = page.meta.get(field)
         if value in (None, "", []):
             continue
         if isinstance(value, list):
@@ -63,9 +81,11 @@ def _inject_status_summary(markdown: str, meta: dict[str, Any]) -> str:
 
 
 def _read_frontmatter(path: Path) -> dict[str, Any]:
-    """Parse le frontmatter YAML directement sur disque, sans dépendre de page.meta
-    d'autres pages (l'ordre de traitement des pages par MkDocs n'est pas garanti,
-    donc on ne suppose pas que les cards voisines ont déjà été lues par MkDocs)."""
+    """Parse a card's YAML frontmatter straight from disk, not via another page's `page.meta`
+    (MkDocs does not guarantee page processing order, so a neighbouring card may not be read yet).
+
+    `yaml` is imported at the point of use: only cards that actually carry frontmatter reach it,
+    so the module stays importable — and testable — without the mkdocs-material toolchain."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -75,6 +95,8 @@ def _read_frontmatter(path: Path) -> dict[str, Any]:
     end = text.find("\n---", 3)
     if end == -1:
         return {}
+    import yaml
+
     try:
         return yaml.safe_load(text[3:end]) or {}
     except yaml.YAMLError:

@@ -1,13 +1,6 @@
 site_name: Boards Kanban & Agents Logs
 extra:
   generator: false
-  status:
-    idea: Idea
-    todo: To Do
-    selected: Selected
-    in-progress: In Progress
-    done: Done
-    blocked: Blocked
 theme:
   name: material
   font:
