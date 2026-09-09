@@ -14,9 +14,10 @@ from typing import Any
 
 import yaml
 
-FIELDS = ["status", "date", "repos", "model", "sert", "blocked_by", "exigences"]
+FIELDS = ["status", "name", "date", "repos", "model", "sert", "blocked_by", "exigences"]
 LABELS = {
     "status": "Status",
+    "name": "Card",
     "date": "Date",
     "repos": "Repositories",
     "model": "Model",
@@ -38,20 +39,24 @@ COLUMN_LABELS = {
 
 def on_page_markdown(markdown, page, config, files):
     """MkDocs hook to inject status summary and kanban board into page markdown."""
-    markdown = _inject_status_summary(markdown, page.meta)
+    markdown = _inject_status_summary(markdown, page)
     if page.meta.get("board"):
         markdown = markdown + _inject_board(page)
     return markdown
 
 
-def _inject_status_summary(markdown: str, meta: dict[str, Any]) -> str:
+def _inject_status_summary(markdown: str, page) -> str:
     """Prepend a summary of card metadata fields to the markdown content."""
-    if "status" not in meta:
+    if "status" not in page.meta:
         return markdown
 
     parts = []
     for field in FIELDS:
-        value = meta.get(field)
+        value = (
+            Path(page.file.abs_src_path).stem
+            if field == "name"
+            else page.meta.get(field)
+        )
         if value in (None, "", []):
             continue
         if isinstance(value, list):
