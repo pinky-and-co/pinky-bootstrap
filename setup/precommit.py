@@ -337,22 +337,27 @@ PREK_CLAUDE_CLI_STEP = (
 # plugin can only ever import its own files, never a dependency's (`dependencies` orders install,
 # it builds no `sys.path`). Source of truth here, distributed with a checksum manifest so a
 # hand-edited copy is caught at commit time instead of silently drifting from its sibling.
+#
+# Each copy is named for its plugin: two files sharing a basename under sibling `plugins/*/` dirs
+# (no `__init__.py`, plugin names carry hyphens so no clean package path) make mypy's single
+# invocation hard-error "Duplicate module named X". `pc-core` keeps the bare name as the home
+# module; every consumer's copy is `pc_<plugin>_<name>.py`.
 VENDOR_MAP = {
     "policy_lib.py": [
         "plugins/pc-core/hooks/policy_lib.py",
-        "plugins/pc-git/hooks/policy_lib.py",
+        "plugins/pc-git/hooks/pc_git_policy_lib.py",
     ],
     "secret_patterns.py": [
         "plugins/pc-core/hooks/secret_patterns.py",
-        "plugins/pc-kanban/hooks/secret_patterns.py",
+        "plugins/pc-kanban/hooks/pc_kanban_secret_patterns.py",
     ],
     "plugin_scope_lib.py": [
         "plugins/pc-core/hooks/plugin_scope_lib.py",
-        "plugins/pc-kanban/skills/chantier/scripts/plugin_scope_lib.py",
+        "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_plugin_scope_lib.py",
     ],
     "pending_user_action.py": [
         "plugins/pc-core/hooks/pending_user_action.py",
-        "plugins/pc-kanban/skills/chantier/scripts/pending_user_action.py",
+        "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_pending_user_action.py",
     ],
 }
 VENDOR_MANIFEST_NAME = ".vendor-manifest.json"
