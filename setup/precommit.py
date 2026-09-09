@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from datetime import date, timedelta
 from pathlib import Path
 
 from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
@@ -402,50 +401,82 @@ CI_NO_LOCK_REPOS: frozenset[str] = frozenset(
     {"pinky-ai", "pinky-connect", "pinky-provider", "pinky-snowpark", "pinky-streamlit"}
 )
 
-# ── [tool.uv] exclude-newer distribution (chantier 0024) ─────────────────────
-# Fenêtre glissante contre une dépendance fraîchement compromise republiée sur PyPI. Recalculée à
-# chaque distribution plutôt que codée en dur dans chaque pyproject.toml : renouveler la fenêtre
-# redevient "relancer la distribution", pas 12 edits manuels identiques (AGENTS.md § Repo
-# conventions documente le geste qui reste humain — décider QUAND redistribuer).
-EXCLUDE_NEWER_DAYS = 3
-EXCLUDE_NEWER_RE = re.compile(r'(?m)^exclude-newer[ \t]*=[ \t]*"[^"]*"[ \t]*$')
-EXCLUDE_NEWER_COMMENT = (
-    "# Fenêtre de cooldown contre une dépendance fraîchement compromise republiée sur PyPI\n"
-    "# (chantier 0024) : `uv lock`/`uv sync` ignorent tout paquet uploadé après cette date.\n"
-    "# Recalculée par `pinky distribute` (AGENTS.md de `pinky-bootstrap` § Repo conventions) —\n"
-    "# jamais éditée à la main. Enregistrée dans `uv.lock` : `grep exclude-newer uv.lock` dit\n"
-    "# exactement quelle fenêtre a produit le lock courant.\n"
+# ── [tool.uv] cooldown + required-version distribution (chantier 0024) ───────
+# Fenêtre de cooldown contre une dépendance fraîchement compromise republiée sur PyPI : uv ignore,
+# à chaque `uv lock`, tout paquet publié dans la fenêtre. Exprimée en durée RELATIVE plutôt qu'en
+# date absolue — rien à renouveler, rien que `pinky distribute` doive recalculer, donc pas de
+# désync `uv.lock` en régime établi. uv résout la durée au lock et enregistre le span lui-même
+# (pas la date résolue) dans `uv.lock` sous `exclude-newer-span`.
+EXCLUDE_NEWER_SPAN = "3 days"
+# `required-version` : sans ça, un uv < 0.9.17 ignore la durée relative en silence. `>=0.9.17` est
+# la 1re version qui l'accepte.
+UV_REQUIRED_VERSION = ">=0.9.17"
+# Toutes les recherches ci-dessous sont bornées au corps de la table `[tool.uv]` (voir
+# `_tool_uv_body`) : `exclude-newer` est aussi valide sous `[tool.uv.pip]`, `required-version`
+# aussi sous `[tool.ruff]` — une recherche non scopée toucherait la mauvaise clé.
+# `_EXCLUDE_NEWER_BLOCK_RE` matche le(s) commentaire(s) + la ligne d'un tenant, pour que le
+# générateur possède le commentaire aussi (reformulation propagée, jamais de phrase périmée).
+_EXCLUDE_NEWER_BLOCK_RE = re.compile(
+    r'(?m)^(?:#[^\n]*\r?\n)*exclude-newer[ \t]*=[ \t]*"[^"]*"[ \t]*\r?$'
+)
+_REQUIRED_VERSION_RE = re.compile(
+    r'(?m)^required-version[ \t]*=[ \t]*"[^"]*"[ \t]*\r?$'
+)
+_TOOL_UV_HEADER_RE = re.compile(r"(?m)^\[tool\.uv\][ \t]*\r?$")
+_ANY_TABLE_HEADER_RE = re.compile(r"(?m)^\[")
+_span_days = EXCLUDE_NEWER_SPAN.split()[0]
+COOLDOWN_COMMENT = (
+    f"# Fenêtre de cooldown (chantier 0024) : `uv lock` ignore tout paquet publié depuis moins\n"
+    f"# de {_span_days} jours — protège la résolution contre une dépendance fraîchement compromise\n"
+    f"# republiée sur PyPI. Durée relative : uv la résout au lock, `grep exclude-newer-span\n"
+    f"# uv.lock` dit la fenêtre appliquée. Posée par `pinky distribute`, jamais éditée à la main.\n"
 )
 
 
-def exclude_newer_cutoff() -> str:
-    """RFC 3339 date, ``EXCLUDE_NEWER_DAYS`` before today — the `[tool.uv] exclude-newer` cutoff."""
-    cutoff = date.today() - timedelta(days=EXCLUDE_NEWER_DAYS)
-    return f"{cutoff.isoformat()}T00:00:00Z"
+def _tool_uv_body(text: str) -> tuple[int, int] | None:
+    """`(start, end)` char offsets of the `[tool.uv]` table body — from just after its header
+    line to the next `^[` table header (or EOF) — or None when there is no `[tool.uv]` table.
+    Anchored to a bare `[tool.uv]` line, so `[tool.uv.sources]` / `[tool.uv.pip]` are not it."""
+    header = _TOOL_UV_HEADER_RE.search(text)
+    if header is None:
+        return None
+    start = min(header.end() + 1, len(text))  # skip the newline after the header
+    nxt = _ANY_TABLE_HEADER_RE.search(text, start)
+    return (start, nxt.start() if nxt else len(text))
 
 
-def render_pyproject_with_exclude_newer(repo: Path, cutoff: str) -> str | None:
-    """The repo's `pyproject.toml` with `[tool.uv] exclude-newer` set to ``cutoff``, or None.
+def render_pyproject_with_cooldown(repo: Path) -> str | None:
+    """The repo's `pyproject.toml` with `[tool.uv] exclude-newer = "3 days"` (a relative cooldown,
+    uv >= 0.9.17) and `required-version = ">=0.9.17"`, or None when there is no `pyproject.toml`
+    or the file would not change.
 
-    None when the repo has no pyproject.toml, or when the text would not change (already
-    up to date) — the only artefact touched is the `exclude-newer` line itself: an existing
-    `[tool.uv]` table, its other settings, and the rest of the file stay untouched, never
-    rewritten through a TOML parser (which would drop comments and formatting).
+    Surgical string edits scoped to the `[tool.uv]` table body — its other keys and the rest of
+    the file are preserved; the file is never round-tripped through a TOML writer (which would
+    drop comments and formatting). ``required-version`` is only inserted when absent from that
+    table: a repo that pins a newer floor by hand keeps it.
     """
     pyproject_path = repo / "pyproject.toml"
     if not pyproject_path.exists():
         return None
     text = pyproject_path.read_text(encoding="utf-8")
-    new_line = f'exclude-newer = "{cutoff}"'
-    if EXCLUDE_NEWER_RE.search(text):
-        new_text = EXCLUDE_NEWER_RE.sub(new_line, text, count=1)
-    elif "[tool.uv]" in text:
-        new_text = text.replace(
-            "[tool.uv]", "[tool.uv]\n" + EXCLUDE_NEWER_COMMENT + new_line, 1
-        )
-    else:
+
+    exclude_block = COOLDOWN_COMMENT + f'exclude-newer = "{EXCLUDE_NEWER_SPAN}"'
+    span = _tool_uv_body(text)
+    if span is None:
         sep = "" if text.endswith("\n") else "\n"
-        new_text = text + f"{sep}\n[tool.uv]\n{EXCLUDE_NEWER_COMMENT}{new_line}\n"
+        body = f'required-version = "{UV_REQUIRED_VERSION}"\n' + exclude_block + "\n"
+        return text + f"{sep}\n[tool.uv]\n{body}"
+
+    start, end = span
+    body = text[start:end]
+    if _EXCLUDE_NEWER_BLOCK_RE.search(body):
+        body = _EXCLUDE_NEWER_BLOCK_RE.sub(lambda _: exclude_block, body, count=1)
+    else:
+        body = exclude_block + "\n" + body
+    if not _REQUIRED_VERSION_RE.search(body):
+        body = f'required-version = "{UV_REQUIRED_VERSION}"\n' + body
+
+    new_text = text[:start] + body + text[end:]
     return new_text if new_text != text else None
 
 
@@ -800,12 +831,12 @@ def distribute(
                 ci_path.parent.mkdir(parents=True, exist_ok=True)
                 ci_path.write_text(ci_yml, encoding="utf-8")
 
-    # 2b-bis. pyproject.toml's [tool.uv] exclude-newer (chantier 0024) — the one line this CLI
-    # writes into a file it otherwise only reads from (see the module docstring's scope note).
-    # Idempotent — same as 2b, rewritten only on a real diff (a same-day rerun is a no-op).
-    new_pyproject = render_pyproject_with_exclude_newer(repo, exclude_newer_cutoff())
+    # 2b-bis. pyproject.toml's [tool.uv] cooldown + required-version (chantier 0024) — the only
+    # keys this CLI writes into a file it otherwise only reads from. The cooldown is a relative
+    # span, so this is a one-time migration then a permanent no-op — no date to recompute.
+    new_pyproject = render_pyproject_with_cooldown(repo)
     if new_pyproject is not None:
-        print(f"  {tag}uv      pyproject.toml (exclude-newer)")
+        print(f"  {tag}uv      pyproject.toml (cooldown + required-version)")
         if not dry_run:
             (repo / "pyproject.toml").write_text(new_pyproject, encoding="utf-8")
 

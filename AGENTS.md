@@ -37,16 +37,18 @@ orientation only.
 - `test_validate_frontmatter.py` defines the contract for `scripts/hooks/validate_frontmatter.py`
   — a validator for SKILL.md / agent frontmatter that also rejects legacy `commands/` directories
   in plugin repos. Write the hook to satisfy the existing tests, not the reverse.
-- Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer` — a rolling 3-day
-  cooldown window against a freshly compromised dependency republished on PyPI, one of the few
-  lines `distribute()` writes into a file it otherwise only reads (`EXCLUDE_NEWER_DAYS` /
-  `render_pyproject_with_exclude_newer` in `setup/precommit.py`). `pinky distribute --repo <name>`
-  (or `--all`) recomputes it to 3 days before *today* — but that alone does **not** renew the
-  window: `uv.lock` still carries the old cutoff, and a repo outside `CI_NO_LOCK_REPOS` (which use
-  `--locked` in CI) fails with "the lockfile needs to be updated" until `uv lock` is run in that
-  repo too (measured chantier 0024, first renewal, 2026-09-01 — 4 of 9 repos). **Renewing the
-  window is `pinky distribute --repo <name>` THEN `uv lock` in that repo**, not distribution alone.
-  What stays manual (chantier 0024, `## Items ouverts`): nothing schedules that rerun — no job
-  renews it on its own, so a repo that never gets redistributed keeps an aging cutoff. A stale date
-  only makes the window more conservative, never silently permissive, so this decays safely, not
-  dangerously.
+- Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer = "3 days"` — a relative
+  cooldown span (uv ≥ 0.9.17) against a freshly compromised dependency republished on PyPI: uv
+  ignores, at every `uv lock`, any package published in the last 3 days, and records the span
+  itself (not a resolved date) as `exclude-newer-span` in `uv.lock`. Alongside it,
+  `required-version = ">=0.9.17"` so an older uv fails loudly instead of silently ignoring the
+  span. Both are the only keys `distribute()` writes into a file it otherwise only reads
+  (`render_pyproject_with_cooldown` in `setup/precommit.py`). In steady state it writes them once
+  and never again, so a `pinky distribute` run passing through for any other reason leaves
+  `pyproject.toml` untouched and cannot desync `uv.lock`. The **one** run that does rewrite it is
+  the migration off the old absolute-date form: on that run `pyproject.toml` moves to the span
+  while `uv.lock` still holds the old timestamp, so each repo needs a one-time `uv lock` (then a
+  PR) before its `uv sync --locked` CI is green again. After that the span slides on its own —
+  nothing to renew, no scheduled job. The only moment the cooldown then bites is a deliberate
+  `uv lock` (adding or bumping a dependency); review the resolution diff in that PR, since nothing
+  else bounds it.
