@@ -5,13 +5,30 @@ generation, plist rendering and the ledger stay real. `render_plist` is pinned b
 oracle (`tests.md` — a `render_*` generator).
 """
 
+import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import cli_pinky, doctor, live_docs, state_file
+
+# `live-docs/` is not a package (hyphen); load the mkdocs build hooks by path.
+_spec = importlib.util.spec_from_file_location(
+    "live_docs_hooks", Path(__file__).parent.parent / "live-docs" / "hooks.py"
+)
+assert _spec and _spec.loader
+hooks = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(hooks)
+
+
+def _fake_page(src_path: Path, meta: dict) -> types.SimpleNamespace:
+    """The slice of an mkdocs `page` the hooks read: `.meta` and `.file.abs_src_path`."""
+    return types.SimpleNamespace(
+        meta=meta, file=types.SimpleNamespace(abs_src_path=str(src_path))
+    )
 
 
 @pytest.fixture
@@ -448,6 +465,52 @@ def test_bundled_source_carries_only_tooling():
         f"live-docs/ must ship tooling only — a board/log/site file here leaks once the repo is "
         f"public. Unexpected: {tracked - allowed}"
     )
+
+
+# ── hooks.py — status summary derived from the column folder ─────────────────────────────────
+
+
+def test_inject_status_summary_derives_state_from_column_folder(tmp_path):
+    """A card carries no `status:` — the rendered state comes from its column folder. Whole-string
+    oracle (`tests.md`): a fragment check on `in-progress` would pass on a wrong mapping too."""
+    card = tmp_path / "3-in-progress" / "status-derive-du-path.md"
+    card.parent.mkdir(parents=True)
+    page = _fake_page(
+        card, {"date": "2026-09-10", "model": "sonnet"}
+    )  # no "status" key
+
+    got = hooks._inject_status_summary("# Body\n", page)
+
+    assert got == (
+        "**Status :** `in-progress` · **Card :** `status-derive-du-path` · "
+        "**Date :** `2026-09-10` · **Model :** `sonnet`\n\n---\n\n"
+        "# Body\n"
+    )
+
+
+def test_inject_status_summary_skips_pages_outside_a_column_folder(tmp_path):
+    """Story / INDEX pages sit at the chantier root, not in a column — no summary."""
+    story = tmp_path / "CHANTIER0025-kanban-tooling" / "story.md"
+    story.parent.mkdir(parents=True)
+    page = _fake_page(story, {"title": "Story"})
+
+    assert hooks._inject_status_summary("# Story body\n", page) == "# Story body\n"
+
+
+def test_inject_board_renders_without_a_status_field(tmp_path):
+    """`_inject_board` reads column folders + blocked_by/sert/date/model — never `status:`.
+    A frontmatter-less card exercises the path that never touches yaml (absent in the CI unit env),
+    and if `_inject_board` handles `meta={}` it handles any status-less frontmatter (all `.get()`)."""
+    chantier = tmp_path / "CHANTIER0025-kanban-tooling"
+    (chantier / "3-in-progress").mkdir(parents=True)
+    (chantier / "3-in-progress" / "a-card.md").write_text(
+        "# A card\n", encoding="utf-8"
+    )
+    page = _fake_page(chantier / "index.md", {"board": True})
+
+    board = hooks._inject_board(page)
+
+    assert "a-card" in board and "⏳ In Progress" in board
 
 
 # ── cli_pinky wiring ────────────────────────────────────────────────────────────────────────
