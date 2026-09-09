@@ -346,6 +346,14 @@ VENDOR_MAP = {
         "plugins/pc-core/hooks/secret_patterns.py",
         "plugins/pc-kanban/hooks/secret_patterns.py",
     ],
+    "plugin_scope_lib.py": [
+        "plugins/pc-core/hooks/plugin_scope_lib.py",
+        "plugins/pc-kanban/skills/chantier/scripts/plugin_scope_lib.py",
+    ],
+    "pending_user_action.py": [
+        "plugins/pc-core/hooks/pending_user_action.py",
+        "plugins/pc-kanban/skills/chantier/scripts/pending_user_action.py",
+    ],
 }
 VENDOR_MANIFEST_NAME = ".vendor-manifest.json"
 
