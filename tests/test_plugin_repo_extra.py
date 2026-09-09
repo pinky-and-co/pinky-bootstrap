@@ -41,13 +41,27 @@ def test_validate_plugins_strict_hook_present(tmp_path):
     assert "scripts/hooks/validate_plugins_strict.py" in cfg
 
 
-def test_mypy_excludes_same_named_files_down_to_one_canonical_copy(tmp_path):
-    """mypy errors 'Duplicate module named X' when one invocation sees two same-named files under
-    sibling plugins/*/ dirs. Two collisions, each excluded to one canonical copy: the vendored
-    hooks/ files (chantier 0023) and every plugin's mcp/server.py entrypoint (harness convention)."""
+def test_mypy_collisions_solved_by_naming_not_exclusion(tmp_path):
+    """mypy hard-errors 'Duplicate module named X' when one invocation sees two same-basename files
+    under sibling plugins/*/ dirs. The fix is unique filenames at the source (VENDOR_MAP targets are
+    `pc_<plugin>_<name>.py`, MCP entrypoints `<plugin>_server.py`), not a per-file `exclude:` that
+    would silently drop coverage."""
     cfg = _plugin_repo_config(tmp_path)
-    assert r"^plugins/(pc-git|pc-kanban)/hooks/(policy_lib|secret_patterns)\.py$" in cfg
-    assert r"^plugins/(?!pc-core/)[^/]+/mcp/server\.py$" in cfg
+    mypy_block = cfg.split("id: mypy", 1)[1].split("- repo:", 1)[0]
+    assert not any(
+        line.strip().startswith("exclude:") for line in mypy_block.splitlines()
+    ), (
+        "the mypy hook must carry no same-basename exclude — collisions are solved by naming"
+    )
+    consumers = [
+        t
+        for targets in setup.VENDOR_MAP.values()
+        for t in targets
+        if "/pc-core/" not in t
+    ]
+    assert consumers and all(Path(t).name.startswith("pc_") for t in consumers), (
+        f"every non-pc-core vendored copy must be plugin-prefixed: {consumers}"
+    )
 
 
 def test_check_vendor_checksum_hook_present(tmp_path):
