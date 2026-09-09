@@ -13,6 +13,7 @@
 - [setup-model-pool.md](how-to/setup-model-pool.md) — provisionner le pool multi-fournisseur (clés, schéma d'entrée) pour `adversarial`/délégation
 - [setup-declarative-secrets.md](how-to/setup-declarative-secrets.md) — déclarer une clé chargée au `SessionStart` (`keys` de `settings.pinky.json`, trousseau classique)
 - [pinky-doctor.md](how-to/pinky-doctor.md) — vérifier les prérequis des plugins installés (binaires, Ollama, clés API) ; `--fix` propose les `brew install`
+- [vendor-a-shared-lib.md](how-to/vendor-a-shared-lib.md) — poser une lib partagée entre 2 plugins : source `hygiene/vendor/`, `VENDOR_MAP`, `pinky distribute`, nommage `pc_<plugin>_<name>.py`, pièges (`pyproject.toml`, manifeste git-ignoré)
 
 ## Explanation
 
