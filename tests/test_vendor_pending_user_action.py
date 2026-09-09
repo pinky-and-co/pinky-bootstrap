@@ -6,6 +6,7 @@ pc-kanban/chantier. `require`/`resolve`/`surface`/`pending`/`clear_all` are
 the library; the `__main__` CLI wraps them for skill bodies.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,24 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "hygiene" / "vendor"))
 import pending_user_action as pua
+
+
+def _isolated_env(home: Path, **extra: str) -> dict[str, str]:
+    """A subprocess env whose home dir is `home` on either platform.
+
+    `Path.home()` reads `HOME` on POSIX and `USERPROFILE` on Windows; Windows
+    Python also needs `SystemRoot` on `PATH`-stripped envs. Set all three so the
+    CLI's `STATE_DIR` lands under `home` wherever the suite runs.
+    """
+    env = {
+        "HOME": str(home),
+        "USERPROFILE": str(home),
+        "PATH": os.environ.get("PATH", ""),
+    }
+    if "SYSTEMROOT" in os.environ:
+        env["SystemRoot"] = os.environ["SYSTEMROOT"]
+    env.update(extra)
+    return env
 
 
 @pytest.fixture
@@ -84,11 +103,8 @@ def _cli(tmp_path, *args, session="cli-sess"):
         [sys.executable, str(pua.__file__), *args],
         capture_output=True,
         text=True,
-        env={
-            "CLAUDE_CODE_SESSION_ID": session,
-            "HOME": str(tmp_path),
-            "PATH": "/usr/bin:/bin",
-        },
+        env=_isolated_env(tmp_path, CLAUDE_CODE_SESSION_ID=session),
+        check=False,
     )
 
 
@@ -109,7 +125,8 @@ def test_cli_without_session_id_env_errors(tmp_path):
         [sys.executable, str(pua.__file__), "pending"],
         capture_output=True,
         text=True,
-        env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+        env=_isolated_env(tmp_path),
+        check=False,
     )
     assert result.returncode == 2
     assert "CLAUDE_CODE_SESSION_ID" in result.stderr
