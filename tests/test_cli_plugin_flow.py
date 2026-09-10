@@ -190,6 +190,26 @@ def test_user_scope_keeps_the_enable_and_writes_no_project_settings(env, monkeyp
     assert not _uninstalled(env.sim)
 
 
+# ── always-on plugin: kept at user scope, wizard never runs ───────────────
+
+
+def test_keep_user_scope_plugin_stays_at_user_and_skips_the_wizard(env, monkeypatch):
+    monkeypatch.setattr(plugin_install, "KEEP_USER_SCOPE", frozenset({"pc-snow"}))
+    monkeypatch.setattr(
+        "builtins.input", lambda *_: pytest.fail("the wizard must not run")
+    )
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _user_enabled(env.home, "pc-snow") is True
+    assert not (env.ws / "pinky-core" / ".claude" / "settings.json").exists()
+    assert not _uninstalled(env.sim)
+
+
+def test_pc_autodiscovery_is_declared_keep_user_scope():
+    assert "pc-autodiscovery" in plugin_install.KEEP_USER_SCOPE
+
+
 # ── step 3: rescope removes a scope the new targets no longer cover ────────
 
 

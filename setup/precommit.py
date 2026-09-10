@@ -339,8 +339,8 @@ PREK_CLAUDE_CLI_STEP = (
 #
 # Each copy is named for its plugin: two files sharing a basename under sibling `plugins/*/` dirs
 # (no `__init__.py`, plugin names carry hyphens so no clean package path) make mypy's single
-# invocation hard-error "Duplicate module named X". `pc-core` keeps the bare name as the home
-# module; every consumer's copy is `pc_<plugin>_<name>.py`.
+# invocation hard-error "Duplicate module named X". La 1ʳᵉ cible de chaque liste est le module
+# « home » et garde le nom nu ; toute autre copie est `pc_<plugin>_<name>.py`.
 VENDOR_MAP = {
     "policy_lib.py": [
         "plugins/pc-core/hooks/policy_lib.py",
@@ -351,11 +351,12 @@ VENDOR_MAP = {
         "plugins/pc-kanban/hooks/pc_kanban_secret_patterns.py",
     ],
     "plugin_scope_lib.py": [
-        "plugins/pc-core/hooks/plugin_scope_lib.py",
+        "plugins/pc-autodiscovery/hooks/plugin_scope_lib.py",
         "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_plugin_scope_lib.py",
+        "plugins/pc-kanban/skills/spawn-workers/scripts/pc_kanban_spawn_plugin_scope_lib.py",
     ],
     "pending_user_action.py": [
-        "plugins/pc-core/hooks/pending_user_action.py",
+        "plugins/pc-autodiscovery/hooks/pending_user_action.py",
         "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_pending_user_action.py",
     ],
 }

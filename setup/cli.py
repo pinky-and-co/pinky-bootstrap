@@ -244,6 +244,15 @@ def main(argv: list[str] | None = None) -> None:
         if written:
             print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
             return
+        # 2a-bis. Un plugin always-on (`KEEP_USER_SCOPE`) reste où le fetch l'a mis — scope user —
+        #     sans wizard ni drop : pas de sens par repo, et il doit être live avant toute
+        #     résolution project-scope. Après le wiring status-line ci-dessus, donc un plugin
+        #     always-on qui en livrerait un serait quand même câblé.
+        if args.plugin in plugin_install.KEEP_USER_SCOPE:
+            print(
+                f"{args.plugin} kept at user scope (always-on) → ~/.claude/settings.json"
+            )
+            return
         # 2b. Any other plugin: the wizard enables it at the chosen targets (one or several) via
         #     `claude plugin install --scope project`. We own the user-scope lifecycle: drop the
         #     fetch-time enable once real targets are placed — or on any wizard refusal — but

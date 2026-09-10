@@ -1,7 +1,7 @@
 """`hygiene/vendor/pending_user_action.py` — the session-scoped queue of
 actions only the user can do (a slash command the CLI parses before a turn).
 
-Vendored source of truth, distributed into pc-core/hooks and
+Vendored source of truth, distributed into pc-autodiscovery/hooks and
 pc-kanban/chantier. `require`/`resolve`/`surface`/`pending`/`clear_all` are
 the library; the `__main__` CLI wraps them for skill bodies.
 """

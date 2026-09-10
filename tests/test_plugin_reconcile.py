@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import plugin_reconcile, state_file
+from setup import plugin_install, plugin_reconcile, state_file
 from setup.plugin_reconcile import apply_reconcile, audit_plugins, print_audit_report
 
 
@@ -342,6 +342,34 @@ def _state(*, enabled=(), disabled=()) -> plugin_reconcile.PluginState:
         disabled_at=tuple(disabled),
         installed_scopes=(),
         ships_status_line=False,
+    )
+
+
+def _plugin_state(
+    plugin_id: str, *, ships_status_line: bool
+) -> plugin_reconcile.PluginState:
+    return plugin_reconcile.PluginState(
+        plugin_id=plugin_id,
+        marketplace="mp",
+        enabled_at=(),
+        disabled_at=(),
+        installed_scopes=(),
+        ships_status_line=ships_status_line,
+    )
+
+
+def test_keeps_user_scope_covers_status_line_and_always_on(monkeypatch):
+    """`_keeps_user_scope` is true for a status-line plugin and for one in `KEEP_USER_SCOPE` — the
+    pair the `--apply` loop defaults to `user` and never nudges out of user scope."""
+    monkeypatch.setattr(plugin_install, "KEEP_USER_SCOPE", frozenset({"pc-always"}))
+    assert plugin_reconcile._keeps_user_scope(
+        _plugin_state("sl@mp", ships_status_line=True)
+    )
+    assert plugin_reconcile._keeps_user_scope(
+        _plugin_state("pc-always@mp", ships_status_line=False)
+    )
+    assert not plugin_reconcile._keeps_user_scope(
+        _plugin_state("plain@mp", ships_status_line=False)
     )
 
 
