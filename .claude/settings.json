@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "pc-core@pinky-agentic-plugins": true,
+    "pc-kanban@pinky-agentic-plugins": true,
+    "pc-git@pinky-agentic-plugins": true
+  }
+}
