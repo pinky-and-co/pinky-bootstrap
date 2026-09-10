@@ -1,6 +1,7 @@
 """`hygiene/vendor/plugin_scope_lib.py` — plugin discovery for the cwd-scope hook.
 
-Vendored source of truth, distributed into pc-core/hooks and pc-kanban/chantier.
+Vendored source of truth, distributed into pc-autodiscovery/hooks and
+pc-kanban (chantier + spawn-workers).
 `matching_plugin_ids` decides which project-scoped plugins a descent into a
 directory should enable; `settings_local_plugin_ids` and `enable_plugin_local`'s
 `already_enabled` flag keep the descent from re-enabling what is already on.

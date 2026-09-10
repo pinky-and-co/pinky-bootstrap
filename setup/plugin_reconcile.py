@@ -201,6 +201,17 @@ def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
     return result
 
 
+def _is_always_on(plugin_id: str) -> bool:
+    """Is the plugin (bare id or ``id@marketplace``) in ``plugin_install.KEEP_USER_SCOPE``?"""
+    return plugin_id.split("@", 1)[0] in plugin_install.KEEP_USER_SCOPE
+
+
+def _keeps_user_scope(state: PluginState) -> bool:
+    """A plugin that belongs at user scope whatever the wizard would pick: it ships a status line
+    (a move breaks the `statusLine` wiring) or it is always-on (`plugin_install.KEEP_USER_SCOPE`)."""
+    return state.ships_status_line or _is_always_on(state.plugin_id)
+
+
 def _print_plugin_block(state: PluginState) -> None:
     """One plugin's aggregated state — shared by the bare report and the `--apply` loop."""
     print(f"\n=== {state.plugin_id} ===")
@@ -220,6 +231,8 @@ def _print_plugin_block(state: PluginState) -> None:
     )
     if state.ships_status_line:
         print("  ships a status line (moving it breaks the `statusLine` wiring)")
+    elif _is_always_on(state.plugin_id):
+        print("  always-on — belongs at user scope")
     if state.required_by:
         print("  required by:     " + ", ".join(state.required_by))
 
@@ -437,11 +450,15 @@ def apply_reconcile(workspace_root: Path) -> None:
 
         _print_plugin_block(state)
         plugin_id, marketplace = _spec_parts(spec)
-        default = "u" if state.ships_status_line else "s"
+        default = "u" if _keeps_user_scope(state) else "s"
         if state.ships_status_line:
             print(
                 "  ⚠️  moving a status-line plugin breaks the `statusLine` wiring — "
                 "keep it at user unless `pinky install --plugin` will re-wire it."
+            )
+        elif _is_always_on(plugin_id):
+            print(
+                "  ⚠️  always-on plugin — keep it at user scope unless you know it moved."
             )
         if state.required_by:
             print(

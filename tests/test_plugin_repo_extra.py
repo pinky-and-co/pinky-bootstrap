@@ -76,15 +76,32 @@ def test_mypy_collisions_solved_by_naming_not_exclusion(tmp_path):
     assert not any(m in ln for ln in exclude_lines for m in collision_markers), (
         "no exclude may name a same-basename collision — those are solved by per-plugin naming"
     )
-    consumers = [
-        t
-        for targets in setup.VENDOR_MAP.values()
-        for t in targets
-        if "/pc-core/" not in t
-    ]
+    consumers = [t for targets in setup.VENDOR_MAP.values() for t in targets[1:]]
     assert consumers and all(Path(t).name.startswith("pc_") for t in consumers), (
-        f"every non-pc-core vendored copy must be plugin-prefixed: {consumers}"
+        f"every non-home vendored copy must be plugin-prefixed: {consumers}"
     )
+
+
+def test_vendor_map_homes_the_bootstrap_libs_in_pc_autodiscovery():
+    """`plugin_scope_lib` and `pending_user_action` bootstrap plugin activation itself, so they
+    cannot sit in `pc-core` (not loaded until it is bootstrapped) — their home is `pc-autodiscovery`.
+    `plugin_scope_lib` also reaches the spawn-workers skill, which enables the matched plugins
+    before a worker session starts."""
+    assert setup.VENDOR_MAP["plugin_scope_lib.py"] == [
+        "plugins/pc-autodiscovery/hooks/plugin_scope_lib.py",
+        "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_plugin_scope_lib.py",
+        "plugins/pc-kanban/skills/spawn-workers/scripts/pc_kanban_spawn_plugin_scope_lib.py",
+    ]
+    assert setup.VENDOR_MAP["pending_user_action.py"] == [
+        "plugins/pc-autodiscovery/hooks/pending_user_action.py",
+        "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_pending_user_action.py",
+    ]
+
+
+def test_check_vendor_checksum_regex_covers_the_spawn_workers_copy(tmp_path):
+    """An edit to `pc_kanban_spawn_plugin_scope_lib.py` must trip the checksum gate like any other
+    vendored copy."""
+    assert "pc_kanban_spawn_plugin_scope_lib" in _plugin_repo_config(tmp_path)
 
 
 def test_check_vendor_checksum_hook_present(tmp_path):
