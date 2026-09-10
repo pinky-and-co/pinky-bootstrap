@@ -12,7 +12,16 @@ in its frontmatter — columns = the CHANTIER's status folders, cards = the .md 
 from pathlib import Path
 from typing import Any
 
-FIELDS = ["status", "name", "date", "repos", "model", "sert", "blocked_by", "exigences"]
+FIELDS = [
+    "status",
+    "name",
+    "date",
+    "repos",
+    "model",
+    "sert",
+    "blocked_by",
+    "requirements",
+]
 LABELS = {
     "status": "Status",
     "name": "Card",
@@ -21,7 +30,7 @@ LABELS = {
     "model": "Model",
     "sert": "Sert",
     "blocked_by": "Blocked by",
-    "exigences": "Exigences",
+    "requirements": "Requirements",
 }
 
 # Ordre = ordre du flux Kanban. Ajuste si un chantier a des colonnes différentes.
