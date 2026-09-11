@@ -907,6 +907,13 @@ def _vendored_paths(repo: Path) -> list[str]:
     return [VENDOR_MANIFEST_NAME, *json.loads(manifest.read_text(encoding="utf-8"))]
 
 
+def _same_path(a: str, b: str) -> bool:
+    """Two PATH entries naming the same directory — case- and separator-insensitive on Windows."""
+    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(
+        os.path.normpath(b)
+    )
+
+
 def _hook_env() -> dict[str, str]:
     """This process's environment minus the virtualenv ``uv run`` activated for pinky itself.
 
@@ -918,7 +925,9 @@ def _hook_env() -> dict[str, str]:
     if venv:
         bin_dir = str(Path(venv) / ("Scripts" if sys.platform == "win32" else "bin"))
         env["PATH"] = os.pathsep.join(
-            entry for entry in env.get("PATH", "").split(os.pathsep) if entry != bin_dir
+            entry
+            for entry in env.get("PATH", "").split(os.pathsep)
+            if not _same_path(entry, bin_dir)
         )
     return env
 
