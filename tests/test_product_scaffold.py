@@ -68,6 +68,15 @@ def test_scaffold_product_pyproject_seeds_the_cache_convention(tmp_path):
     assert data["tool"]["pytest"]["ini_options"]["cache_dir"] == ".cache/pytest"
 
 
+def test_scaffold_product_pyproject_pins_the_ruff_rule_set(tmp_path):
+    for repo_type in ("lib", "data"):
+        target = tmp_path / f"pinky-{repo_type}"
+        target.mkdir()
+        setup.scaffold_product(target, repo_type)
+        data = tomllib.loads((target / "pyproject.toml").read_text(encoding="utf-8"))
+        assert data["tool"]["ruff"]["lint"]["select"] == ["E4", "E7", "E9", "F"]
+
+
 def test_scaffold_product_readme_accepts_first_run_injection(tmp_path):
     target = tmp_path / "pinky-foo"
     target.mkdir()

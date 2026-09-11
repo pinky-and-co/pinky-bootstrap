@@ -68,6 +68,9 @@ _CACHE_CONVENTION_TOML = """
 [tool.ruff]
 cache-dir = ".cache/ruff"
 
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 cache_dir = ".cache/mypy"
 
