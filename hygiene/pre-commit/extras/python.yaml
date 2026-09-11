@@ -11,8 +11,10 @@
     hooks:
       - id: ruff-check
         args: [--no-fix]
+        exclude: ^scripts/hooks/
       - id: ruff-format
         args: [--check]
+        exclude: ^scripts/hooks/
 
   # Python: type checking
   - repo: local

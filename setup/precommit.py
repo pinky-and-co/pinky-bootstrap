@@ -710,6 +710,11 @@ def distribute(
         dst_hooks.mkdir(parents=True, exist_ok=True)
         shutil.copy2(CORE_HOOKS_DIR / "badges.toml", dst_hooks / "badges.toml")
 
+    print(f"  {tag}hook  scripts/hooks/ruff.toml")
+    if not dry_run:
+        dst_hooks.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(CORE_PRECOMMIT_DIR / "hooks-ruff.toml", dst_hooks / "ruff.toml")
+
     print(f"  {tag}gitleaks .gitleaks.toml")
     if not dry_run:
         shutil.copy2(CORE_PRECOMMIT_DIR / "gitleaks.toml", repo / ".gitleaks.toml")
