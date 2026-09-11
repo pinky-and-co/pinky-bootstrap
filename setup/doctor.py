@@ -37,9 +37,6 @@ INSTALLED_PLUGINS_PATH = _CLAUDE_DIR / "plugins" / "installed_plugins.json"
 SETTINGS_PINKY_PATH = _CLAUDE_DIR / "settings.pinky.json"
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-# `pc-core/mcp/model_offline.py::DEFAULT_MODEL` — le modèle vers lequel le runtime offline retombe
-# quand l'entrée du pool laisse `model` à null. Synchronisé à la main ; une dérive fait vérifier le
-# mauvais tag, jamais un pass silencieux.
 DEFAULT_OLLAMA_MODEL = "gemma4:12b"
 
 # Binaries every dev machine has — subtracted from the frontmatter-derived set so the report only
@@ -79,10 +76,6 @@ AMBIENT_BINARIES = frozenset(
 # user's signal to install it another way.
 _BREW_FORMULA = {"rg": "ripgrep"}
 
-# Binary name → full install command, for the (so far rare) case where `brew install <name>` is
-# not the remedy — a language-server binary declared in a plugin's `.lsp.json` ships through its
-# own ecosystem's package manager. `pyright-langserver` is npm's `pyright` package, not a brew
-# formula (measured 2026-09-04, migration to `pyright@claude-code-lsps` — ADR-0007).
 _INSTALL_COMMAND: dict[str, list[str]] = {
     "pyright-langserver": ["npm", "install", "-g", "pyright"],
 }

@@ -126,9 +126,6 @@ def test_python_suite_failing_blocks(tmp_path):
     assert run_hook(tmp_path) == 1
 
 
-# ── Suite JavaScript — le comportement ajouté le 2026-07-31 ──────────────────
-
-
 @needs_node
 def test_js_suite_passing_passes(tmp_path):
     (tmp_path / "engine.test.js").write_text(PASSING_JS, encoding="utf-8")

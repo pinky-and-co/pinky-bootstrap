@@ -55,7 +55,6 @@ except ImportError:  # pragma: no cover - dependency guard
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-# The HTML host directory carries the wget mirror; the converted tree goes to _md/.
 OUTPUT_DIRNAME = "_md"
 
 # Tags that are never content — removed before extraction.

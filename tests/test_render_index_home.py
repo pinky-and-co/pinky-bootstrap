@@ -64,7 +64,6 @@ def test_distribute_leaves_hand_maintained_index_alone_with_marker(tmp_path):
 
 
 def test_distribute_leaves_agent_index_alone_without_mkdocs_yml(tmp_path):
-    # The pre-site regime, unchanged: no mkdocs.yml at all (most repos today).
     repo = tmp_path / "pinky-thing"
     setup._init_repo_skeleton(repo)
     (repo / "docs").mkdir()

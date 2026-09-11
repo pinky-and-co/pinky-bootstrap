@@ -35,14 +35,11 @@ def isolated_home(tmp_path, monkeypatch):
     return fake_home
 
 
-# ── discovery — reads this repo's real agentic-harness/ tree ────────────────
-
-
 def test_discover_output_styles_finds_adhd_with_its_frontmatter_name_as_value():
     styles = discover_output_styles()
     adhd = next(a for a in styles if a.name == "adhd")
     assert adhd.value == "ADHD"  # frontmatter `name:`, not the lowercase filename
-    assert adhd.description  # non-empty — adhd.md carries a description: field
+    assert adhd.description
 
 
 def test_discover_themes_finds_lisible_with_custom_prefix_as_value():

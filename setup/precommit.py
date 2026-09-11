@@ -33,16 +33,6 @@ from .common import (
 )
 from .product_scaffold import scaffold_product
 
-# Why check_zws is a floor, not a choice: it was born from an invisible character introduced while
-# replacing an email address across several .yml config files, which corrupted the DAGs those files
-# drove. Cheap corruption, expensive consequence, and invisible to review by construction. It has no
-# `files:` filter in base.yaml either, so it already covers every staged file, not just prose. It
-# ALSO intersects one channel of invisible-text prompt injection (a payload encoded in zero-width
-# characters) — but only that one: the tag block (U+E0000-U+E007F), variation selectors and bidi
-# controls all pass through it untouched. Do not read this hook as an anti-injection guard; widening
-# its alphabet is its own card, and its own arbitration (U+200D is the emoji ZWJ joiner, and
-# U+200C/U+200D are required in Persian/Arabic/Indic scripts).
-
 
 def discover_repos() -> list[Path]:
     """Every git repo under WORKSPACE_ROOT, up to one directory deep (dot-dirs excluded).
@@ -83,9 +73,6 @@ def _report_unonboarded(repos: list[Path]) -> None:
         print("   Onboard with: pinky distribute --repo <name>\n")
 
 
-# ── mypy hermetic additional_dependencies (ADR-0026) ─────────────────────────
-# Pin = the miniforge base env's currently installed mypy version (same convention as the other
-# hermetic hooks — mdformat/interrogate/darglint — see ADR-0023). Bump here only.
 MYPY_PIN = "2.0.0"
 MYPY_DEPS_PLACEHOLDER = "__MYPY_ADDITIONAL_DEPENDENCIES__"
 
@@ -140,13 +127,6 @@ def mypy_additional_dependencies(repo: Path) -> list[str]:
     return [f"mypy=={MYPY_PIN}", *_repo_runtime_dependencies(repo)]
 
 
-# ── python extra: auto-derived scope for the src/-scoped hooks ───────────────────────────────
-# mypy/bandit/darglint/interrogate/check-typed-api all assumed `src/` — correct for the common
-# case, a silent no-op for a flat-layout repo with a pyproject.toml (measured on the moteur itself,
-# `pinky-bootstrap`: 0 `.py` under `src/`, real code in `setup/`/`hygiene/`/`tools/`/`cli_pinky.py`
-# unchecked since the day it grew a pyproject.toml). Same failure `run-tests`' own `files:` filter
-# had (base.yaml's comment on that hook) — an allowlist of layouts, wrong by default off the list.
-# Fixed the same way: derive the scope from what is on disk, no per-repo table to keep in sync.
 PY_LINT_FILES_PLACEHOLDER = "__PY_LINT_FILES_PATTERN__"
 PY_LINT_BANDIT_ARGS_PLACEHOLDER = "__PY_LINT_BANDIT_ARGS__"
 PY_LINT_INTERROGATE_ARGS_PLACEHOLDER = "__PY_LINT_INTERROGATE_ARGS__"
@@ -295,19 +275,9 @@ def build_precommit_config(repo: Path, extras: list[str]) -> str:
     return text
 
 
-# ── CI workflow distribution (chantier-0001, distribute-ci-yml-from-core) ────────────────────
-# Before this, .github/workflows/ci.yml was hand-maintained per repo — the only piece of
-# governance setup.py never touched, so a transverse CI change (the docs-only-deadlock fix) was
-# a manual fan-out to N repos. hygiene/ci/ci.yml.tpl is now the single source; render_ci_yml derives
-# the per-repo file. Two axes vary per repo and are NOT derivable from resolve_extras() (which
-# answers "python" identically for pinky-core and pinky-provider) — explicit override tables.
 CI_TPL_PATH = CORE_CI_DIR / "ci.yml.tpl"
 CI_WINDOWS_FRAGMENT_PATH = CORE_CI_DIR / "windows-pilot.yml.tpl"
 CI_WORKER_FRAGMENT_PATH = CORE_CI_DIR / "worker-python.yml.tpl"
-# Le parcours d'install joué sous Windows. Réservé au MOTEUR : le job l'installe et lance ses
-# sous-commandes, ce qu'aucun repo consommateur ne peut faire. Gaté par IDENTITÉ avec SCRIPT_DIR
-# plutôt qu'ajouté à CI_WINDOWS_PILOT, qui est une liste de noms en dur (un littéral d'instance
-# dans le moteur, la classe de défaut qu'ADR-0065/0069 retirent) — ici l'appartenance se dérive.
 CI_INSTALL_WALKTHROUGH_PATH = CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
 # La version que `prek.yml.tpl` porte en dur, remplacée par le pin du repo quand il en a un.
 PREK_DEFAULT_PYTHON = "3.12"
@@ -318,9 +288,6 @@ PREK_TPL_PATH = CORE_CI_DIR / "prek.yml.tpl"
 PREK_RUN_HOOKS_ANCHOR = (
     "      - name: Run pre-commit hooks\n        uses: j178/prek-action@v2\n"
 )
-# `validate-plugins-strict` (plugin-repo extra) shells out to `claude plugin validate --strict` —
-# absent from the runner image, so the repo's own hook gate is a silent no-op in CI without this
-# (measured, chantier 0023: exit 1, "`claude` CLI not found on PATH").
 PREK_CLAUDE_CLI_STEP = (
     "      - name: Set up Node.js\n"
     "        uses: actions/setup-node@v4\n"
@@ -331,16 +298,6 @@ PREK_CLAUDE_CLI_STEP = (
     "        run: npm install -g @anthropic-ai/claude-code\n"
     "\n"
 )
-# Small utility modules shared by two plugins in `pinky-agentic-plugins` that a plugin-boundary
-# split (chantier 0023, decouper-pc-core-en-pc-git-et-pc-kanban) put in DIFFERENT plugins — a
-# plugin can only ever import its own files, never a dependency's (`dependencies` orders install,
-# it builds no `sys.path`). Source of truth here, distributed with a checksum manifest so a
-# hand-edited copy is caught at commit time instead of silently drifting from its sibling.
-#
-# Each copy is named for its plugin: two files sharing a basename under sibling `plugins/*/` dirs
-# (no `__init__.py`, plugin names carry hyphens so no clean package path) make mypy's single
-# invocation hard-error "Duplicate module named X". La 1ʳᵉ cible de chaque liste est le module
-# « home » et garde le nom nu ; toute autre copie est `pc_<plugin>_<name>.py`.
 VENDOR_MAP = {
     "policy_lib.py": [
         "plugins/pc-core/hooks/policy_lib.py",
@@ -369,19 +326,10 @@ CI_D1_DATABASE_PLACEHOLDER = "__D1_DATABASE__"
 
 CI_DEFAULT_INSTALL_CMD = "uv sync --locked --no-sources --group dev"
 
-# `pytest` suppose que la suite est en Python. Elle ne l'est pas partout : PILOT teste ses calculs
-# monétaires en JavaScript (`node --test`), et n'installe même pas pytest. Déléguer au hook du repo
-# est plus juste que dupliquer la détection ici — `run-tests` sait déjà résoudre les deux langages,
-# et il reste la seule source de vérité sur « comment ce repo se teste ».
 CI_DEFAULT_TESTS_CMD = "pytest"
 CI_TESTS_OVERRIDES = {
     "pluto-poc-pilot": "bash scripts/hooks/run-tests",
 }
-# Functional extras (validate/address/schedule/xml/lint), not just validate/address — omitting
-# xml/schedule/lint silently skips their test files at collection time (pytest.importorskip on
-# the missing package), deflating the coverage number without ever failing CI. fec is
-# intentionally left out (not exercised by CI). pinky-provider needs --prerelease allow: it
-# depends on pinky-core/pinky-snowpark, both pre-release.
 CI_INSTALL_OVERRIDES = {
     "pinky-core": (
         "uv sync --locked --extra validate --extra address --extra schedule --extra xml "
@@ -390,33 +338,14 @@ CI_INSTALL_OVERRIDES = {
     "pinky-provider": "uv sync --locked --no-sources --prerelease allow --group dev",
 }
 
-# Repos whose [tool.uv.sources] points a dev-only dependency at a sibling working copy by
-# relative path (e.g. `pinky-core = { path = "../pinky-core", editable = true }`) — deliberate,
-# so a change there is visible downstream immediately instead of via a .devN release. A lock
-# resolved with --no-sources (required so CI's isolated single-repo checkout, which has no
-# sibling, doesn't hit "Distribution not found") permanently disagrees with what pyproject.toml
-# itself declares — a bare `uv lock` by anyone reverts it (measured on pinky-connect, chantier
-# 0024). `--locked`'s drift-detection (FR-0024-02) can't hold under that contradiction, so these
-# repos are exempted from it: `--no-sources` stays (CI must still succeed), `--locked` drops.
 CI_NO_LOCK_REPOS: frozenset[str] = frozenset(
     {"pinky-ai", "pinky-connect", "pinky-provider", "pinky-snowpark", "pinky-streamlit"}
 )
 
-# ── [tool.uv] cooldown + required-version distribution (chantier 0024) ───────
-# Fenêtre de cooldown contre une dépendance fraîchement compromise republiée sur PyPI : uv ignore,
-# à chaque `uv lock`, tout paquet publié dans la fenêtre. Exprimée en durée RELATIVE plutôt qu'en
-# date absolue — rien à renouveler, rien que `pinky distribute` doive recalculer, donc pas de
-# désync `uv.lock` en régime établi. uv résout la durée au lock et enregistre le span lui-même
-# (pas la date résolue) dans `uv.lock` sous `exclude-newer-span`.
 EXCLUDE_NEWER_SPAN = "3 days"
 # `required-version` : sans ça, un uv < 0.9.17 ignore la durée relative en silence. `>=0.9.17` est
 # la 1re version qui l'accepte.
 UV_REQUIRED_VERSION = ">=0.9.17"
-# Toutes les recherches ci-dessous sont bornées au corps de la table `[tool.uv]` (voir
-# `_tool_uv_body`) : `exclude-newer` est aussi valide sous `[tool.uv.pip]`, `required-version`
-# aussi sous `[tool.ruff]` — une recherche non scopée toucherait la mauvaise clé.
-# `_EXCLUDE_NEWER_BLOCK_RE` matche le(s) commentaire(s) + la ligne d'un tenant, pour que le
-# générateur possède le commentaire aussi (reformulation propagée, jamais de phrase périmée).
 _EXCLUDE_NEWER_BLOCK_RE = re.compile(
     r'(?m)^(?:#[^\n]*\r?\n)*exclude-newer[ \t]*=[ \t]*"[^"]*"[ \t]*\r?$'
 )
@@ -481,10 +410,6 @@ def render_pyproject_with_cooldown(repo: Path) -> str | None:
     return new_text if new_text != text else None
 
 
-# ADR-0023 pilot gate: hermetic pre-commit hooks validated on the brother's machine (Windows,
-# prek only, no toolchain). Not every lib, so this is an explicit set, not a resolve_extras() axis.
-# `pinky-bootstrap` (the moteur itself, ported from the retired `pinky-workspace`) and `pinky-core`
-# carry the coverage — the moteur's test suite must keep passing on native Windows path separators.
 CI_WINDOWS_PILOT: frozenset[str] = frozenset({"pinky-core", "pinky-bootstrap"})
 
 
@@ -745,9 +670,6 @@ def distribute(
             if src.name in ("commit-msg", "generate-docs"):
                 dst.chmod(0o755)
 
-    # 1b. docs_identity.json — the instance identity render_docs.py reads at commit time. Values come
-    #     from the repo's group config (never hardcoded in hygiene/hooks/render_docs.py, the generic
-    #     engine) — see `_group_docs_identity`.
     print(f"  {tag}hook  scripts/hooks/docs_identity.json")
     if not dry_run:
         dst_hooks.mkdir(parents=True, exist_ok=True)
@@ -755,35 +677,19 @@ def distribute(
             render_docs_identity(identity), encoding="utf-8"
         )
 
-    # 1c. badges.toml — the generic badge catalog render_docs.py reads at commit time (2026-07-11).
-    #     Verbatim copy (no per-repo rendering, unlike docs_identity.json): every repo gets the same
-    #     catalog, each entry gated on its own `condition` file existing in that repo.
     print(f"  {tag}hook  scripts/hooks/badges.toml")
     if not dry_run:
         dst_hooks.mkdir(parents=True, exist_ok=True)
         shutil.copy2(CORE_HOOKS_DIR / "badges.toml", dst_hooks / "badges.toml")
 
-    # 1d. .gitleaks.toml — repo root, not scripts/hooks/: gitleaks' pre-commit hook has
-    #     pass_filenames: false (it scans the repo itself), so it only picks up its config by
-    #     auto-discovering .gitleaks.toml in the scan root, not via pre-commit's files/exclude.
-    #     Verbatim copy, universal like badges.toml (every repo gets the .secrets.baseline allowlist).
     print(f"  {tag}gitleaks .gitleaks.toml")
     if not dry_run:
         shutil.copy2(CORE_PRECOMMIT_DIR / "gitleaks.toml", repo / ".gitleaks.toml")
 
-    # 1e. .gitattributes — repo root, verbatim like .gitleaks.toml and badges.toml: every
-    #     onboarded repo gets the same line-ending normalization, no per-repo rendering.
     print(f"  {tag}gitattributes .gitattributes")
     if not dry_run:
         shutil.copy2(CORE_PRECOMMIT_DIR / "gitattributes", repo / ".gitattributes")
 
-    # 1f. .python-version — the interpreter pin uv (and pyenv) read. Derived from the repo's OWN
-    #     requires-python floor, minor only: a lib declaring >=3.12 must work on every 3.12 patch,
-    #     so pinning 3.12.13 would go stale on the next patch release for no reproducibility gain.
-    #     Apps/containers that DO need patch-level pinning set their own — this covers the repos
-    #     setup.py governs, which are all libs. Skipped when nothing declares a floor (see
-    #     _python_version_pin): inventing a version for an undeclared repo is worse than none.
-    #     Idempotent — rewritten only when the pin actually changes.
     python_pin = _python_version_pin(repo)
     if python_pin:
         pin_path = repo / ".python-version"
@@ -795,11 +701,6 @@ def distribute(
             if not dry_run:
                 pin_path.write_text(f"{python_pin}\n", encoding="utf-8")
 
-    # 1g. .claude/settings.pinky.json — scaffold with branch_workflow: null if missing, never
-    #     overwrite. No safe universal default (verified: "git flow" on pinky-lib/ops, "github
-    #     flow" on pinky-agentic-plugins) — a repo fact, decided per repo, not inheritable or
-    #     inventable. null (not an empty object) names the expected key so it's visibly unset, not
-    #     silently absent — a human fills in the value.
     settings_pinky_path = repo / ".claude" / "settings.pinky.json"
     if not settings_pinky_path.exists():
         print(f"  {tag}scaffold .claude/settings.pinky.json (branch_workflow: null)")
@@ -809,19 +710,14 @@ def distribute(
                 '{"branch_workflow": null}\n', encoding="utf-8"
             )
 
-    # 1h. vendor/*.py — small utility modules shared across a plugin-boundary split.
     distribute_vendor(repo, dry_run=dry_run)
 
-    # 2. .pre-commit-config.yaml
     print(f"  {tag}config  .pre-commit-config.yaml")
     if not dry_run:
         (repo / ".pre-commit-config.yaml").write_text(
             build_precommit_config(repo, extras), encoding="utf-8"
         )
 
-    # 2b. .github/workflows/ci.yml — governance parity with .pre-commit-config.yaml (chantier-0001,
-    # distribute-ci-yml-from-core). None (no derivable Python version) → repo has no CI to render,
-    # skip silently — same gate as the `python` extra. Idempotent — rewritten only on real diff.
     ci_yml = render_ci_yml(repo)
     if ci_yml is not None:
         ci_path = repo / ".github" / "workflows" / "ci.yml"
@@ -832,17 +728,12 @@ def distribute(
                 ci_path.parent.mkdir(parents=True, exist_ok=True)
                 ci_path.write_text(ci_yml, encoding="utf-8")
 
-    # 2b-bis. pyproject.toml's [tool.uv] cooldown + required-version (chantier 0024) — the only
-    # keys this CLI writes into a file it otherwise only reads from. The cooldown is a relative
-    # span, so this is a one-time migration then a permanent no-op — no date to recompute.
     new_pyproject = render_pyproject_with_cooldown(repo)
     if new_pyproject is not None:
         print(f"  {tag}uv      pyproject.toml (cooldown + required-version)")
         if not dry_run:
             (repo / "pyproject.toml").write_text(new_pyproject, encoding="utf-8")
 
-    # 2c. .github/workflows/prek.yml — the same server-side net for the repos 2b skips (no
-    # pyproject → no ci.yml). Complementary to 2b, never both: see render_prek_yml.
     prek_yml = render_prek_yml(repo)
     if prek_yml is not None:
         prek_path = repo / ".github" / "workflows" / "prek.yml"
@@ -869,13 +760,6 @@ def distribute(
     if not dry_run:
         _prek_install(repo)
 
-    # 5. README badges/tagline/why/documentation/license sections — every repo with a README.md,
-    # not just the `python` extra (2026-07-10, generate-docs-hook): sections are self-gating on
-    # file/artifact presence now (render_docs.py), so a non-Python repo gets license/prek here too,
-    # consistent with what the commit-time `generate-docs` hook would do on its next commit anyway.
-    # allow_first_run=True: setup.py is the reviewed adoption path (the diff is shown before it
-    # lands) — the commit-time hook uses the default (False) so it never wraps hand-typed sections
-    # silently (the pinky-studio data-loss guard, 2026-07-11).
     readme_path = repo / "README.md"
     if readme_path.exists():
         injected = inject_readme_sections_local(
@@ -889,10 +773,6 @@ def distribute(
             if not dry_run:
                 readme_path.write_text(injected, encoding="utf-8")
 
-    # 6. docs/index.md — the generated mkdocs homepage. Gated on docs/mkdocs.yml: the site repos
-    #    only (excludes the non-site repos whose docs/index.md is a pure agent index, no homepage).
-    #    A repo can opt out even WITH a site via docs/.no-generated-index (has_generated_index) —
-    #    pinky-workspace's own hand-curated ADR index, kanban card `site-mkdocs-sur-le-moteur`.
     if has_generated_index(repo):
         index_path = repo / "docs" / "index.md"
         generated = render_index_home(repo, identity)
@@ -911,36 +791,6 @@ def distribute(
 _MISSING_TOOLS: set[str] = set()
 
 
-# THE strictness of the parc — one value, everywhere (user decision 2026-08-07: « je m'en fous de
-# short ou long, par contre je veux que ce soit uniforme »). `long` is the intent the parc has always
-# meant: a one-line docstring counts as complete, but the moment an `Args:`/`Returns:` section is
-# opened it must be complete. Measured 2026-08-07 on a one-line docstring with one parameter —
-# short: 0 · long: 0 · full: 2 · NO FLAG AND NO FILE: 2.
-#
-# That last column is the whole reason this exists. darglint's built-in default is **full**, not
-# `long`. Commit a7250ce dropped the CLI flag `--strictness=short` — correctly, a CLI flag overrides
-# a repo's own config file — on the stated premise that "every repo already carries a .darglint
-# declaring strictness = long". **That premise was false**: it was measured inside `pinky-snowpark`,
-# which HAS such a file, so "no flag" there meant "long, read from the file" rather than darglint's
-# default. Five repos had no file at all, so dropping the flag silently moved them from `short` to
-# `full` — the opposite of the intent. It broke pluto-poc-pilot's CI (44 FastAPI routes whose
-# injected dependencies would each need a full Args: section) and lay latent in four more, invisible
-# until a commit touched a .py file.
-#
-# Why `long` and not `short`, measured 2026-08-07 on the two docstring styles the parc actually
-# writes — PROSE (multi-line, no sections): short 2 err · long 0 · full 2. ONE-LINE + param:
-# short 0 · long 0 · full 2. **`long` is the only value that passes both.** That is also why the
-# same flag broke CI twice in opposite directions: `--strictness=short` distributed on 2026-07-31
-# overrode the `long` of the prose repos (pinky-snowpark 3 errors, pinky-connect 62), and removing
-# it on 2026-08-06 dropped the file-less repos onto `full` (pluto-poc-pilot, one-line docstrings).
-# Verified free to converge: all 9 python repos sit at 0 errors under `long`.
-# `ignore_raise = exc` suppresses a LIMITATION of darglint, never a missing docstring: it cannot
-# resolve `raise <variable>`, so it reports the identifier as an undocumented raise even when the
-# docstring documents the real exception. Measured 2026-08-07 on `pinky-connect` — converging the
-# socle without this line flagged `concurrent_map` (`DAR401: -r exc`) whose docstring already carries
-# `Raises: Exception:`. Socle rather than per-repo because it is inert on any repo that never does
-# `raise <variable>`, and because `_write_darglint_config` converges: a repo cannot hold a local
-# exception, and no per-repo override mechanism exists.
 _DARGLINT_INI = """[darglint]
 docstring_style = google
 strictness = long
@@ -1008,20 +858,6 @@ def _ensure_secrets_baseline(repo: Path, tag: str = "") -> None:
         baseline.write_text(result.stdout, encoding="utf-8")
 
 
-# Files the distribution owns — only these are staged by --commit (never -A). AGENT.md is NOT
-# here (2026-07-10): setup.py no longer touches it at all, so it's never the distribution's to stage.
-# Everything a distribution WRITES and therefore owns end to end, so `--commit` stages all of it.
-# `.darglint` was missing until 2026-08-07: `_write_darglint_config` rewrites it on every python-extra
-# repo, but with only that file changed `commit_distribution` returned "up-to-date (nothing to
-# commit)" — a clean bill of health over a change it never looked at. Found adding `ignore_raise` to
-# the socle, where 9 repos each came out with a modified `.darglint` to commit by hand.
-#
-# `.secrets.baseline` is deliberately ABSENT, and the reason is NOT "a human edits it" — checked
-# 2026-08-07 across the parc, nobody ever has: it is created once by `_ensure_secrets_baseline` (only
-# when missing) and thereafter rewritten by detect-secrets itself, in reaction to the REPO's own code
-# — `pinky-provider` 3b3547a filled its `results` block with findings from a `secret.py` that same
-# commit introduced. So a distribution never modifies it, and staging it could only ever sweep a
-# change the repo made for its own reasons into a distribution commit.
 DISTRIBUTED_PATHS = (
     ".pre-commit-config.yaml",
     ".gitleaks.toml",
@@ -1032,9 +868,6 @@ DISTRIBUTED_PATHS = (
     ".github/workflows/prek.yml",
 )
 
-# No `(scope)` — hygiene/hooks/commit-msg's PATTERN is strictly `<emoji> <type>[!]: <description>`
-# (tightened after this constant was last exercised via bulk --commit; a `chore(hooks):` scope
-# fails it, drift caught 2026-07-11 rolling out the docs_identity pitch fields).
 COMMIT_MESSAGE = "🔧 chore: adopt pinky-bootstrap centralized hooks distribution"
 
 
@@ -1095,12 +928,6 @@ def _prek_install(repo: Path) -> None:
         )
 
 
-# (section path, key, expected value) — the `.cache/` convention (kanban card
-# `convention-cache-jamais-distribuee`). `pyproject.toml` is repo-owned, not something `distribute()`
-# can write (it carries deps/metadata `distribute()` has no business touching), so this is advisory
-# only: reported like `version_lag`, never counted in `total`. A tool with no section in a given
-# repo's `pyproject.toml` at all is not this check's business — only a tool already configured there
-# without the cache-dir key is a real divergence.
 _CACHE_CONVENTION = (
     (("tool", "ruff"), "cache-dir", ".cache/ruff"),
     (("tool", "mypy"), "cache_dir", ".cache/mypy"),
@@ -1170,16 +997,6 @@ def check_drift(
             elif not filecmp.cmp(src, dst, shallow=False):
                 issues.append(f"differs   scripts/hooks/{src.name}")
 
-        # The symmetric half (card `defauts-moteur-releves-a-l-import-pluto` § 3). `distribute()`
-        # writes but never removes, so a repo whose extras changed (e.g. dropped `web`) can carry a
-        # stale script wired to nothing — 4 repos carried one for ten weeks and still reported ✓,
-        # because this loop only ever walked the EXPECTED set.
-        #
-        # Scoped to names the framework itself ships (`CORE_HOOKS_DIR`) plus the two files
-        # `distribute()` renders rather than copies. A repo's own helper dropped in scripts/hooks/
-        # is legitimate and stays unflagged: a control that nags about it is one people learn to
-        # ignore, which is the failure this card is about. Reported only — deleting a file from a
-        # consumer repo is not a neutral act (the card's least-invasive option).
         framework_owned = {f.name for f in CORE_HOOKS_DIR.iterdir() if f.is_file()}
         rendered = {"docs_identity.json", "badges.toml"}
         keep = {src.name for src in expected} | rendered
@@ -1217,17 +1034,10 @@ def check_drift(
             elif prek_path.read_text(encoding="utf-8") != expected_prek:
                 issues.append("differs .github/workflows/prek.yml")
 
-        # Version lag is reported separately from `issues`, never counted in `total`: a moteur bump
-        # touches nothing on disk in a repo distributed before it, so treating it as a divergence
-        # would turn `--check-drift` permanently red the moment ANY repo bumps — the exact
-        # "control nobody reads" failure this advisory framing avoids.
         recorded_version = repo_engine_version(repo)
         if recorded_version is not None and recorded_version != current_version:
             version_lag.append((repo.name, recorded_version))
 
-        # Same advisory posture as version lag, and for the same reason: `pyproject.toml` is
-        # repo-owned, `distribute()` cannot fix it, so counting it in `total` would flag a
-        # divergence with no `pinky distribute` to clear it.
         gaps = _cache_convention_issues(repo)
         if gaps:
             cache_gaps.append((repo.name, gaps))
@@ -1340,8 +1150,6 @@ def new_repo(name: str, args) -> None:
         else f"→ {name} already a git repo — converging (re-distribute)."
     )
     if getattr(args, "scaffold", False):
-        # Before distribute(): step 5 (README section injection) only fires when README.md
-        # already exists, and the tagline section needs pyproject.toml's [project].description.
         repo_type = getattr(args, "type", None) or "lib"
         written = scaffold_product(target, repo_type)
         if written:
@@ -1435,17 +1243,5 @@ def run_distribution(args) -> None:
         print("  Distribution is incomplete without them — install and re-run.")
         sys.exit(1)
 
-    # Class C — the distribution ran but the repos still diverge from core/. Verification by
-    # construction rather than by discipline (2026-07-25): check_drift() already covered every
-    # post-rollout check worth doing (byte-compare of each expected hook, .pre-commit-config.yaml,
-    # ci.yml, per-repo scoping via _hook_files) but it was a SEPARATE invocation you had to
-    # remember — so it kept getting re-improvised by hand (md5 loops, grep for the hook id) right
-    # after a rollout instead. Same doctrine as _report_unonboarded above: the tool tells you every
-    # time, you don't have to remember to ask. Skipped on --dry-run, which by definition leaves in
-    # place the drift it just finished describing.
-    # `extras_fatal=False`: orphaned scripts are reported but do not fail the gate. distribute()
-    # writes and never deletes, so it cannot clear one — counting them here would make the nominal
-    # path exit non-zero forever on any repo carrying an orphan, which is how a guard rail becomes
-    # something people learn to ignore (the archived card `drift-check-faux-positif-sans-manifeste`).
     if not args.dry_run and check_drift(repos, extras_fatal=False):
         sys.exit("✗ Residual drift after distribution — see the report above.")

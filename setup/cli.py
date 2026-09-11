@@ -17,9 +17,6 @@ def main(argv: list[str] | None = None) -> None:
     invoke a mode programmatically without touching ``sys.argv`` — ``None`` (the CLI entry point)
     keeps today's behavior, delegating to argparse's own ``sys.argv[1:]`` default."""
     parser = argparse.ArgumentParser(add_help=False)
-    # Rules distribution — resolved per plugin (each rules/<plugin>/ ships to wherever that
-    # plugin is actually installed: user scope or a specific project path), not a single fixed
-    # repo target, which is why it is its own mode rather than a flag on --repo/--all.
     parser.add_argument(
         "--rules",
         nargs="?",
@@ -244,19 +241,11 @@ def main(argv: list[str] | None = None) -> None:
         if written:
             print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
             return
-        # 2a-bis. Un plugin always-on (`KEEP_USER_SCOPE`) reste où le fetch l'a mis — scope user —
-        #     sans wizard ni drop : pas de sens par repo, et il doit être live avant toute
-        #     résolution project-scope. Après le wiring status-line ci-dessus, donc un plugin
-        #     always-on qui en livrerait un serait quand même câblé.
         if args.plugin in plugin_install.KEEP_USER_SCOPE:
             print(
                 f"{args.plugin} kept at user scope (always-on) → ~/.claude/settings.json"
             )
             return
-        # 2b. Any other plugin: the wizard enables it at the chosen targets (one or several) via
-        #     `claude plugin install --scope project`. We own the user-scope lifecycle: drop the
-        #     fetch-time enable once real targets are placed — or on any wizard refusal — but
-        #     never when it was a legitimate global enable to begin with.
         try:
             roots = run_marketplace_wizard(
                 WORKSPACE_ROOT, args.plugin, args.marketplace, install_path=install_path
@@ -268,15 +257,6 @@ def main(argv: list[str] | None = None) -> None:
         if roots != [Path.home()] and not was_user_enabled:
             plugin_install.drop_user_scope(args.plugin, args.marketplace)
 
-        # 3. Rescope: any scope this plugin was *enabled* at before, outside what was just picked,
-        #    is a leftover from a previous run's choice — not something to keep accumulating
-        #    silently (the bug this flow used to have). Left alone:
-        #    - a `disabled_at` key — a deliberate opt-out, and an install only ever adds a scope
-        #      (include_disabled=False);
-        #    - the user scope when the plugin was already a legitimate global enable before the
-        #      command (same signal `drop_user_scope` above respects) — that predates this run,
-        #      it is not a leftover to sweep.
-        #    Confirm before removing, since the caller may think an install is purely additive.
         keep = {str(Path.home())} if roots == [Path.home()] else {str(r) for r in roots}
         if was_user_enabled:
             keep.add(str(Path.home()))
@@ -354,9 +334,6 @@ def main(argv: list[str] | None = None) -> None:
         run_distribution(args)
         return
 
-    # No mode flag matched: this low-level flag interface has no interactive default (that was
-    # install_provider's job, removed with the dead CLAUDE.md render engine — 2026-08-17). Point at
-    # the friendly facade instead of guessing what the caller wanted.
     print("pinky workspace setup — no mode flag given.")
     print(
         "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "

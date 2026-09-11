@@ -48,9 +48,6 @@ def _write_registry(user_claude: Path, plugins: dict) -> None:
     )
 
 
-# ── the union of both registries (FR-0023-33) ──────────────────────────────
-
-
 def test_audit_unions_every_source(world):
     user_claude, ws = world
     _write_enabled(user_claude / "settings.json", {"kept@mp": True, "off@mp": False})
@@ -93,9 +90,6 @@ def test_local_settings_get_a_distinct_label(world):
     assert audit_plugins(ws)["p@mp"].enabled_at == ("pinky-lib (local)",)
 
 
-# ── the two registries are distinct (IMP-0023-21) ──────────────────────────
-
-
 def test_registry_scope_is_not_read_as_user_enablement(world):
     user_claude, ws = world
     # pyright-lsp shape: installed at local scope, never in any enabledPlugins map
@@ -125,9 +119,6 @@ def test_ghost_is_a_key_enabled_nowhere(world):
     assert state.marketplace == "inline"
     assert state.is_ghost is True
     assert state.disabled_at == ("user",)
-
-
-# ── status-line detection (FR-0023-38) ─────────────────────────────────────
 
 
 def test_ships_status_line_true_when_the_script_is_in_the_install_path(world, tmp_path):
@@ -274,9 +265,6 @@ def test_no_settings_and_no_registry_yields_empty_audit(world):
     assert audit_plugins(ws) == {}
 
 
-# ── the bare `pinky plugins reconcile` report (FR-0023-32 / FR-0023-33) ─────
-
-
 def _snapshot(root: Path) -> dict[str, bytes]:
     return {
         str(p.relative_to(root)): p.read_bytes()
@@ -418,9 +406,6 @@ def test_purge_other_enables_include_disabled_false_leaves_the_false_key(world):
     assert json.loads((repo / ".claude" / "settings.json").read_text())[
         "enabledPlugins"
     ] == {"p@mp": False}
-
-
-# ── `--apply` — place each plugin, purge the rest (FR-0023-34..39) ──────────
 
 
 class _ClaudeCliSim:
@@ -661,7 +646,6 @@ def test_apply_purge_removes_the_registry_entry_of_a_parasitic_project_enable(
     # registry entry gone — the whole point of the card
     reg = json.loads((user_claude / "plugins" / "installed_plugins.json").read_text())
     assert reg["plugins"]["pc-dep@mp"] == [{"scope": "user"}]
-    # and rules.py no longer resolves the ghost dir
     assert resolve_targets_for_plugin("pc-dep", ws) == [ws]
     # removal went through `claude plugin uninstall --scope project`, cwd = the repo
     assert (
@@ -712,7 +696,6 @@ def test_apply_uninstall_confirmed_call_sequence_and_inline_key(
         (["--scope", "user"], None),
     ]
     assert "ghost@inline" not in _enabled_in(ws / ".claude" / "settings.json")
-    # IMP-0023-22: the direct removal is in the ledger
     keys = json.loads(state_file.STATE_FILE_PATH.read_text(encoding="utf-8"))
     assert any("ghost@inline" in k for k in keys)
 

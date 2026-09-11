@@ -33,13 +33,8 @@ PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.pinky.live-docs.pli
 LAUNCHD_LABEL = "com.pinky.live-docs"
 SERVE_ADDR = "127.0.0.1:8765"
 
-# Épinglé : `mkdocs-material` passe en maintenance sécu-seulement au 2026-11-05 (successeur :
-# Zensical). La contrainte porteuse est `mkdocs<2`, que la ligne 9.x tient. À bumper sciemment.
 MKDOCS_DEPS = ("mkdocs-material>=9.7,<10", "mkdocs-awesome-nav>=3.3,<4")
 
-# Les 3 fichiers d'outillage, relatifs à LIVE_DOCS_SRC, mappés vers leur emplacement runtime sous
-# le dossier d'install. `board.css` va sous `docs/` car `extra_css` de `mkdocs.yml` se résout
-# contre `docs_dir`.
 _TOOLING = {
     "hooks.py": "hooks.py",
     "mkdocs.yml": "mkdocs.yml",

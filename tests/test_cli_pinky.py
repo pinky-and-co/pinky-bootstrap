@@ -92,8 +92,6 @@ def test_new_repo_dispatch(monkeypatch):
 
 
 def test_new_repo_type_implies_scaffold(monkeypatch):
-    # --type without an explicit --scaffold still needs setup.py's --scaffold flag present,
-    # since --type has nothing to act on otherwise (setup/cli.py rejects that combination).
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["new-repo", "pinky-foo", "--type", "data"])
     assert calls == [["--new-repo", "pinky-foo", "--scaffold", "--type", "data"]]
@@ -197,14 +195,6 @@ def test_plugins_reconcile_apply_dispatch(monkeypatch):
     assert calls == [["--plugins-reconcile-apply"]]
 
 
-# `render`/`into`/`install` sub-commands (the dead CLAUDE.md render engine's CLI surface) were
-# removed 2026-08-17 along with `install_from_profile`/`install_into_repo`/`install_provider`.
-# `check-public` (the public-corpus leak guard's CLI surface) was removed with the profile/corpus
-# mechanism it depended on.
-
-# ── setup.cli.main(argv) — the programmatic entry point cli_pinky.py relies on ─
-
-
 def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
     import setup.cli
 
@@ -227,8 +217,5 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
 
 
 def test_root_shim_reexports_the_same_objects_as_setup_cli_pinky():
-    # The whole point of the shim: `cli_pinky.main`/`setup_main` must be the exact functions
-    # defined in `setup/cli_pinky.py`, not a duplicate — otherwise the two entry points (installed
-    # console script vs `python cli_pinky.py`) could silently diverge again.
     assert cli_pinky.main is cli_pinky_impl.main
     assert cli_pinky.setup_main is cli_pinky_impl.setup_main

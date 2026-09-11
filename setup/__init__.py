@@ -9,11 +9,6 @@ here so `import setup; setup.<name>` keeps working exactly as when everything li
 
 import sys
 
-# The package prints ✓/emoji progress markers (e.g. _install_status_lines); Windows' default
-# console codepage (cp1252, not UTF-8) can't encode them and crashes with UnicodeEncodeError.
-# Fixed here, at import time, rather than only in setup.py's entrypoint — any direct `import
-# setup` (a script bypassing the CLI, a REPL, this package's own callers) gets the same
-# protection (found by the windows-latest CI job, CHANTIER0001 loup-into-windows-hooks-morts).
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")

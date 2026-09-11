@@ -135,9 +135,6 @@ def test_missing_source_dir_raises(tmp_path: Path) -> None:
         rules_mod.distribute_rules(tmp_path / "nowhere", tmp_path / "ws")
 
 
-# ── resolve_targets_for_plugin — lit installed_plugins.json ──────────────────
-
-
 @pytest.fixture
 def installed_plugins_file(tmp_path, monkeypatch):
     path = tmp_path / "installed_plugins.json"

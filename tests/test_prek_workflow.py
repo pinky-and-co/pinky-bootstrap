@@ -21,10 +21,6 @@ from pathlib import Path
 
 import pytest
 
-# pyyaml n'est PAS une dépendance dure du moteur (invariant mesuré par
-# `test_no_hard_yaml_dependency.py`). Un `import yaml` en tête ne faisait pas tomber ce module : il
-# faisait échouer la COLLECTE, donc la suite entière refusait de tourner dans tout environnement
-# sans pyyaml. Skip franc du seul module concerné — une absence annoncée, pas une panne totale.
 yaml = pytest.importorskip("yaml")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -160,12 +156,6 @@ def test_prek_yml_satisfies_the_github_actions_grammar(non_lib_repo):
     for name, job in wf["jobs"].items():
         assert "runs-on" in job, f"job {name}: no runner"
         assert job["steps"], f"job {name}: no step"
-        # Least privilege is the point of the permissions block — a job that can write to the repo
-        # while running third-party hook code is the thing to avoid. Checked as "no scope is
-        # writable" rather than "the scope set is exactly {contents}": a job may legitimately need
-        # an extra READ scope (pr-required-on-main reads pull-requests), and pinning the set would
-        # have made every such addition look like a privilege escalation. The property that matters
-        # is the absence of write, and every value is still asserted — not a fragment.
         assert job["permissions"], f"job {name}: no permissions block"
         assert set(job["permissions"].values()) <= {"read", "none"}, (
             f"job {name}: non-read permission — {job['permissions']}"

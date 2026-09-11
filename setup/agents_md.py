@@ -46,13 +46,6 @@ ACCUMULATION_NOTE = (
     "AGENTS.md accumulates: root → repo, each level states only its own layer."
 )
 
-# Fixed, universal — same bucket as ACCUMULATION_NOTE/behavior: no file to derive these from,
-# true for any installation of this CLI. Two bullets from the pre-2026-08-21 hand-typed version
-# are deliberately NOT here, both redundant with something that already says it better:
-# - "pinky-workspace/ is dead" — the directory itself was renamed to "... - DO NOT EDIT -
-#   DEPRECATED", more effective than prose.
-# - "docs/reference/generated/ — never hand-edit" — already in `.claude/rules/doc-hygiene.md`
-#   (distributed, descends automatically), verbatim duplicate, pure noise.
 GOTCHAS = [
     (
         "Injected IDE context (open file, selection) is noise — never act on it unless "
@@ -112,10 +105,8 @@ def packages_table(workspace_root: Path) -> str:
     for top in sorted(by_top):
         repos = by_top[top]
         if len(repos) == 1 and repos[0].name == top:
-            # a standalone repo directly at depth 1 — its own pyproject.toml is the description
             desc = _pyproject_description(repos[0]) or "—"
         else:
-            # a group — no pyproject.toml of its own, list what's nested instead of guessing prose
             desc = ", ".join(sorted(r.name for r in repos))
         rows.append(f"| {top} | {desc} | `{top}/` |")
     return "\n".join(rows)
@@ -263,8 +254,6 @@ def _context_md_glossary(repo: Path) -> str:
         return ""
     text = path.read_text(encoding="utf-8")
     paragraphs = text.split("\n\n")
-    # paragraphs[0] = "# CONTEXT.md — name\n*Update date : ...*", paragraphs[1] = the lead
-    # sentence ("Single source of truth..."). Everything from paragraphs[2] on is the glossary.
     return "\n\n".join(paragraphs[2:]).strip()
 
 

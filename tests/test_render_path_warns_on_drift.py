@@ -96,9 +96,3 @@ def test_does_not_exit_the_process(tmp_path, monkeypatch):
 
 
 # ── wiring — both render entry points call it ────────────────────────────────
-
-
-# `install_from_profile`/`install_into_repo` (the render path this section wired warn_on_drift
-# into) were removed 2026-08-17 along with the dead CLAUDE.md render engine — the wiring tests for
-# that path went with them. `warn_on_drift()` itself, and its distribution-path wiring, are
-# unaffected — see the tests above.

@@ -39,10 +39,6 @@ _REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
 _CACHE_ROOT = _PLUGINS_DIR / "cache"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
-# Plugins gardés actifs au scope user quel que soit le choix du wizard — une préférence globale
-# sans sens par repo, même classe qu'un plugin status-line. `pc-autodiscovery` amorce l'activation
-# des plugins elle-même : il doit être live dans chaque session avant toute résolution
-# project-scope — retirer son enable user irait contre sa raison d'être.
 KEEP_USER_SCOPE = frozenset({"pc-autodiscovery"})
 
 

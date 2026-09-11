@@ -66,8 +66,6 @@ def test_packages_table_excludes_dirs_with_no_repo_underneath(tmp_path):
 
 
 def test_gotchas_section_no_stale_pinky_workspace_bullet():
-    # the pre-2026-08-21 "pinky-workspace/ is dead" bullet is deliberately gone — the directory
-    # rename ("... - DO NOT EDIT - DEPRECATED") already says it, prose would just go stale again.
     assert "pinky-workspace" not in gotchas_section()
 
 
@@ -78,7 +76,6 @@ def test_gotchas_section_renders_fixed_bullets():
 
 
 def test_gotchas_section_no_doc_hygiene_rule_duplicate():
-    # already in `.claude/rules/doc-hygiene.md`, distributed and auto-loaded — redundant here
     assert "docs/reference/generated" not in gotchas_section()
 
 

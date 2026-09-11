@@ -102,9 +102,7 @@ def test_js_engine_sync_passes_when_min_staged(tmp_path):
 
 def test_warn_hooks_never_block(tmp_path):
     big = tmp_path / "app.js"
-    big.write_text(
-        "// line\n" * 300, encoding="utf-8"
-    )  # oversize, no engine.js sibling
+    big.write_text("// line\n" * 300, encoding="utf-8")
     html = tmp_path / "index.html"
     html.write_text("<script>alert(1)</script>", encoding="utf-8")
     assert _run("check_js_file_size.py", str(big)) == 0

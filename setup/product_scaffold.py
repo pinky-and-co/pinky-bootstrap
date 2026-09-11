@@ -64,10 +64,6 @@ ______________________________________________________________________
 ## License
 """
 
-# Cache-dir keys only — no line-length/target-version/strict/testpaths etc., those are per-repo
-# and not this scaffold's business. Card `convention-cache-jamais-distribuee`: `.cache/` scatters
-# across the parc because nothing seeds it at repo birth — this is the seed, `--check-drift` is the
-# advisory signal for repos that predate it (setup/precommit.py::_cache_convention_issues).
 _CACHE_CONVENTION_TOML = """
 [tool.ruff]
 cache-dir = ".cache/ruff"

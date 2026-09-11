@@ -69,9 +69,6 @@ def _settings_pinky(
     )
 
 
-# ── parse_bash_binaries — NFR-0024-10 ───────────────────────────────────────────────────────
-
-
 def test_parse_bash_binaries_covers_every_known_form_without_crashing():
     value = (
         "Bash(rg:*), Bash(command -v markitdown:*), Bash(command -v:*), Bash(gh run list:*), "
@@ -84,9 +81,6 @@ def test_parse_bash_binaries_covers_every_known_form_without_crashing():
 
 def test_parse_bash_binaries_empty_value_is_empty_set():
     assert doctor.parse_bash_binaries("") == set()
-
-
-# ── required_binaries / check_binaries — FR-0024-11, FR-0024-12 ──────────────────────────────
 
 
 def test_required_binaries_lists_non_ambient_and_attributes_them(tmp_path):
@@ -184,9 +178,6 @@ def test_check_binaries_empty_when_no_registry(tmp_path, monkeypatch):
     assert doctor.check_binaries() == []
 
 
-# ── check_ollama — FR-0024-13, FR-0024-14 ───────────────────────────────────────────────────
-
-
 def test_check_ollama_endpoint_unreachable(tmp_path):
     settings = tmp_path / "settings.pinky.json"
     _settings_pinky(
@@ -218,9 +209,6 @@ def test_check_ollama_no_offline_entry_is_empty(tmp_path):
     settings = tmp_path / "settings.pinky.json"
     _settings_pinky(settings, pool=[{"name": "mistral", "kind": "http"}])
     assert doctor.check_ollama(settings, tags_reader=lambda url: []) == []
-
-
-# ── check_keys — FR-0024-15 ─────────────────────────────────────────────────────────────────
 
 
 def test_check_keys_absent_when_neither_env_nor_keychain(tmp_path):
@@ -308,9 +296,6 @@ def test_format_report_all_present_singular_and_plural():
     assert doctor.format_report(one).endswith("1 prérequis manquant")
 
 
-# ── run_doctor — FR-0024-10, FR-0024-16 ─────────────────────────────────────────────────────
-
-
 def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
     plugin = _plugin(tmp_path, "pc-alpha", skills={"one": "Bash(rg:*)"})
     registry = tmp_path / "installed_plugins.json"
@@ -370,9 +355,6 @@ def test_run_doctor_output_is_stable_across_two_runs(tmp_path, monkeypatch, caps
     doctor.run_doctor()
     second = capsys.readouterr().out
     assert first == second
-
-
-# ── apply_fixes — FR-0024-16, FR-0024-17, FR-0024-18, IMP-0024-10 ────────────────────────────
 
 
 def test_apply_fixes_brew_installs_a_missing_binary(monkeypatch):
@@ -497,9 +479,6 @@ def test_apply_fixes_declined_prompt_skips(monkeypatch):
     assert calls == []
 
 
-# ── ASS-0024-10 — no side effects ───────────────────────────────────────────────────────────
-
-
 def test_doctor_writes_no_ledger_and_no_config(tmp_path, monkeypatch):
     ledger = tmp_path / "ledger.json"
     settings_json = tmp_path / "settings.json"
@@ -518,9 +497,6 @@ def test_doctor_writes_no_ledger_and_no_config(tmp_path, monkeypatch):
 
     assert not ledger.exists()
     assert settings_json.read_text(encoding="utf-8") == '{"kept": true}'
-
-
-# ── cli_pinky wiring — FR-0024-10, FR-0024-19 ───────────────────────────────────────────────
 
 
 def test_pinky_doctor_is_in_help(capsys):

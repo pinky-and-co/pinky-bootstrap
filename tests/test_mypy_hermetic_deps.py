@@ -53,9 +53,6 @@ def test_build_precommit_config_substitutes_mypy_placeholder(tmp_path):
     assert setup.MYPY_DEPS_PLACEHOLDER not in cfg
     assert '"snowflake>=1.12.0"' in cfg
     assert "language: python" in cfg
-    # pinky-* deps ARE in mypy additional_dependencies now (public on PyPI, pip-installable in the
-    # hermetic venv). Match the QUOTED dependency form, not a bare substring — python.yaml carries a
-    # legitimate `# pinky-core:` comment (a require_serial rationale) that isn't a dependency.
     assert '"pinky-core>=0.1.0"' in cfg
 
 

@@ -103,11 +103,6 @@ def test_check_drift_reports_no_lag_when_versions_match(tmp_path, monkeypatch, c
     assert "behind engine" not in capsys.readouterr().out
 
 
-# ── check_drift — `.cache/` convention gap is advisory, never fatal ──────────
-# (card `convention-cache-jamais-distribuee`: pyproject.toml is repo-owned, distribute() can't fix
-# it, so — same reasoning as version lag above — it must never turn the gate red.)
-
-
 def test_check_drift_reports_a_repo_missing_the_cache_convention(
     tmp_path, monkeypatch, capsys
 ):
@@ -115,8 +110,6 @@ def test_check_drift_reports_a_repo_missing_the_cache_convention(
     (repo / "pyproject.toml").write_text(
         "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
     )
-    # Redistribute so hooks/.pre-commit-config.yaml catch up with the now-present pyproject.toml
-    # (extras resolution reads it) — isolates the cache gap as the ONLY remaining divergence.
     setup.distribute(repo, dry_run=False, identity=IDENTITY)
 
     total = setup.check_drift([repo])
@@ -124,12 +117,6 @@ def test_check_drift_reports_a_repo_missing_the_cache_convention(
     out = capsys.readouterr().out
     assert "missing/wrong cache-dir" in out
     assert total == 0, "a repo-owned pyproject.toml gap must never turn the gate red"
-
-
-# Direct unit coverage of the pure query (no distribute() dance needed — writing a pyproject.toml
-# on top of a distributed repo would itself shift resolve_extras()'s verdict, entangling these
-# "nothing to report" cases with unrelated .pre-commit-config.yaml drift; the one check_drift
-# integration test above already proves the wiring end to end).
 
 
 def test_cache_convention_issues_silent_when_convention_present(tmp_path):

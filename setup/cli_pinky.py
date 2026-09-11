@@ -196,10 +196,6 @@ def cmd_install(args: argparse.Namespace) -> None:
             argv.append("--yes")
         setup_main(argv)
 
-    # Preflight advisory (FR-0024-19) : après chaque chemin d'install — surtout `--plugin`, qui
-    # active un plugin dont personne n'a vérifié les nouveaux prérequis. On rapporte les manquants
-    # sans jamais faire échouer l'install : `run_doctor` est appelé directement, son code de
-    # retour est ignoré.
     from . import doctor
 
     print()
@@ -208,20 +204,10 @@ def cmd_install(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        # NO hardcoded `prog`: this module has two legitimate entry points — the installed console
-        # script (`pinky …`) and a direct run (`python cli_pinky.py …`, the form the root shim's own
-        # docstring documents). Any literal is wrong for one of them, and it propagates: every
-        # sub-command's usage line inherits it, so `pinky drift --help` used to answer
-        # `usage: cli_pinky.py drift` — naming a file the reader never types. argparse's default is
-        # basename(argv[0]), which is right for both by construction.
         description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
         epilog=_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # Not required: a bare `pinky` prints full help (below) instead of argparse's terse
-    # "arguments are required: command" — the standard a CLI-literate user expects (git, npm,
-    # docker all do this), and setup.py's own bare-invocation message already does the same for
-    # its non-human callers.
     sub = parser.add_subparsers(dest="command", required=False)
 
     p = sub.add_parser(

@@ -100,10 +100,6 @@ def discover_themes() -> list[Asset]:
     return themes
 
 
-# Always user scope, unlike a plugin (`plugin_scope.py`'s whole wizard exists because a plugin
-# CAN apply at workspace/group/repo depth) — outputStyle/theme are cross-session chat preferences,
-# the same axis statusLine already settled on (ADR-0001, `pinky-bootstrap`). No root/depth
-# parameter here: there is only one place these can meaningfully live.
 _USER_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 
 

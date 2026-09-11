@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 FIX = Path(__file__).resolve().parent
-REPO = FIX.parents[2]  # tests/fixtures/local_review_benchmark -> repo root
+REPO = FIX.parents[2]
 KNOW_PATH = REPO / "corpus-public" / "knowledge" / "AGENT_SNOWFLAKE_SNOWPARK.md"
 KEY_PATH = Path.home() / ".nvidia_api_key"
 API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"

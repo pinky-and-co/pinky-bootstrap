@@ -64,9 +64,6 @@ def test_scaffold_product_pyproject_has_nonempty_description(tmp_path):
 
 
 def test_scaffold_product_pyproject_seeds_the_cache_convention(tmp_path):
-    # Card `convention-cache-jamais-distribuee`: `.cache/` scatters across the parc because nothing
-    # seeds it at repo birth. A new repo must be born with it — retrofitting existing repos is a
-    # separate, --check-drift-signalled concern (setup/precommit.py::_cache_convention_issues).
     target = tmp_path / "pinky-foo"
     target.mkdir()
     setup.scaffold_product(target)

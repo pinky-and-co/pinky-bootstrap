@@ -22,15 +22,12 @@ from pathlib import Path
 
 import pytest
 
-# Voir `test_no_hard_yaml_dependency.py` : pyyaml est optionnel pour le moteur, et un `import yaml`
-# en tête de module tue la COLLECTE de toute la suite là où il manque, pas seulement ce module.
 yaml = pytest.importorskip("yaml")
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import setup  # noqa: E402
 from setup import precommit as precommit_mod  # noqa: E402
 
-# pre-commit config grammar, from the official docs (context7, 2026-07-23).
 TOP_LEVEL_KEYS = {
     "repos",
     "default_install_hook_types",

@@ -15,7 +15,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import cli_pinky, doctor, live_docs, state_file
 
-# `live-docs/` is not a package (hyphen); load the mkdocs build hooks by path.
 _spec = importlib.util.spec_from_file_location(
     "live_docs_hooks", Path(__file__).parent.parent / "live-docs" / "hooks.py"
 )
@@ -465,9 +464,6 @@ def test_bundled_source_carries_only_tooling():
         f"live-docs/ must ship tooling only — a board/log/site file here leaks once the repo is "
         f"public. Unexpected: {tracked - allowed}"
     )
-
-
-# ── hooks.py — status summary derived from the column folder ─────────────────────────────────
 
 
 def test_inject_status_summary_derives_state_from_column_folder(tmp_path):

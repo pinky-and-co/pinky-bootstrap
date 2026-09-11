@@ -63,10 +63,6 @@ def test_equality_oracle_in_same_file_exempts(tmp_path):
 
 
 def test_oracle_in_sibling_file_exempts_repo_wide(tmp_path):
-    # tests.md § generator oracle asks for "at least one test" with a whole-output oracle —
-    # repo-wide, not per file. A fragment in one test file is fine when the oracle lives in a
-    # sibling (e.g. build_precommit_config's fragments in test_web_precommit.py, its oracle in
-    # test_precommit_config_oracle.py). main() resolves oracles across the whole tests/ tree.
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
     frag = tests_dir / "test_frag.py"
@@ -108,7 +104,6 @@ def test_not_in_is_exempt(tmp_path):
 
 
 def test_non_generator_name_is_the_assumed_hole(tmp_path):
-    # dl_card matches no prefix/suffix → not a generator → unguarded, not blocked (decision 2026-07-24).
     src = 'def test_x():\n    assert "<td" in dl_card(row)\n'
     assert _check(src, tmp_path) == []
 
@@ -129,7 +124,6 @@ def test_private_name_variant_is_matched(tmp_path):
 
 
 def test_scripts_hooks_copies_are_excluded(tmp_path):
-    # Bug #1: the distributed copies at scripts/hooks/ carry generators too — never scan them.
     d = tmp_path / "scripts" / "hooks"
     d.mkdir(parents=True)
     f = d / "check_x.py"

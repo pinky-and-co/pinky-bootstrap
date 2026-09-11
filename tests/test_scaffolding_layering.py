@@ -29,13 +29,6 @@ def test_no_public_artefact_names_a_private_instance():
             )
 
 
-# Deux tests ont été retirés d'ici : ils exigeaient `core/rules/base/` et
-# `core/rules/domain-snowflake/` non vides. Ces répertoires n'ont jamais été portés dans ce repo,
-# et le découpage qui les remplace est `rules/pc-core/` + `rules/<plugin>/` — ils n'avaient donc plus
-# d'objet, tout en bloquant chaque commit du repo via les hooks. La distribution des rules est
-# désormais couverte par `test_rules_distribution.py`.
-
-
 def test_every_domain_rule_is_path_scoped(tmp_path):
     """Une règle de domaine DOIT porter `paths:` — sinon elle coûte du contexte à chaque session.
 
