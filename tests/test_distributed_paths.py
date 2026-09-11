@@ -125,6 +125,33 @@ def test_distribution_commit_runs_hooks_without_pinky_s_own_venv(monkeypatch):
     assert env["PATH"] == other
 
 
+def test_commit_distribution_stages_shared_files_only_if_clean_before_the_run(
+    tmp_path,
+):
+    repo = tmp_path / "pinky-thing"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.test")
+    _git(repo, "config", "user.name", "test")
+    (repo / "README.md").write_text("old tree\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "🎉 feat: initial commit", "--no-verify")
+    (repo / "pyproject.toml").write_text("[project]\n# edit\n", encoding="utf-8")
+
+    dirty_before = setup.precommit.dirty_paths(repo)
+    (repo / "README.md").write_text("new tree\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text(
+        "[project]\n# edit\n[tool.uv]\n", encoding="utf-8"
+    )
+
+    assert setup.commit_distribution(repo, dirty_before=dirty_before) == "committed"
+    assert _git(repo, "show", "--name-only", "--format=", "HEAD").split() == [
+        "README.md"
+    ]
+    assert _git(repo, "status", "--porcelain") == " M pyproject.toml\n"
+
+
 def test_secrets_baseline_is_not_a_distributed_path():
     """A distribution never writes this file after seeding it, so staging it could only ever carry
     a repo-side change into a distribution commit.

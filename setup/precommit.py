@@ -906,6 +906,27 @@ DISTRIBUTED_PATHS = (
     ".github/workflows/prek.yml",
 )
 
+SHARED_DISTRIBUTED_PATHS = (
+    "README.md",
+    "docs/index.md",
+    "pyproject.toml",
+    ".python-version",
+    ".claude/settings.pinky.json",
+)
+
+
+def dirty_paths(repo: Path) -> list[str]:
+    """Paths git reports as modified, staged or untracked in ``repo`` right now."""
+    listed = subprocess.run(
+        ["git", "status", "--porcelain", "-z", "--untracked-files=all"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    return [entry[3:] for entry in listed.split("\0") if len(entry) > 3]
+
+
 COMMIT_MESSAGE = "🔧 chore: adopt pinky-bootstrap centralized hooks distribution"
 
 
@@ -942,16 +963,27 @@ def _hook_env() -> dict[str, str]:
     return env
 
 
-def commit_distribution(repo: Path) -> str:
-    """Stage only the distributed files and commit them. Returns a status string.
+def commit_distribution(repo: Path, dirty_before: list[str] | None = None) -> str:
+    """Stage every file the distribution wrote and commit them. Returns a status string.
+
+    ``dirty_before`` lists the paths already modified before the run: a shared file the run
+    rewrote (README, pyproject…) is staged only if it was clean then, so an edit in progress is
+    never swept into a distribution commit.
 
     Hooks run normally (no --no-verify). A repo with a pre-existing hook wall that
     blocks the commit is reported; its changes stay staged for manual resolution.
     """
     # Only stage paths that exist — `git add` aborts entirely (staging nothing) if any
     # pathspec matches no file.
+    shared = [
+        p
+        for p in SHARED_DISTRIBUTED_PATHS
+        if dirty_before is not None and p not in dirty_before
+    ]
     paths = [
-        p for p in (*DISTRIBUTED_PATHS, *_vendored_paths(repo)) if (repo / p).exists()
+        p
+        for p in (*DISTRIBUTED_PATHS, *_vendored_paths(repo), *shared)
+        if (repo / p).exists()
     ]
     if not paths:
         return "no distributed files"
@@ -1270,13 +1302,15 @@ def run_distribution(args) -> None:
     _MISSING_TOOLS.clear()
     statuses: list[tuple[str, str]] = []
     for repo in repos:
+        committing = args.commit and not args.dry_run
+        dirty_before = dirty_paths(repo) if committing else []
         distribute(
             repo,
             dry_run=args.dry_run,
             identity=_group_docs_identity(repo, WORKSPACE_ROOT),
         )
-        if args.commit and not args.dry_run:
-            status = commit_distribution(repo)
+        if committing:
+            status = commit_distribution(repo, dirty_before=dirty_before)
             statuses.append((repo.name, status))
             print(f"  commit  {status}")
 
