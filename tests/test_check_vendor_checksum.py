@@ -3,6 +3,7 @@
 
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -46,6 +47,17 @@ class TestCheckVendorChecksum(unittest.TestCase):
         self._write_vendored("plugins/pc-core/hooks/policy_lib.py", b"original")
         (self.root / cvc.MANIFEST_NAME).write_text(
             json.dumps({"plugins/pc-core/hooks/policy_lib.py": "not-the-real-hash"})
+        )
+        self.assertEqual(cvc.main(), 1)
+
+    def test_git_ignored_manifest_fails_even_when_every_copy_matches(self):
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        (self.root / ".gitignore").write_text(cvc.MANIFEST_NAME + "\n")
+        digest = self._write_vendored(
+            "plugins/pc-core/hooks/policy_lib.py", b"same content"
+        )
+        (self.root / cvc.MANIFEST_NAME).write_text(
+            json.dumps({"plugins/pc-core/hooks/policy_lib.py": digest})
         )
         self.assertEqual(cvc.main(), 1)
 

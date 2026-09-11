@@ -91,6 +91,28 @@ def test_commit_distribution_stages_a_changed_darglint(tmp_path, monkeypatch):
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_commit_distribution_stages_the_vendor_manifest_and_its_copies(tmp_path):
+    repo = tmp_path / "pinky-agentic-plugins"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "test@example.test")
+    _git(repo, "config", "user.name", "test")
+    copy = repo / "plugins" / "pc-core" / "hooks" / "policy_lib.py"
+    copy.parent.mkdir(parents=True)
+    copy.write_text("x = 1\n", encoding="utf-8")
+    (repo / setup.precommit.VENDOR_MANIFEST_NAME).write_text(
+        '{"plugins/pc-core/hooks/policy_lib.py": "abc"}\n', encoding="utf-8"
+    )
+    (repo / "unrelated.py").write_text("y = 2\n", encoding="utf-8")
+
+    assert setup.commit_distribution(repo) == "committed"
+    assert _git(repo, "show", "--name-only", "--format=", "HEAD").split() == [
+        ".vendor-manifest.json",
+        "plugins/pc-core/hooks/policy_lib.py",
+    ]
+    assert _git(repo, "status", "--porcelain") == "?? unrelated.py\n"
+
+
 def test_secrets_baseline_is_not_a_distributed_path():
     """A distribution never writes this file after seeding it, so staging it could only ever carry
     a repo-side change into a distribution commit.
