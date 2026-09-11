@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """[JS-STRUCT] Warn when app.js is large but no engine/core sibling holds the logic (warn-only).
 
-The convention (AGENT_JS_CONVENTIONS.md § JS file responsibilities): app.js orchestrates UI
-binding, engine.js / core.js holds pure business logic, state.js holds the store. A big app.js
-with no engine.js / core.js next to it is the signal that logic was never extracted.
-Warn-only (exit 0) — never blocks.
+The convention: app.js orchestrates UI binding, engine.js / core.js holds pure business logic,
+state.js holds the store. A big app.js with no engine.js / core.js next to it is the signal that
+logic was never extracted. Warn-only (exit 0) — never blocks.
 """
 
 import os
 import sys
 from pathlib import Path
 
-# Windows' default console codepage (cp1252, not UTF-8) can't encode this hook's ✓/⚠ output and
-# crashes with UnicodeEncodeError (found by the windows-latest CI job, CHANTIER0001
-# portage-windows-du-moteur). Same fix as setup/__init__.py, applied here because this script runs
-# standalone (invoked directly by pre-commit) and never imports that package.
+# Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -55,7 +51,7 @@ def main() -> int:
         print(
             "   💡 Extract business logic into engine.js — see AGENT_JS_CONVENTIONS.md"
         )
-    return 0  # warn-only
+    return 0
 
 
 if __name__ == "__main__":

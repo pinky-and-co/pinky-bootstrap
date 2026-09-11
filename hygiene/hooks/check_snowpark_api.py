@@ -15,8 +15,8 @@ Three checks run on every Python file under src/:
    that cannot use ? binding, use the dedicated suppression comment.
 
 3. Banned method aliases — Flag camelCase and non-canonical Snowpark names.
-   Snowflake deprecated camelCase aliases in v0.6.0 (2022) in favour of
-   snake_case. A few snake_case pairs also have a pinky-preferred canonical.
+   Snowpark's camelCase aliases are deprecated in favour of snake_case.
+   A few snake_case pairs also have a pinky-preferred canonical.
 
    Canonical choices that diverge from Snowflake's own "recommendation":
      sort / order_by  → sort    (Python-idiomatic for DataFrames)
@@ -61,10 +61,7 @@ import os
 import sys
 from pathlib import Path
 
-# Windows' default console codepage (cp1252, not UTF-8) can't encode this hook's ✓/⚠ output and
-# crashes with UnicodeEncodeError (found by the windows-latest CI job, CHANTIER0001
-# portage-windows-du-moteur). Same fix as setup/__init__.py, applied here because this script runs
-# standalone (invoked directly by pre-commit) and never imports that package.
+# Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -83,13 +80,9 @@ ALLOW_SQL_RECEIVERS: set[str] = {
     "metadata",
 }
 
-# key   = banned method name
-# value = canonical replacement
-#         • a plain identifier  → displayed as .canonical()
-#         • contains a space    → displayed verbatim (e.g. operator forms)
 BANNED_METHODS: dict[str, str] = {
     # ── Column ───────────────────────────────────────────────────────────────
-    "as_": "alias",  # trailing underscore form
+    "as_": "alias",
     "astype": "cast",  # SQL-native term
     "bitwiseAnd": "bitand",
     "bitwiseOR": "bitor",
@@ -105,14 +98,13 @@ BANNED_METHODS: dict[str, str] = {
     "createTempView": "create_temp_view",
     "crossJoin": "cross_join",
     "dropDuplicates": "drop_duplicates",
-    "except_": "minus",  # pinky canonical (no trailing _)
+    "except_": "minus",
     "groupBy": "group_by",
-    "orderBy": "sort",  # camelCase → pinky canonical
+    "orderBy": "sort",
     "printSchema": "print_schema",
     "randomSplit": "random_split",
     "sampleBy": "sample_by",
     "selectExpr": "select_expr",
-    # sort is canonical — order_by NOT banned (Window.order_by has no sort alias)
     "subtract": "minus",
     "toDF": "to_df",
     "toLocalIterator": "to_local_iterator",
@@ -145,6 +137,7 @@ def _receiver_root(node: ast.expr) -> str:
 
 
 def _canonical_msg(attr: str, canonical: str) -> str:
+    """Suggestion line: ".astype() — use .cast() instead"; a canonical containing a space (an operator form) is shown verbatim."""
     if " " in canonical:
         return f".{attr}() — use the {canonical} instead"
     return f".{attr}() — use .{canonical}() instead"
@@ -186,11 +179,9 @@ class _Visitor(ast.NodeVisitor):
                 root = _receiver_root(node.func.value)
                 if root not in ALLOW_SQL_RECEIVERS:
                     receiver = _receiver_repr(node.func.value)
-                    # Check if first arg uses string interpolation (SQL injection risk)
                     first_arg = node.args[0] if node.args else None
                     if first_arg and _is_dynamic_string(first_arg):
                         if _has_params_kwarg(node):
-                            # Has params= but also interpolation — still suspicious
                             self.violations.append(
                                 (
                                     node.lineno,
@@ -240,17 +231,14 @@ def check_file(path: Path) -> list[tuple[int, str]]:
 
     def _suppressed(lineno: int, code: str = "") -> bool:
         line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
-        # SQL injection checks require their own specific suppression
         if code == "SQL-INLINE":
             return "# pinky: SNOWPARK-SQL-INLINE" in line
-        # Generic suppression — covers non-injection checks only
         return "# pinky: SNOWPARK-API" in line
 
     visitor = _Visitor()
     visitor.visit(tree)
     results: list[tuple[int, str]] = []
     for ln, msg in visitor.violations:
-        # Determine which pinky suppression code applies
         code = "SQL-INLINE" if "SQL injection" in msg else ""
         if not _suppressed(ln, code):
             results.append((ln, msg))
