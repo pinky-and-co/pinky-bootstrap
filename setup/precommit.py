@@ -574,16 +574,43 @@ def _group_docs_identity(repo: Path, workspace_root: Path) -> SuiteIdentity:
     return SuiteIdentity.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+def engine_commit() -> str | None:
+    """The pinky-bootstrap commit being distributed, suffixed ``-dirty`` when its tree has changes.
+
+    Returns:
+        The full commit sha, or None outside a git checkout (an installed wheel).
+    """
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(SCRIPT_DIR),
+            "describe",
+            "--always",
+            "--dirty",
+            "--abbrev=40",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return (result.stdout.strip() or None) if result.returncode == 0 else None
+
+
 def render_docs_identity(identity: SuiteIdentity) -> str:
     """The ``scripts/hooks/docs_identity.json`` text distributed into one repo.
 
     Wraps ``SuiteIdentity.to_json()`` rather than extending it: ``to_json`` lives in
     ``hygiene/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay
     free of routing concerns. ``engine_version`` is written HERE, by the distributor, and read back
-    by ``check_drift``. ``from_dict`` reads ``_FIELDS`` only, so the extra key is invisible to the
-    commit-time hook that consumes this same file.
+    by ``check_drift``. ``from_dict`` reads ``_FIELDS`` only, so the extra keys are invisible to the
+    commit-time hook that consumes this same file. ``engine_commit`` pins the exact source commit
+    distributed — ``engine_version`` alone does not move between releases.
     """
     payload: dict = {"engine_version": engine_version()}
+    commit = engine_commit()
+    if commit:
+        payload["engine_commit"] = commit
     payload.update(json.loads(identity.to_json()))
     return json.dumps(payload, indent=2) + "\n"
 
@@ -871,6 +898,14 @@ DISTRIBUTED_PATHS = (
 COMMIT_MESSAGE = "🔧 chore: adopt pinky-bootstrap centralized hooks distribution"
 
 
+def _vendored_paths(repo: Path) -> list[str]:
+    """The vendor manifest and every copy it lists — distributed files, committed with the rest."""
+    manifest = repo / VENDOR_MANIFEST_NAME
+    if not manifest.exists():
+        return []
+    return [VENDOR_MANIFEST_NAME, *json.loads(manifest.read_text(encoding="utf-8"))]
+
+
 def commit_distribution(repo: Path) -> str:
     """Stage only the distributed files and commit them. Returns a status string.
 
@@ -879,7 +914,9 @@ def commit_distribution(repo: Path) -> str:
     """
     # Only stage paths that exist — `git add` aborts entirely (staging nothing) if any
     # pathspec matches no file.
-    paths = [p for p in DISTRIBUTED_PATHS if (repo / p).exists()]
+    paths = [
+        p for p in (*DISTRIBUTED_PATHS, *_vendored_paths(repo)) if (repo / p).exists()
+    ]
     if not paths:
         return "no distributed files"
     subprocess.run(
