@@ -17,6 +17,7 @@ Usage:
     python cli_pinky.py install
     python cli_pinky.py rules
     python cli_pinky.py drift
+    python cli_pinky.py llm-drift scan --all
 """
 
 import argparse
@@ -152,6 +153,21 @@ def cmd_rules(args: argparse.Namespace) -> None:
 
 def cmd_drift(args: argparse.Namespace) -> None:
     setup_main(["--check-drift"])
+
+
+def cmd_llm_drift(args: argparse.Namespace) -> None:
+    argv = ["--llm-drift", args.action]
+    if args.repo:
+        argv += ["--repo", args.repo]
+    elif args.all:
+        argv.append("--all")
+    for kind in args.kind or []:
+        argv += ["--kind", kind]
+    if args.dry_run:
+        argv.append("--dry-run")
+    if args.json:
+        argv.append("--json")
+    setup_main(argv)
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -292,6 +308,34 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("drift", help="🧭 report repo vs source drift")
     p.set_defaults(func=cmd_drift)
+
+    p = sub.add_parser(
+        "llm-drift",
+        help="🧹 scan / fix what agents leave in code that every read pays for "
+        "(comments, narrative, long comment blocks)",
+    )
+    p.add_argument("action", choices=["scan", "fix"])
+    p.add_argument("--repo", default=None)
+    p.add_argument("--all", action="store_true")
+    p.add_argument(
+        "--kind",
+        action="append",
+        default=None,
+        metavar="KIND",
+        help="drift kind, repeatable — scan default: narrative, long-comment · "
+        "fix default: comments",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with fix: report the savings, write nothing",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="with scan: JSON snapshot instead of the report",
+    )
+    p.set_defaults(func=cmd_llm_drift)
 
     p = sub.add_parser(
         "docs",

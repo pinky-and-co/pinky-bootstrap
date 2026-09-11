@@ -117,6 +117,18 @@ def test_distribute_dispatch_agents_md_standalone(monkeypatch):
     assert calls == [["--repo", "pinky-core", "--agents-md", "--standalone"]]
 
 
+def test_llm_drift_dispatch_scan(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["llm-drift", "scan", "--all", "--kind", "narrative", "--json"])
+    assert calls == [["--llm-drift", "scan", "--all", "--kind", "narrative", "--json"]]
+
+
+def test_llm_drift_dispatch_fix(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["llm-drift", "fix", "--repo", "pinky-core", "--dry-run"])
+    assert calls == [["--llm-drift", "fix", "--repo", "pinky-core", "--dry-run"]]
+
+
 def test_install_dispatch_default(monkeypatch):
 
     calls = _captured_argv(monkeypatch)
