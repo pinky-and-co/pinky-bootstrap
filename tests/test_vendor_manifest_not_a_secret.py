@@ -1,4 +1,4 @@
-"""The vendor manifest holds sha256 hashes: neither secret scanner may block its commit."""
+"""Generated files holding hashes — the vendor manifest, docs_identity's engine_commit — pass the secret scanners."""
 
 import re
 import sys
@@ -18,9 +18,10 @@ def test_gitleaks_allowlist_covers_the_manifest():
     assert any(re.search(p, MANIFEST) for p in config["allowlist"]["paths"])
 
 
-def test_detect_secrets_excludes_the_manifest():
+def test_detect_secrets_excludes_the_generated_hash_files():
     base = (CORE_PRECOMMIT_DIR / "base.yaml").read_text(encoding="utf-8")
     block = base[base.index("id: detect-secrets") :]
     exclude = re.search(r"^\s*exclude: (.+)$", block, flags=re.MULTILINE)
     assert exclude is not None
-    assert re.search(exclude.group(1), MANIFEST)
+    for generated in (MANIFEST, "scripts/hooks/docs_identity.json"):
+        assert re.search(exclude.group(1), generated), generated

@@ -16,6 +16,7 @@ reaction to the repo's OWN code (`pinky-provider` 3b3547a filled its `results` w
 only sweep a repo-side change into a distribution commit.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -111,6 +112,17 @@ def test_commit_distribution_stages_the_vendor_manifest_and_its_copies(tmp_path)
         "plugins/pc-core/hooks/policy_lib.py",
     ]
     assert _git(repo, "status", "--porcelain") == "?? unrelated.py\n"
+
+
+def test_distribution_commit_runs_hooks_without_pinky_s_own_venv(monkeypatch):
+    venv = Path("/pinky/.venv")
+    bin_dir = venv / ("Scripts" if sys.platform == "win32" else "bin")
+    other = str(Path("/usr/bin"))
+    monkeypatch.setenv("VIRTUAL_ENV", str(venv))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(bin_dir), other]))
+    env = setup.precommit._hook_env()
+    assert "VIRTUAL_ENV" not in env
+    assert env["PATH"] == other
 
 
 def test_secrets_baseline_is_not_a_distributed_path():

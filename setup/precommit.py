@@ -10,6 +10,7 @@
 import filecmp
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -906,6 +907,31 @@ def _vendored_paths(repo: Path) -> list[str]:
     return [VENDOR_MANIFEST_NAME, *json.loads(manifest.read_text(encoding="utf-8"))]
 
 
+def _same_path(a: str, b: str) -> bool:
+    """Two PATH entries naming the same directory — case- and separator-insensitive on Windows."""
+    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(
+        os.path.normpath(b)
+    )
+
+
+def _hook_env() -> dict[str, str]:
+    """This process's environment minus the virtualenv ``uv run`` activated for pinky itself.
+
+    A distribution commit runs the target repo's hooks: inheriting pinky-bootstrap's venv on PATH
+    hands ``run-tests`` an interpreter with pytest but none of the target's own dependencies.
+    """
+    env = dict(os.environ)
+    venv = env.pop("VIRTUAL_ENV", None)
+    if venv:
+        bin_dir = str(Path(venv) / ("Scripts" if sys.platform == "win32" else "bin"))
+        env["PATH"] = os.pathsep.join(
+            entry
+            for entry in env.get("PATH", "").split(os.pathsep)
+            if not _same_path(entry, bin_dir)
+        )
+    return env
+
+
 def commit_distribution(repo: Path) -> str:
     """Stage only the distributed files and commit them. Returns a status string.
 
@@ -934,6 +960,7 @@ def commit_distribution(repo: Path) -> str:
     result = subprocess.run(
         ["git", "commit", "-m", COMMIT_MESSAGE],
         cwd=repo,
+        env=_hook_env(),
         capture_output=True,
         text=True,
         encoding="utf-8",
