@@ -19,7 +19,7 @@ version = "0.1.0.dev1"
 description = "Instantiable framework for provisioning a Claude Code coding-agent workspace"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [{ name = "pinky-and-co" }]
+authors = [{ name = "Pinky & Co" }]
 # No `license = {file = "LICENSE"}` yet — no LICENSE file exists. Tracked, non-blocking, by card
 # `choisir-license-pinky-workspace` (Apache-2.0 recommended, ADR-0065 decision 8).
 # No third-party runtime dependency: every mode (--repo/--all/--check-drift, --agents-md) is
@@ -95,6 +95,13 @@ include = [
     "NOTICE",
     "CREDITS",
 ]
+
+
+# ── Ruff ─────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length    = 88
+target-version = "py312"
+cache-dir      = ".cache/ruff"
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
