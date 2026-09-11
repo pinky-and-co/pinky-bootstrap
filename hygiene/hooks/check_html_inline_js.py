@@ -11,15 +11,11 @@ import re
 import sys
 from pathlib import Path
 
-# Windows' default console codepage (cp1252, not UTF-8) can't encode this hook's ✓/⚠ output and
-# crashes with UnicodeEncodeError (found by the windows-latest CI job, CHANTIER0001
-# portage-windows-du-moteur). Same fix as setup/__init__.py, applied here because this script runs
-# standalone (invoked directly by pre-commit) and never imports that package.
+# Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# <script ...> ... </script> with a captured body; case-insensitive, across newlines.
 SCRIPT_RE = re.compile(r"<script\b([^>]*)>(.*?)</script>", re.IGNORECASE | re.DOTALL)
 SRC_RE = re.compile(r"\bsrc\s*=", re.IGNORECASE)
 DATA_TYPE_RE = re.compile(
@@ -36,7 +32,7 @@ def _inline_script_count(filepath: str) -> int:
     count = 0
     for attrs, body in SCRIPT_RE.findall(text):
         if SRC_RE.search(attrs) or DATA_TYPE_RE.search(attrs):
-            continue  # external script or structured-data block — not inline JS
+            continue
         if body.strip():
             count += 1
     return count
@@ -57,7 +53,7 @@ def main() -> int:
         if n:
             print(f"⚠️  [HTML-JS] {filepath}: {n} inline <script> block(s) with a body")
             print("   💡 Move JS to a .js file — see AGENT_JS_CONVENTIONS.md")
-    return 0  # warn-only
+    return 0
 
 
 if __name__ == "__main__":
