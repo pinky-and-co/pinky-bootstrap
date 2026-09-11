@@ -113,6 +113,14 @@ def test_commit_distribution_stages_the_vendor_manifest_and_its_copies(tmp_path)
     assert _git(repo, "status", "--porcelain") == "?? unrelated.py\n"
 
 
+def test_distribution_commit_runs_hooks_without_pinky_s_own_venv(monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "/pinky/.venv")
+    monkeypatch.setenv("PATH", f"/pinky/.venv/bin{setup.precommit.os.pathsep}/usr/bin")
+    env = setup.precommit._hook_env()
+    assert "VIRTUAL_ENV" not in env
+    assert env["PATH"] == "/usr/bin"
+
+
 def test_secrets_baseline_is_not_a_distributed_path():
     """A distribution never writes this file after seeding it, so staging it could only ever carry
     a repo-side change into a distribution commit.
