@@ -20,7 +20,10 @@ Usage:
 
 import sys
 
-from setup.cli_pinky import main, setup_main  # noqa: F401 — re-exported for direct-run + tests
+from setup.cli_pinky import (  # noqa: F401 — re-exported for direct-run + tests
+    main,
+    setup_main,
+)
 
 if __name__ == "__main__":
     sys.exit(main() or 0)

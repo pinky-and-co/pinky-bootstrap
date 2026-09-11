@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
-from tests.test_engine_version import IDENTITY  # noqa: E402
+import setup
+from tests.test_engine_version import IDENTITY
 
 
 def test_has_generated_index_false_without_mkdocs_yml(tmp_path):

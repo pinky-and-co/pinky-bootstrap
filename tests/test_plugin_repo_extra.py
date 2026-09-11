@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
+import setup
 
 QUALITY_HOOK_IDS = ("mypy", "bandit", "interrogate", "darglint", "check-typed-api")
 

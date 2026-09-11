@@ -171,7 +171,7 @@ def convert_topic(topic_dir: Path, dry_run: bool) -> TopicReport:
                 raw = html_path.read_text(encoding="utf-8", errors="ignore")
                 report.bytes_in += len(raw.encode("utf-8"))
                 md = convert_html(raw)
-            except Exception as exc:  # noqa: BLE001 - report, don't crash the batch
+            except Exception as exc:
                 report.errors.append((str(rel), repr(exc)))
                 continue
             if md is None:

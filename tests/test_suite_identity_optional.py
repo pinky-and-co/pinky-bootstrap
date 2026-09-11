@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "hygiene" / "hooks"))
-from render_docs import (  # noqa: E402
+from render_docs import (
     SuiteIdentity,
     render_readme_badges,
     render_readme_why,

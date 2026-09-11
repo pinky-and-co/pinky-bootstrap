@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
+import setup
 
 HOOKS = setup.CORE_HOOKS_DIR
 

@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup.precommit as precommit  # noqa: E402
+import setup.precommit as precommit
 from setup import state_file
 from setup.agents_md import (
     behavior_section,

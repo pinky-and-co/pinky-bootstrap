@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
+import setup
 
 HOOK = setup.CORE_HOOKS_DIR / "check_weak_assertions.py"
 

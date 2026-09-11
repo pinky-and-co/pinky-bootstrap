@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
+import setup
 
 
 def test_no_public_artefact_names_a_private_instance():

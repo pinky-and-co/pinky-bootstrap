@@ -11,9 +11,9 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup  # noqa: E402
-from setup.common import SuiteIdentity  # noqa: E402
-from setup.precommit import inject_readme_sections_local  # noqa: E402
+import setup
+from setup.common import SuiteIdentity
+from setup.precommit import inject_readme_sections_local
 
 
 # ── scaffold_product — pure unit, tmp_path only ────────────────────────────────

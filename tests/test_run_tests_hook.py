@@ -289,7 +289,7 @@ def test_darglint_config_written_when_absent(tmp_path):
     pour cinq d'entre eux, qui sont donc passés de `short` à `full` en silence. CI de
     pluto-poc-pilot cassée, quatre autres repos en panne latente.
     """
-    import setup  # noqa: PLC0415
+    import setup
 
     (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
     setup._write_darglint_config(tmp_path, ["python"])
@@ -307,7 +307,7 @@ def test_darglint_config_converges_a_diverging_repo(tmp_path):
     accidentelle, pas une position. Ce test remplace `..._never_overwrites_a_repo_decision`, qui
     protégeait une décision fantôme.
     """
-    import setup  # noqa: PLC0415
+    import setup
 
     (tmp_path / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
     (tmp_path / ".darglint").write_text(
@@ -319,7 +319,7 @@ def test_darglint_config_converges_a_diverging_repo(tmp_path):
 
 def test_darglint_config_skipped_without_the_python_extra(tmp_path):
     """Pas d'extra python → pas de hook darglint → pas de fichier à poser."""
-    import setup  # noqa: PLC0415
+    import setup
 
     setup._write_darglint_config(tmp_path, ["python-lint"])
     assert not (tmp_path / ".darglint").exists()

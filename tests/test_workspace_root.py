@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import common  # noqa: E402
+from setup import common
 
 
 def _no_env(monkeypatch):
