@@ -17,6 +17,8 @@ Usage:
     python cli_pinky.py install
     python cli_pinky.py rules
     python cli_pinky.py drift
+    python cli_pinky.py llm-drift scan --all
+    python cli_pinky.py directives E402
 """
 
 import argparse
@@ -26,6 +28,7 @@ import sys
 from . import agentic_assets
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
+from .llm_drift import DRIFT_KINDS, SCAN_KINDS_DEFAULT
 from .product_scaffold import REPO_TYPES
 
 SCRIPTS_DIR = SCRIPT_DIR / "tools"
@@ -154,6 +157,25 @@ def cmd_drift(args: argparse.Namespace) -> None:
     setup_main(["--check-drift"])
 
 
+def cmd_llm_drift(args: argparse.Namespace) -> None:
+    argv = ["--llm-drift", args.action]
+    if args.repo:
+        argv += ["--repo", args.repo]
+    elif args.all:
+        argv.append("--all")
+    for kind in args.kind or []:
+        argv += ["--kind", kind]
+    if args.dry_run:
+        argv.append("--dry-run")
+    if args.json:
+        argv.append("--json")
+    setup_main(argv)
+
+
+def cmd_directives(args: argparse.Namespace) -> None:
+    setup_main(["--directives", *([args.code] if args.code else [])])
+
+
 def cmd_doctor(args: argparse.Namespace) -> None:
     setup_main(["--doctor", *(["--fix"] if args.fix else [])])
 
@@ -202,6 +224,45 @@ def cmd_install(args: argparse.Namespace) -> None:
     doctor.run_doctor(fix=False)
 
 
+def _examples(lines: list[str]) -> str:
+    """The `💡 examples:` block of a sub-command's help, each `command  # effect` aligned."""
+    pairs = [line.split("  # ", 1) for line in lines]
+    width = max(len(pair[0]) for pair in pairs)
+    body = "\n".join(
+        f"  {pair[0]:<{width}}  # {pair[1]}" if len(pair) == 2 else f"  {pair[0]}"
+        for pair in pairs
+    )
+    return f"💡 examples:\n{body}"
+
+
+def _add(
+    sub: "argparse._SubParsersAction[argparse.ArgumentParser]",
+    name: str,
+    summary: str,
+    examples: list[str],
+    extra: str = "",
+) -> argparse.ArgumentParser:
+    """A sub-command whose one-line summary is also its --help description, examples below."""
+    return sub.add_parser(
+        name,
+        help=summary,
+        description=summary,
+        epilog="\n\n".join(part for part in (extra, _examples(examples)) if part),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+
+def _drift_kinds_epilog() -> str:
+    """One line per registered drift kind, with what it finds and which action defaults to it."""
+    lines = [
+        f"  {kind.name:<14} {kind.summary}"
+        + (" · fixable, fix default" if kind.fix else "")
+        + (" · scan default" if kind.name in SCAN_KINDS_DEFAULT else "")
+        for kind in DRIFT_KINDS
+    ]
+    return "🧹 drift kinds:\n" + "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
@@ -210,18 +271,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=False)
 
-    p = sub.add_parser(
-        "new-repo", help="🌱 create a new (pinky-*/pluto-*) repo, already governed"
+    p = _add(
+        sub,
+        "new-repo",
+        "🌱 create a new (pinky-*/pluto-*) repo, already governed",
+        [
+            "pinky new-repo pinky-foo  # git init + the hooks, nothing else",
+            "pinky new-repo pluto-poc-x --type web  # plus the docs skeleton and stubs",
+        ],
     )
-    p.add_argument("name")
-    p.add_argument("--scaffold", action="store_true")
-    p.add_argument("--type", choices=REPO_TYPES, default=None)
+    p.add_argument("name", help="the repo to create — pinky-* or pluto-*")
+    p.add_argument(
+        "--scaffold",
+        action="store_true",
+        help="also write the docs/ skeleton and the stub files (README, pyproject, LICENSE…)",
+    )
+    p.add_argument(
+        "--type",
+        choices=REPO_TYPES,
+        default=None,
+        help="the manifest --scaffold writes (default: lib) — implies --scaffold",
+    )
     p.set_defaults(func=cmd_new_repo)
 
-    p = sub.add_parser("distribute", help="📦 distribute hooks to one repo or --all")
-    p.add_argument("--repo", default=None)
-    p.add_argument("--all", action="store_true")
-    p.add_argument("--commit", action="store_true")
+    p = _add(
+        sub,
+        "distribute",
+        "📦 distribute the hygiene hooks (pre-commit, CI) to one repo or --all",
+        [
+            "pinky distribute --repo pinky-core --dry-run  # preview one repo",
+            "pinky distribute --all --commit  # every repo, one commit each",
+        ],
+    )
+    target = p.add_mutually_exclusive_group()
+    target.add_argument(
+        "--repo", default=None, metavar="NAME", help="one repo of the workspace"
+    )
+    target.add_argument(
+        "--all", action="store_true", help="every repo of the workspace"
+    )
+    p.add_argument(
+        "--commit",
+        action="store_true",
+        help="commit the distributed files in each repo",
+    )
     p.add_argument(
         "--agents-md",
         action="store_true",
@@ -232,16 +325,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="with --agents-md --repo NAME: one-time extraction gesture (see setup.py --help)",
     )
-    p.add_argument("--dry-run", action="store_true")
+    p.add_argument(
+        "--dry-run", action="store_true", help="print what would change, write nothing"
+    )
     p.set_defaults(func=cmd_distribute)
 
-    p = sub.add_parser(
+    p = _add(
+        sub,
         "install",
-        help="🚀 replayable installer — converges this machine's setup",
-        epilog=_assets_epilog(),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        "🚀 replayable installer — converges this machine's setup",
+        [
+            "pinky install  # the workspace rules, then the doctor",
+            "pinky install --plugin pc-kanban  # enable a plugin through the scope wizard",
+            "pinky install --theme lisible  # one named theme",
+        ],
+        extra=_assets_epilog(),
     )
-    p.add_argument("--yes", "-y", action="store_true")
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply without asking (required in a non-interactive shell)",
+    )
     p.add_argument(
         "--plugin",
         default=None,
@@ -279,24 +384,116 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_install)
 
-    p = sub.add_parser(
+    p = _add(
+        sub,
         "rules",
-        help=(
-            "📐 distribute each plugin's rules to the same scope its plugin is installed at"
-        ),
+        "📐 distribute each plugin's rules to the same scope its plugin is installed at",
+        [
+            "pinky rules --dry-run  # show the plan, write nothing",
+            "pinky rules --yes  # apply the plan without asking",
+        ],
     )
-    p.add_argument("workspace", nargs="?", default=None)
-    p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--yes", "-y", action="store_true")
+    p.add_argument(
+        "workspace",
+        nargs="?",
+        default=None,
+        help="the workspace root to resolve install scopes from (default: the detected one)",
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="print the plan and stop, never ask"
+    )
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply the plan without asking (required in a non-interactive shell)",
+    )
     p.set_defaults(func=cmd_rules)
 
-    p = sub.add_parser("drift", help="🧭 report repo vs source drift")
+    p = _add(
+        sub,
+        "drift",
+        "🧭 report where each repo differs from the hooks pinky-bootstrap distributes",
+        ["pinky drift  # every repo, writes nothing"],
+    )
     p.set_defaults(func=cmd_drift)
 
-    p = sub.add_parser(
+    p = _add(
+        sub,
+        "llm-drift",
+        "🧹 find what agents leave in Python code that every read pays for, and clean it",
+        [
+            "pinky llm-drift  # scan the repo you are in",
+            "pinky llm-drift --repo pinky-provider  # scan one repo",
+            "pinky llm-drift fix --repo pinky-provider --dry-run  # what a cleanup would save",
+            "pinky llm-drift fix --all  # clean every repo (never commits)",
+        ],
+        extra=_drift_kinds_epilog(),
+    )
+    p.add_argument(
+        "action",
+        nargs="?",
+        default="scan",
+        choices=["scan", "fix"],
+        help="scan (default): report, write nothing · fix: rewrite the files",
+    )
+    target = p.add_mutually_exclusive_group()
+    target.add_argument(
+        "--repo",
+        default=None,
+        metavar="NAME",
+        help="one repo of the workspace (default: the repo you are in)",
+    )
+    target.add_argument(
+        "--all", action="store_true", help="every repo of the workspace"
+    )
+    p.add_argument(
+        "--kind",
+        action="append",
+        default=None,
+        choices=[kind.name for kind in DRIFT_KINDS],
+        metavar="KIND",
+        help="repeatable, one of the drift kinds below",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with fix: print the savings, write nothing",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="with scan: JSON snapshot instead of the report",
+    )
+    p.set_defaults(func=cmd_llm_drift)
+
+    p = _add(
+        sub,
+        "directives",
+        "📌 the inline directive to paste for an error code (noqa, type: ignore, nosec…)",
+        [
+            "pinky directives E402  # → # noqa: E402",
+            "pinky directives '[type-arg]'  # quote brackets, zsh globs them",
+            "pinky directives  # the whole table",
+        ],
+    )
+    p.add_argument(
+        "code",
+        nargs="?",
+        default=None,
+        help="the code a tool printed — E402, [type-arg], B608… (omit it for the whole table)",
+    )
+    p.set_defaults(func=cmd_directives)
+
+    p = _add(
+        sub,
         "docs",
-        help="📖 live board/log viewer — serve it, check its status, or remove it "
-        "(install it with `pinky install --live-docs`)",
+        "📖 live board/log viewer — serve it, check its status, or remove it",
+        [
+            "pinky install --live-docs  # install it first",
+            "pinky docs serve  # run the site now, no service",
+            "pinky docs status",
+        ],
     )
     p.add_argument(
         "action",
@@ -306,9 +503,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_docs)
 
-    p = sub.add_parser(
+    p = _add(
+        sub,
         "plugins",
-        help="🧩 audit / reconcile where each plugin is enabled across the workspace",
+        "🧩 audit / reconcile where each plugin is enabled across the workspace",
+        [
+            "pinky plugins reconcile  # audit, writes nothing",
+            "pinky plugins reconcile --apply  # place each plugin, interactively",
+        ],
     )
     p.add_argument(
         "action",
@@ -323,9 +525,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_plugins)
 
-    p = sub.add_parser(
+    p = _add(
+        sub,
         "doctor",
-        help="🩺 check the prerequisites installed plugins assume (binaries, Ollama, API keys)",
+        "🩺 check the prerequisites installed plugins assume (binaries, Ollama, API keys)",
+        [
+            "pinky doctor  # report what is missing",
+            "pinky doctor --fix  # offer to brew install it",
+        ],
     )
     p.add_argument(
         "--fix",

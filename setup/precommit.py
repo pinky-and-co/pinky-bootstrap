@@ -541,7 +541,7 @@ def _hook_files(repo: Path) -> list[Path]:
     referenced = _referenced_hook_scripts(
         build_precommit_config(repo, resolve_extras(repo))
     )
-    always_on = {"generate_ci_badges.py", "render_docs.py"}
+    always_on = {"generate_ci_badges.py", "render_docs.py", "tool_directives.py"}
     return [f for f in files if f.name in referenced or f.name in always_on]
 
 

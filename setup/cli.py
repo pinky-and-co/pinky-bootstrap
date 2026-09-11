@@ -159,12 +159,63 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--live-docs-status", action="store_true", help=argparse.SUPPRESS
     )
+    parser.add_argument(
+        "--llm-drift",
+        choices=["scan", "fix"],
+        default=None,
+        help="scan: report LLM drift (narrative comments, long comment blocks…) per repo · "
+        "fix: apply a drift kind's fixer and report the tokens it saves per read. Covers "
+        "--repo NAME, --all, or the repo holding the cwd",
+    )
+    parser.add_argument(
+        "--kind",
+        action="append",
+        default=None,
+        metavar="KIND",
+        help="with --llm-drift: drift kind to scan or fix (repeatable) — comments, narrative, "
+        "long-comment",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="with --llm-drift scan: print a JSON snapshot instead of the report",
+    )
+    parser.add_argument(
+        "--directives",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="CODE",
+        help="print the inline directive to paste for an error code (E402, [type-arg], B608…), "
+        "or the whole table without a code",
+    )
     args, _ = parser.parse_known_args(argv)
 
     if args.doctor:
         from . import doctor
 
         raise SystemExit(1 if doctor.run_doctor(fix=args.fix) else 0)
+
+    if args.directives is not None:
+        import tool_directives
+
+        raise SystemExit(
+            tool_directives.main([args.directives] if args.directives else [])
+        )
+
+    if args.llm_drift:
+        from . import llm_drift
+
+        repos = llm_drift.select_repos(args.repo, args.all)
+        raise SystemExit(
+            llm_drift.run(
+                args.llm_drift,
+                repos,
+                args.kind or [],
+                dry_run=args.dry_run,
+                as_json=args.json,
+            )
+        )
 
     if (
         args.live_docs
