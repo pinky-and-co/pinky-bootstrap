@@ -53,3 +53,18 @@ def test_engine_commit_is_the_checkout_head():
     commit = setup.precommit.engine_commit()
     assert commit is not None
     assert commit.removesuffix("-dirty") == head
+
+
+def test_engine_commit_is_computed_once_per_run(monkeypatch):
+    calls = []
+    real_run = subprocess.run
+
+    def counting_run(*args, **kwargs):
+        calls.append(args)
+        return real_run(*args, **kwargs)
+
+    setup.precommit.engine_commit.cache_clear()
+    monkeypatch.setattr(setup.precommit.subprocess, "run", counting_run)
+    first = setup.precommit.engine_commit()
+    assert setup.precommit.engine_commit() == first
+    assert len(calls) == 1

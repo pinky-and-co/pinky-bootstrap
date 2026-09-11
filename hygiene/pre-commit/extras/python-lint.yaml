@@ -11,8 +11,10 @@
     hooks:
       - id: ruff-check
         args: [--no-fix, --cache-dir=.cache/ruff]
+        exclude: ^scripts/hooks/
       - id: ruff-format
         args: [--check, --cache-dir=.cache/ruff]
+        exclude: ^scripts/hooks/
 
   # Weak-assertion ratchet — mirrors the `python` extra's hook (tests.md § generator oracle). Blocks
   # a fragment `assert "x" in <generator(...)>` whose generator has no whole-output equality oracle

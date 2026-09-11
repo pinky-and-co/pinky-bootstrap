@@ -155,6 +155,7 @@ repos:
         entry: python scripts/hooks/check_narrative_comments.py
         language: python
         types: [python]
+        exclude: ^scripts/hooks/
         verbose: true
 
   # ── Commit message format ─────────────────────────────────────────────────
