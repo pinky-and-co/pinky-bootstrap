@@ -8,6 +8,7 @@
 """
 
 import filecmp
+import functools
 import hashlib
 import json
 import os
@@ -575,8 +576,12 @@ def _group_docs_identity(repo: Path, workspace_root: Path) -> SuiteIdentity:
     return SuiteIdentity.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
+@functools.lru_cache(maxsize=1)
 def engine_commit() -> str | None:
     """The pinky-bootstrap commit being distributed, suffixed ``-dirty`` when its tree has changes.
+
+    Computed once per process: a distribution run commits into pinky-bootstrap itself on the way,
+    and every repo of that run must still record the commit it started from.
 
     Returns:
         The full commit sha, or None outside a git checkout (an installed wheel).
