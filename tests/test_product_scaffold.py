@@ -16,9 +16,6 @@ from setup.common import SuiteIdentity
 from setup.precommit import inject_readme_sections_local
 
 
-# ── scaffold_product — pure unit, tmp_path only ────────────────────────────────
-
-
 def test_scaffold_product_writes_expected_files(tmp_path):
     target = tmp_path / "pinky-foo"
     target.mkdir()
@@ -53,8 +50,6 @@ def test_scaffold_product_idempotent_never_overwrites(tmp_path):
 
 
 def test_scaffold_product_pyproject_has_nonempty_description(tmp_path):
-    # distribute()'s README tagline injection (_repo_description) sys.exit()s on an empty
-    # [project].description — the stub must never trip that.
     target = tmp_path / "pinky-foo"
     target.mkdir()
     setup.scaffold_product(target)
@@ -74,8 +69,6 @@ def test_scaffold_product_pyproject_seeds_the_cache_convention(tmp_path):
 
 
 def test_scaffold_product_readme_accepts_first_run_injection(tmp_path):
-    # The README stub must match distribute()'s allow_first_run=True anchors (## Install /
-    # ## Documentation / ## License, License last) — otherwise step 5 silently skips the repo.
     target = tmp_path / "pinky-foo"
     target.mkdir()
     setup.scaffold_product(target)
@@ -97,11 +90,7 @@ def test_scaffold_product_readme_accepts_first_run_injection(tmp_path):
     assert "## Why pinky-foo" in injected
     assert re.search(r"^## Documentation[ \t]*\n", injected, flags=re.MULTILINE)
     assert re.search(r"^## License[ \t]*\n", injected, flags=re.MULTILINE)
-    # License stays the last section (its first-run regex replaces through end-of-file).
     assert injected.index("## License") == injected.rindex("##")
-
-
-# ── repo_type — the layout lever, resolve_extras reads it back (card type-de-repo-a-la-creation) ──
 
 
 def test_scaffold_product_default_type_is_lib(tmp_path):
@@ -119,9 +108,7 @@ def test_scaffold_product_data_type_declares_snowpark_and_resources_dir(tmp_path
     data = tomllib.loads((target / "pyproject.toml").read_text(encoding="utf-8"))
     assert "snowflake-snowpark-python" in data["project"]["dependencies"][0]
     assert (target / "resources").is_dir()
-    assert (
-        data["tool"]["ruff"]["cache-dir"] == ".cache/ruff"
-    )  # separate template string, same seed
+    assert data["tool"]["ruff"]["cache-dir"] == ".cache/ruff"
 
 
 def test_scaffold_product_web_type_writes_package_json_not_pyproject(tmp_path):
@@ -141,23 +128,17 @@ def test_scaffold_product_tooling_type_writes_neither_manifest(tmp_path):
 
 
 def test_repo_type_drives_resolve_extras_the_same_way_a_hand_built_repo_would(tmp_path):
-    # The card's non-negotiable: --type picks the LAYOUT, never the hooks directly. Proven by
-    # feeding scaffold_product's output straight into resolve_extras, the exact function distribute()
-    # calls — no separate routing table to keep in sync.
     cases = {
         "lib": ["python"],
         "data": ["python", "snowflake"],
         "web": ["web"],
-        "tooling": [],  # python-lint only once real .py lands — not this scaffold's job to fake one
+        "tooling": [],
     }
     for repo_type, expected in cases.items():
         target = tmp_path / f"pinky-{repo_type}"
         target.mkdir()
         setup.scaffold_product(target, repo_type)
         assert setup.resolve_extras(target) == expected, repo_type
-
-
-# ── new_repo wiring — --scaffold opt-in, run_distribution stubbed out ─────────
 
 
 def test_new_repo_scaffold_flag_writes_stubs_before_distribution(tmp_path, monkeypatch):

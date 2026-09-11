@@ -100,7 +100,6 @@ def test_ci_yml_push_trigger_is_narrowed_to_what_can_break_the_tests(lib_repo):
     """
     import yaml
 
-    # `on:` est parsé en booléen True par le YAML 1.1 de PyYAML (le piège `on`/`off`).
     triggers = yaml.safe_load(precommit_mod.render_ci_yml(lib_repo))[True]
 
     assert set(triggers["push"]["paths"]) == {"pyproject.toml", ".github/**"}
@@ -120,9 +119,7 @@ def test_prek_runs_the_hooks_on_the_repo_own_python_pin(lib_repo, non_lib_repo):
     )
 
     assert '"3.13"' in precommit_mod.render_prek_yml(lib_repo)
-    assert '"3.12"' in precommit_mod.render_prek_yml(
-        non_lib_repo
-    )  # pas de pin → défaut
+    assert '"3.12"' in precommit_mod.render_prek_yml(non_lib_repo)
 
 
 def test_prek_yml_is_whole_output_equal_to_the_template(non_lib_repo):
@@ -146,8 +143,6 @@ def test_prek_yml_satisfies_the_github_actions_grammar(non_lib_repo):
     """
     wf = yaml.safe_load(precommit_mod.render_prek_yml(non_lib_repo))
 
-    # `on:` is parsed by PyYAML as the boolean True (YAML 1.1 truthy key) — the workflow is still
-    # valid for GitHub; this is a quirk of the parser, not of the file.
     triggers = wf.get("on", wf.get(True))
     assert triggers is not None, "workflow declares no trigger"
     assert set(triggers) == {"push", "pull_request"}
@@ -160,8 +155,7 @@ def test_prek_yml_satisfies_the_github_actions_grammar(non_lib_repo):
         assert set(job["permissions"].values()) <= {"read", "none"}, (
             f"job {name}: non-read permission — {job['permissions']}"
         )
-    # The hook job stays pinned exactly: it is the one running third-party code, so its scope set is
-    # a decision, not an incidental.
+
     assert wf["jobs"]["hooks"]["permissions"] == {"contents": "read"}
 
 
@@ -174,9 +168,6 @@ def test_prek_yml_actually_runs_the_hook_suite(non_lib_repo):
     wf = yaml.safe_load(precommit_mod.render_prek_yml(non_lib_repo))
     steps = [s for job in wf["jobs"].values() for s in job["steps"]]
     assert any("prek-action" in str(s.get("uses", "")) for s in steps)
-
-
-# ── `claude` CLI setup — plugin-repo extra only ───────────────────────────────
 
 
 @pytest.fixture
@@ -207,9 +198,6 @@ def test_plugin_repo_prek_yml_still_valid_yaml_with_claude_cli_step(plugin_repo)
     assert names.index("Install claude CLI") < names.index("Run pre-commit hooks"), (
         "claude must be on PATH before prek runs validate-plugins-strict"
     )
-
-
-# ── Le parcours d'install sous Windows — réservé au moteur ───────────────────
 
 
 def test_install_walkthrough_job_only_lands_on_the_engine(tmp_path):

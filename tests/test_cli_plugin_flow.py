@@ -65,9 +65,7 @@ def env(tmp_path, monkeypatch):
         plugin_install, "_USER_SETTINGS", home / ".claude" / "settings.json"
     )
     monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
-    # `plugin_reconcile` roots are module-level, resolved from `Path.home()` at import — patching
-    # `Path.home` afterwards does not reach them, so the rescope snapshot would read the real
-    # `~/.claude`. Point them at the fake home too.
+
     monkeypatch.setattr(plugin_reconcile, "_USER_CLAUDE", home / ".claude")
     monkeypatch.setattr(
         plugin_reconcile,
@@ -75,7 +73,7 @@ def env(tmp_path, monkeypatch):
         home / ".claude" / "plugins" / "installed_plugins.json",
     )
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    # the fetched plugin ships no status line -> the flow proceeds to the wizard
+
     monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
     plugin_dir = tmp_path / "cache" / "mp" / "pc-snow" / "0.1.0"
     (plugin_dir / "skills").mkdir(parents=True)
@@ -85,9 +83,7 @@ def env(tmp_path, monkeypatch):
     sim = _ClaudeCliSim(home)
     monkeypatch.setattr(subprocess, "run", sim)
     ws = tmp_path / "workspace"
-    (ws / "pinky-core" / ".git").mkdir(
-        parents=True
-    )  # one pickable depth-2 target (a repo)
+    (ws / "pinky-core" / ".git").mkdir(parents=True)
     monkeypatch.setattr(cli, "WORKSPACE_ROOT", ws)
     return SimpleNamespace(sim=sim, home=home, ws=ws)
 
@@ -124,15 +120,12 @@ def _write_enable(settings_dir: Path, spec: str, value: bool) -> None:
     p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-# ── project scope, plugin not previously user-enabled ──────────────────────
-
-
 def test_project_scope_drops_the_fetch_time_user_enable(env, monkeypatch):
     _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
-    assert _user_enabled(env.home, "pc-snow") is False  # transient enable cleaned up
+    assert _user_enabled(env.home, "pc-snow") is False
     assert json.loads(
         (env.ws / "pinky-core" / ".claude" / "settings.json").read_text()
     )["enabledPlugins"] == {"pc-snow": True}
@@ -142,42 +135,33 @@ def test_project_scope_drops_the_fetch_time_user_enable(env, monkeypatch):
     )
 
 
-# ── project scope, plugin ALREADY user-enabled (must not be stripped) ──────
-
-
 def test_project_scope_preserves_a_pre_existing_global_enable(env, monkeypatch):
-    _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)  # predates the command
+    _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
     _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
-    assert _user_enabled(env.home, "pc-snow") is True  # untouched
+    assert _user_enabled(env.home, "pc-snow") is True
     assert not _uninstalled(env.sim)
 
 
-# ── wizard refusal paths ──────────────────────────────────────────────────
-
-
 def test_wizard_refusal_undoes_the_fetch_time_enable(env, monkeypatch):
-    _canned_input(monkeypatch, ["garbage"])  # unknown scope -> SystemExit
+    _canned_input(monkeypatch, ["garbage"])
 
     with pytest.raises(SystemExit):
         cli.main(["--plugin", "pc-snow"])
 
-    assert _user_enabled(env.home, "pc-snow") is False  # not left globally enabled
+    assert _user_enabled(env.home, "pc-snow") is False
 
 
 def test_wizard_refusal_leaves_a_pre_existing_global_enable_alone(env, monkeypatch):
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
-    _canned_input(monkeypatch, ["p", "2", "99"])  # out-of-range -> SystemExit
+    _canned_input(monkeypatch, ["p", "2", "99"])
 
     with pytest.raises(SystemExit):
         cli.main(["--plugin", "pc-snow"])
 
-    assert _user_enabled(env.home, "pc-snow") is True  # not stripped by the cleanup
-
-
-# ── user scope chosen ─────────────────────────────────────────────────────
+    assert _user_enabled(env.home, "pc-snow") is True
 
 
 def test_user_scope_keeps_the_enable_and_writes_no_project_settings(env, monkeypatch):
@@ -188,9 +172,6 @@ def test_user_scope_keeps_the_enable_and_writes_no_project_settings(env, monkeyp
     assert _user_enabled(env.home, "pc-snow") is True
     assert not (env.ws / "pinky-core" / ".claude" / "settings.json").exists()
     assert not _uninstalled(env.sim)
-
-
-# ── always-on plugin: kept at user scope, wizard never runs ───────────────
 
 
 def test_keep_user_scope_plugin_stays_at_user_and_skips_the_wizard(env, monkeypatch):
@@ -210,21 +191,14 @@ def test_pc_autodiscovery_is_declared_keep_user_scope():
     assert "pc-autodiscovery" in plugin_install.KEEP_USER_SCOPE
 
 
-# ── step 3: rescope removes a scope the new targets no longer cover ────────
-
-
 def test_rescope_removes_a_stale_enable_after_a_confirmed_prompt(env, monkeypatch):
-    _write_enable(
-        env.ws, "pc-snow", True
-    )  # enabled at the workspace root by a previous run
-    _canned_input(
-        monkeypatch, ["p", "2", "0", "y"]
-    )  # wizard picks pinky-core, then confirm
+    _write_enable(env.ws, "pc-snow", True)
+    _canned_input(monkeypatch, ["p", "2", "0", "y"])
 
     cli.main(["--plugin", "pc-snow"])
 
     assert _enabled_at(env.ws / "pinky-core", "pc-snow") is True
-    assert _enabled_at(env.ws, "pc-snow") is None  # stale root enable removed
+    assert _enabled_at(env.ws, "pc-snow") is None
 
 
 def test_rescope_asks_first_and_a_no_keeps_the_stale_scope(env, monkeypatch, capsys):
@@ -233,13 +207,13 @@ def test_rescope_asks_first_and_a_no_keeps_the_stale_scope(env, monkeypatch, cap
 
     cli.main(["--plugin", "pc-snow"])
 
-    assert _enabled_at(env.ws, "pc-snow") is True  # left in place
+    assert _enabled_at(env.ws, "pc-snow") is True
     assert "left unchanged at: ." in capsys.readouterr().out
 
 
 def test_rescope_yes_flag_skips_the_prompt(env, monkeypatch):
     _write_enable(env.ws, "pc-snow", True)
-    _canned_input(monkeypatch, ["p", "2", "0"])  # no answer left for a prompt
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow", "--yes"])
 
@@ -250,7 +224,7 @@ def test_rescope_leaves_a_deliberate_disabled_opt_out_alone(env, monkeypatch):
     """A `false` key is an explicit "parent wins, off here" — an install adds a scope, it must
     not silently undo the opt-out."""
     _write_enable(env.ws, "pc-snow", False)
-    _canned_input(monkeypatch, ["p", "2", "0"])  # no prompt answer -> none expected
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -261,7 +235,7 @@ def test_rescope_keeps_a_pre_existing_user_global_enable(env, monkeypatch):
     """The user scope predating the command is not a leftover to sweep — same signal that keeps
     `drop_user_scope` from firing."""
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
-    _canned_input(monkeypatch, ["p", "2", "0"])  # no prompt answer -> none expected
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -269,16 +243,13 @@ def test_rescope_keeps_a_pre_existing_user_global_enable(env, monkeypatch):
     assert not _uninstalled(env.sim)
 
 
-# ── step 0: --force cache-bust ────────────────────────────────────────────
-
-
 def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
-    # env's `resolve_install_path` returns a real dir under the patched _CACHE_ROOT
+
     install = plugin_install.resolve_install_path("pc-snow")
     assert install.exists()
     _canned_input(monkeypatch, ["u"])
 
     cli.main(["--plugin", "pc-snow", "--marketplace", "mp", "--force"])
 
-    assert not install.exists()  # cache dir removed before the fetch
+    assert not install.exists()
     assert "cache cleared for pc-snow@mp" in capsys.readouterr().out

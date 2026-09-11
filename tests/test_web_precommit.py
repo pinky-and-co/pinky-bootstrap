@@ -25,9 +25,6 @@ def _git(*args: str, cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
 
 
-# ── resolve_extras ────────────────────────────────────────────────────────────
-
-
 def test_resolve_extras_web_when_package_json_no_pyproject(tmp_path):
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     assert setup.resolve_extras(tmp_path) == ["web"]
@@ -43,16 +40,10 @@ def test_resolve_extras_empty_for_bare_repo(tmp_path):
     assert setup.resolve_extras(tmp_path) == []
 
 
-# ── build_precommit_config ──────────────────────────────────────────────────
-
-
 def test_web_config_includes_all_four_hooks(tmp_path):
     cfg = setup.build_precommit_config(tmp_path, ["web"])
     for pcid in ("js-file-size", "js-structure", "html-inline-js", "js-engine-sync"):
         assert f"id: {pcid}" in cfg
-
-
-# ── _hook_files (ADR-0027: scoped to what the repo's own config references) ──
 
 
 def test_hook_files_python_repo_excludes_web_scripts(tmp_path):
@@ -75,9 +66,6 @@ def test_hook_files_web_repo_excludes_python_scripts(tmp_path):
 def test_hook_files_generate_ci_badges_always_included(tmp_path):
     names = {f.name for f in setup._hook_files(tmp_path)}
     assert "generate_ci_badges.py" in names
-
-
-# ── hook behaviour ───────────────────────────────────────────────────────────
 
 
 def test_js_engine_sync_blocks_when_min_missing(tmp_path):
@@ -116,7 +104,7 @@ def test_html_inline_js_ignores_jsonld_schema(tmp_path):
         '<script type="application/ld+json">{"@type":"Product"}</script>',
         encoding="utf-8",
     )
-    # exit 0 and no warning line for structured data
+
     out = subprocess.run(
         [sys.executable, str(HOOKS / "check_html_inline_js.py"), str(html)],
         capture_output=True,

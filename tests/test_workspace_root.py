@@ -41,7 +41,7 @@ def test_marker_in_the_start_dir_itself(tmp_path, monkeypatch):
 
 
 def test_marker_found_by_walking_up(tmp_path, monkeypatch):
-    # Le cas réel : la session tourne dans un repo, le marqueur est deux crans au-dessus.
+
     _no_env(monkeypatch)
     _mark(tmp_path)
     deep = tmp_path / "pinky-core" / "src"
@@ -51,7 +51,7 @@ def test_marker_found_by_walking_up(tmp_path, monkeypatch):
 
 
 def test_nearest_marker_wins(tmp_path, monkeypatch):
-    # Un workspace imbriqué dans un autre : c'est le plus proche qui gagne, jamais le plus haut.
+
     _no_env(monkeypatch)
     outer = tmp_path
     inner = tmp_path / "inner"
@@ -63,8 +63,7 @@ def test_nearest_marker_wins(tmp_path, monkeypatch):
 
 
 def test_env_wins_over_a_marker(tmp_path, monkeypatch):
-    # L'override explicite doit gagner même quand un marqueur est juste là — sinon il n'en est pas
-    # un, et il n'y a plus d'échappatoire pour un cas non prévu (CI, script hors workspace).
+
     _mark(tmp_path)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
@@ -74,8 +73,7 @@ def test_env_wins_over_a_marker(tmp_path, monkeypatch):
 
 
 def test_a_directory_named_code_workspace_is_not_a_marker(tmp_path, monkeypatch):
-    # Le glob ne doit matcher qu'un FICHIER — un dossier qui porte le même suffixe par accident
-    # (ou un produit qui range des artefacts sous ce nom) ne doit pas détourner la résolution.
+
     _no_env(monkeypatch)
     (tmp_path / "pinky.code-workspace").mkdir()
     real = tmp_path / "nested"
@@ -86,8 +84,7 @@ def test_a_directory_named_code_workspace_is_not_a_marker(tmp_path, monkeypatch)
 
 
 def test_no_marker_anywhere_falls_back_to_the_install_layout(tmp_path, monkeypatch):
-    # Rétro-compatibilité : un moteur cloné dans son workspace, rien de configuré, se comporte
-    # exactement comme avant l'ADR-0065. C'est ce qui rend la migration non bloquante.
+
     _no_env(monkeypatch)
     fake_install = tmp_path / "workspace" / "pinky-workspace"
     fake_install.mkdir(parents=True)

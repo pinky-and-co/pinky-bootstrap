@@ -24,9 +24,6 @@ def _installed(**plugins: list[dict]) -> dict:
     return {"plugins": dict(plugins)}
 
 
-# ── matching_plugin_ids — user scope ────────────────────────────────────────
-
-
 def test_a_plugin_with_a_user_scope_entry_is_never_matched(tmp_path):
     ws = tmp_path
     (ws / "ops").mkdir()
@@ -39,9 +36,6 @@ def test_a_plugin_with_a_user_scope_entry_is_never_matched(tmp_path):
         }
     )
     assert psl.matching_plugin_ids(ws / "ops", installed) == []
-
-
-# ── matching_plugin_ids — the descend / ascend split via open_path ──────────
 
 
 def test_project_plugin_below_open_path_is_matched_on_descend(tmp_path):
@@ -79,7 +73,7 @@ def test_without_open_path_the_ascend_still_sees_plugins_at_that_path(tmp_path):
     installed = _installed(
         **{"pc-craft@mp": [{"scope": "project", "projectPath": str(ws / "ops")}]}
     )
-    # l'ascend du SessionStart n'a pas d'open_path : il doit activer ce plugin
+
     assert psl.matching_plugin_ids(ws / "ops", installed) == ["pc-craft@mp"]
 
 
@@ -90,9 +84,6 @@ def test_local_scope_entries_are_not_a_discovery_source(tmp_path):
         **{"loc@mp": [{"scope": "local", "projectPath": str(ws / "ops")}]}
     )
     assert psl.matching_plugin_ids(ws / "ops", installed, open_path=ws) == []
-
-
-# ── settings_local_plugin_ids ──────────────────────────────────────────────
 
 
 def test_settings_local_plugin_ids_returns_every_listed_id_on_or_off(tmp_path):
@@ -113,9 +104,6 @@ def test_settings_local_plugin_ids_malformed_json_is_empty(tmp_path):
     claude.mkdir()
     (claude / "settings.local.json").write_text("{not json")
     assert psl.settings_local_plugin_ids(tmp_path) == []
-
-
-# ── enable_plugin_local — already_enabled vs real failure ──────────────────
 
 
 def _fake_run(returncode: int, stderr: str, calls: list | None = None):

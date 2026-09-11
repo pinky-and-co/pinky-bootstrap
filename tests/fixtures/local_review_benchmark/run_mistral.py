@@ -3,7 +3,7 @@
 
 Sibling of run_nvidia.py — same brief, same oracle, same assembly, so results are directly comparable
 (score against the oracle in docs/reference/local-models-review-benchmark.md). The point of testing a
-Mistral *reasoning* model (magistral-*) is whether it catches the INTENT defects (#2/#3/#4) that every
+Mistral *reasoning* model (magistral-*) is whether it catches the INTENT defects (
 local model missed.
 
 Usage:
@@ -35,8 +35,8 @@ API_URL = "https://api.mistral.ai/v1/chat/completions"
 
 model = sys.argv[1] if len(sys.argv) > 1 else "magistral-medium-latest"
 cond = sys.argv[2] if len(sys.argv) > 2 else "base"
-# temp: 0.2 keeps generalists comparable to the rest of the bench; pass 0.7 for magistral-* (Mistral's
-# recommended reasoning setting) so a reasoning model isn't judged on a throttled sampler.
+
+
 temp = float(sys.argv[3]) if len(sys.argv) > 3 else 0.2
 
 if not KEY_PATH.exists():
@@ -84,8 +84,8 @@ finish = choice.get("finish_reason")
 content = (
     message.get("content") or message.get("reasoning_content") or "(empty response)"
 )
-# Reasoning models (magistral-*) return content as a list of typed blocks
-# [{"type":"thinking",...}, {"type":"text","text":...}] — keep only the final answer text.
+
+
 if isinstance(content, list):
     texts = [
         b.get("text", "")

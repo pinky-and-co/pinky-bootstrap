@@ -76,8 +76,7 @@ def test_ci_runs_pip_audit_after_install_and_it_is_blocking(lib_repo):
     names = _step_names(steps)
     assert names.index("Install dependencies") < names.index("Audit dependencies")
     audit = next(s for s in steps if s.get("name") == "Audit dependencies")
-    # Un `uv run pip-audit`/`uvx pip-audit` nu audite un env d'outil isolé, pas les deps du
-    # projet (mesuré : ~29 paquets au lieu des ~95 réels) — l'export force le vrai arbre résolu.
+
     assert "uv export" in audit["run"]
     assert "--all-extras --all-groups" in audit["run"]
     assert "pip-audit -r" in audit["run"]
@@ -120,8 +119,7 @@ def test_pinky_provider_override_uses_prerelease_allow_and_drops_locked(
 
 
 def test_no_lock_repo_without_override_drops_locked_too(tmp_path):
-    # Same exemption via CI_DEFAULT_INSTALL_CMD (no CI_INSTALL_OVERRIDES entry) — pinky-connect
-    # is CI_NO_LOCK_REPOS but has no per-repo override.
+
     repo = _named_repo(tmp_path, "pinky-connect")
     install = next(
         s for s in _steps(repo, "ci") if s.get("name") == "Install dependencies"
@@ -139,9 +137,7 @@ def test_no_sources_ignored_when_repo_has_no_uv_sources_override(pinky_core_repo
 
 
 def test_tests_step_runs_through_uv(lib_repo):
-    # Trouvé en CI réelle (pinky-core PR #27, Linux et Windows) : `uv sync --locked` installe dans
-    # le venv d'uv, plus le Python système que ciblait `pip install` — un `pytest` nu sur le PATH
-    # sort "command not found" / "not recognized". `uv run` expose le bin du venv.
+
     steps = _steps(lib_repo, "ci")
     tests_step = next(s for s in steps if s.get("name") == "Tests")
     assert tests_step["run"] == "uv run --no-sources pytest"

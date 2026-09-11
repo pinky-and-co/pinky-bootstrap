@@ -47,7 +47,7 @@ def _resolve_bash() -> str:
         base = os.environ.get(env_var)
         if base and (candidate := Path(base) / "Git" / "bin" / "bash.exe").exists():
             return str(candidate)
-    return "bash"  # last resort — unchanged prior behaviour if nothing better is found
+    return "bash"
 
 
 def run_hook(cwd: Path) -> int:
@@ -94,9 +94,6 @@ needs_node = pytest.mark.skipif(
 )
 
 
-# ── Aucune suite → le hook ne bloque rien (cible « template light ») ──────────
-
-
 def test_no_suite_at_all_passes(tmp_path):
     assert run_hook(tmp_path) == 0
 
@@ -111,9 +108,6 @@ def test_package_json_without_test_script_is_a_noop(tmp_path):
         '{"name":"x","scripts":{"build":"echo build"}}', encoding="utf-8"
     )
     assert run_hook(tmp_path) == 0
-
-
-# ── Suite Python ─────────────────────────────────────────────────────────────
 
 
 def test_python_suite_passing_passes(tmp_path):
@@ -194,9 +188,6 @@ def test_tests_dir_holding_only_js_still_reports_a_js_failure(tmp_path):
     assert run_hook(tmp_path) == 1
 
 
-# ── Les deux suites cohabitent ───────────────────────────────────────────────
-
-
 @needs_node
 def test_js_failure_blocks_even_when_python_passes(tmp_path):
     """Le verdict est l'union des suites : une seule rouge suffit à bloquer."""
@@ -210,9 +201,6 @@ def test_python_failure_blocks_even_when_js_passes(tmp_path):
     write_py_suite(tmp_path, passing=False)
     (tmp_path / "engine.test.js").write_text(PASSING_JS, encoding="utf-8")
     assert run_hook(tmp_path) == 1
-
-
-# ── Runner absent → on avertit, on ne bloque pas ─────────────────────────────
 
 
 def test_missing_node_warns_but_does_not_block(tmp_path):
@@ -234,11 +222,6 @@ def test_missing_node_warns_but_does_not_block(tmp_path):
     )
     assert proc.returncode == 0
     assert "node absent" in proc.stderr
-
-
-# ── Le DÉCLENCHEMENT du portier, pas son exécution ────────────────────────────
-# Les cas ci-dessus prouvent que le hook bloque quand il tourne. Celui-ci prouve qu'il TOURNE —
-# la moitié du contrat que le repo avait perdue sans s'en apercevoir.
 
 
 def test_test_gate_declares_no_files_pattern():
@@ -275,9 +258,6 @@ def test_test_gate_declares_no_files_pattern():
         "une exclusion serait plus défendable qu'un `files:`, mais elle n'a pas été retenue : "
         "à rediscuter explicitement, pas à réintroduire en passant"
     )
-
-
-# ── darglint : le hook a besoin d'un fichier de config, pas d'un défaut d'outil ─
 
 
 def test_darglint_config_written_when_absent(tmp_path):

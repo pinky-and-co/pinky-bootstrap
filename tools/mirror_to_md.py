@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 mirror_to_md.py — Convert offline wget HTML doc mirrors into lean Markdown.
 
@@ -23,16 +22,16 @@ Requires: beautifulsoup4, lxml, markdownify
     python3 -m pip install beautifulsoup4 lxml markdownify
 
 Usage:
-    # plan — list what would be converted, no writes
+
     python mirror_to_md.py --dry-run
 
-    # apply — convert every mirror found under docs/api/
+
     python mirror_to_md.py
 
-    # apply to specific topics only
+
     python mirror_to_md.py --topic snowpark --topic streamlit
 
-    # custom roots
+
     python mirror_to_md.py --api-root path/to/docs/api
 """
 
@@ -47,17 +46,16 @@ from pathlib import Path
 try:
     from bs4 import BeautifulSoup
     from markdownify import markdownify as html_to_md
-except ImportError:  # pragma: no cover - dependency guard
+except ImportError:
     sys.exit(
         "Missing dependencies. Install with:\n"
         "    python3 -m pip install beautifulsoup4 lxml markdownify"
     )
 
-# ── Configuration ──────────────────────────────────────────────────────────────
 
 OUTPUT_DIRNAME = "_md"
 
-# Tags that are never content — removed before extraction.
+
 STRIP_TAGS = (
     "script",
     "style",
@@ -73,13 +71,13 @@ STRIP_TAGS = (
     "meta",
 )
 
-# Inline elements collapsed to their text (drops link/image URL noise → leaner).
+
 MARKDOWNIFY_STRIP = ["a", "img"]
 
-# A converted page below this many characters is treated as empty (asset/redirect).
+
 MIN_CONTENT_CHARS = 40
 
-# Asset path fragments: skip these HTML files entirely (not documentation).
+
 SKIP_PATH_FRAGMENTS = ("/_next/", "/scripts/", "/fonts/", "/images/", "/static/")
 
 
@@ -104,7 +102,7 @@ def clean_markdown(md: str) -> str:
     """Strip permalink junk and collapse excessive blank lines."""
     md = _PERMALINK_RE.sub("", md)
     md = _BLANKLINES_RE.sub("\n\n", md)
-    # Drop trailing whitespace per line.
+
     md = "\n".join(line.rstrip() for line in md.splitlines())
     return md.strip() + "\n"
 
@@ -127,9 +125,6 @@ def convert_html(html: str) -> str | None:
     if len(md.strip()) < MIN_CONTENT_CHARS:
         return None
     return md
-
-
-# ── Reporting (Talend-style per-object status) ─────────────────────────────────
 
 
 @dataclass
@@ -156,7 +151,6 @@ def convert_topic(topic_dir: Path, dry_run: bool) -> TopicReport:
     report = TopicReport(topic=topic_dir.name)
     out_root = topic_dir / OUTPUT_DIRNAME
 
-    # The host dir is the single subdir that is not _md (e.g. docs.snowflake.com).
     host_dirs = [
         d for d in topic_dir.iterdir() if d.is_dir() and d.name != OUTPUT_DIRNAME
     ]

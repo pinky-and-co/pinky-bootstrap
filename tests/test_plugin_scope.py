@@ -71,7 +71,7 @@ class _ClaudeCliSim:
             scope = cmd[cmd.index("--scope") + 1]
             root = self.fake_home if scope == "user" else cwd
             self._toggle(root / ".claude" / "settings.json", spec, on=False)
-        # `claude plugin update` — no-op
+
         return subprocess.CompletedProcess(cmd, 0)
 
     @staticmethod
@@ -105,9 +105,6 @@ def sim(tmp_path, monkeypatch):
     return cli
 
 
-# ── list_targets_at_depth ───────────────────────────────────────────────────
-
-
 def test_depth_0_is_the_workspace_root_itself(tmp_path):
     root = _workspace(tmp_path)
     assert list_targets_at_depth(root, depth=0) == [root]
@@ -127,7 +124,7 @@ def test_depth_1_ignores_dotfile_directories(tmp_path):
 def test_depth_2_lists_every_repo_regardless_of_nesting(tmp_path):
     root = _workspace(tmp_path)
     targets = list_targets_at_depth(root, depth=2)
-    # bootstrap is a top-level repo; pinky-core/pinky-snowpark are nested under the pinky-lib group.
+
     assert {p.name for p in targets} == {"bootstrap", "pinky-core", "pinky-snowpark"}
 
 
@@ -136,16 +133,11 @@ def test_unsupported_depth_raises(tmp_path):
         list_targets_at_depth(_workspace(tmp_path), depth=3)
 
 
-# ── run_marketplace_wizard — project scope, one target ──────────────────────
-
-
 def test_wizard_project_scope_enables_at_the_single_picked_target(
     sim, tmp_path, monkeypatch
 ):
     root_ws = _workspace(tmp_path)
-    _canned_input(
-        monkeypatch, ["p", "2", "0"]
-    )  # project, depth 2, index 0 == "bootstrap"
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     roots = run_marketplace_wizard(root_ws, "pc-snow")
 
@@ -153,13 +145,13 @@ def test_wizard_project_scope_enables_at_the_single_picked_target(
     assert _enabled(root_ws / "bootstrap" / ".claude" / "settings.json") == {
         "pc-snow": True
     }
-    # the wizard picks and enables targets only — it never touches user scope (caller's job)
+
     assert not any("user" in c for c, _ in sim.calls)
 
 
 def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "1"])  # depth 2, index 1 == "pinky-core"
+    _canned_input(monkeypatch, ["p", "2", "1"])
 
     run_marketplace_wizard(root_ws, "pc-snow", "pinky-agentic-plugins")
 
@@ -171,12 +163,9 @@ def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeyp
     ).exists()
 
 
-# ── run_marketplace_wizard — project scope, several targets ─────────────────
-
-
 def test_wizard_project_scope_multi_target_enables_at_each(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "1 2"])  # both nested repos
+    _canned_input(monkeypatch, ["p", "2", "1 2"])
 
     roots = run_marketplace_wizard(root_ws, "pc-snow", "mp")
 
@@ -198,9 +187,6 @@ def test_wizard_multi_target_accepts_comma_separated_indices(
     assert {r.name for r in roots} == {"bootstrap", "pinky-core"}
 
 
-# ── run_marketplace_wizard — the exact `claude` calls (oracle) ──────────────
-
-
 def test_wizard_project_scope_call_sequence_is_pinned(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
     _canned_input(monkeypatch, ["p", "2", "1 2"])
@@ -209,7 +195,7 @@ def test_wizard_project_scope_call_sequence_is_pinned(sim, tmp_path, monkeypatch
 
     core = root_ws / "pinky-lib" / "pinky-core"
     snow = root_ws / "pinky-lib" / "pinky-snowpark"
-    # one `--scope project` install per picked target, run from that target — and nothing else.
+
     assert sim.calls == [
         (
             [
@@ -242,12 +228,7 @@ def test_wizard_user_scope_issues_no_claude_call_at_all(sim, tmp_path, monkeypat
     _canned_input(monkeypatch, ["u"])
     roots = run_marketplace_wizard(_workspace(tmp_path), "pc-statusline")
     assert roots == [tmp_path / "home"]
-    assert (
-        sim.calls == []
-    )  # the fetch already enabled it at user scope — nothing to redo
-
-
-# ── run_marketplace_wizard — refusals ──────────────────────────────────────
+    assert sim.calls == []
 
 
 def test_wizard_non_interactive_shell_errors_instead_of_guessing(monkeypatch, tmp_path):
@@ -276,9 +257,6 @@ def test_wizard_empty_target_pick_errors(sim, tmp_path, monkeypatch):
         run_marketplace_wizard(root_ws, "pc-snow")
 
 
-# ── run_marketplace_wizard — ENABLE_LSP_TOOL wiring ─────────────────────────
-
-
 def _lsp_plugin(tmp_path: Path) -> Path:
     plugin_dir = tmp_path / "installed" / "pyright"
     plugin_dir.mkdir(parents=True)
@@ -291,13 +269,12 @@ def test_wizard_project_scope_wires_lsp_tool_env_at_user_scope(
 ):
     root_ws = _workspace(tmp_path)
     install_path = _lsp_plugin(tmp_path)
-    _canned_input(monkeypatch, ["p", "2", "0"])  # project, depth 2, "bootstrap"
+    _canned_input(monkeypatch, ["p", "2", "0"])
 
     run_marketplace_wizard(
         root_ws, "pyright", "claude-code-lsps", install_path=install_path
     )
 
-    # ENABLE_LSP_TOOL est toujours user scope, même si le plugin lui est project-scoped
     home_settings = json.loads(
         (tmp_path / "home" / ".claude" / "settings.json").read_text()
     )
@@ -361,7 +338,7 @@ def test_wizard_wires_lsp_tool_env_once_for_several_targets(sim, tmp_path, monke
         "ensure_lsp_tool_enabled",
         lambda: (calls.append(1), real())[1],
     )
-    _canned_input(monkeypatch, ["p", "2", "1 2"])  # project, depth 2, two nested repos
+    _canned_input(monkeypatch, ["p", "2", "1 2"])
 
     roots = run_marketplace_wizard(
         root_ws, "pyright", "claude-code-lsps", install_path=install_path

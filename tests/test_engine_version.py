@@ -28,9 +28,6 @@ IDENTITY = setup.SuiteIdentity(
 )
 
 
-# ── engine_version — the two sources ──────────────────────────────────────────
-
-
 def test_engine_version_prefers_installed_metadata(monkeypatch):
     """When the moteur is a real installed distribution, its metadata is authoritative — never
     fall through to reading pyproject.toml off disk, which may not even ship in the wheel."""
@@ -52,9 +49,6 @@ def test_engine_version_falls_back_to_this_repos_pyproject_when_not_installed(
         (setup.SCRIPT_DIR / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]["version"]
     assert setup.engine_version() == expected
-
-
-# ── check_drift — version lag is reported, never fatal ───────────────────────
 
 
 def _distributed_repo(tmp_path: Path, name: str = "pinky-thing") -> Path:
@@ -127,8 +121,7 @@ def test_cache_convention_issues_silent_when_convention_present(tmp_path):
 
 
 def test_cache_convention_issues_silent_when_tool_section_absent_entirely(tmp_path):
-    # A repo that doesn't even configure mypy isn't missing anything — only a SECTION already
-    # present without the cache-dir key is a real gap.
+
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "x"\n', encoding="utf-8"
     )

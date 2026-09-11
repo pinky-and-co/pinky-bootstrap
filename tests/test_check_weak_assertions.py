@@ -29,9 +29,6 @@ def _check(
     return cwa.check_file(f)
 
 
-# ── the core flag ─────────────────────────────────────────────────────────────
-
-
 def test_flags_fragment_in_without_oracle(tmp_path):
     src = (
         "def test_x():\n"
@@ -47,11 +44,8 @@ def test_flags_direct_generator_call_as_container(tmp_path):
     assert _check(src, tmp_path) == [(2, "render_page")]
 
 
-# ── the oracle exemptions ─────────────────────────────────────────────────────
-
-
 def test_equality_oracle_in_same_file_exempts(tmp_path):
-    # A fragment assert is fine *alongside* a whole-output oracle for the same generator.
+
     src = (
         "def test_frag():\n"
         "    clause = build_when_clause(task)\n"
@@ -73,15 +67,14 @@ def test_oracle_in_sibling_file_exempts_repo_wide(tmp_path):
     (tests_dir / "test_oracle.py").write_text(
         'def test():\n    assert build_sql(q) == "SELECT 1"\n', encoding="utf-8"
     )
-    # end-to-end (main): the sibling oracle exempts the fragment → clean exit
+
     assert _run(str(frag)) == 0
-    # but check_file stays per-file: the fragment file alone still carries the flag
+
     assert cwa.check_file(frag) == [(3, "build_sql")]
 
 
 def test_oracle_routed_through_helper_exempts(tmp_path):
-    # Bug #3, the most dangerous: the `==` lives in a helper, so the test body carries none.
-    # Missing this makes the hook cry wolf on correctly-covered code.
+
     src = (
         "def _assert_golden(name, actual):\n"
         "    expected = _load(name)\n"
@@ -94,11 +87,8 @@ def test_oracle_routed_through_helper_exempts(tmp_path):
     assert _check(src, tmp_path) == []
 
 
-# ── the exemptions that keep it narrow (no false positives) ───────────────────
-
-
 def test_not_in_is_exempt(tmp_path):
-    # A negative assertion genuinely proves an absence — it cannot freeze a bug.
+
     src = 'def test_x():\n    assert "EXPIRE AFTER" not in build_ddl(policy)\n'
     assert _check(src, tmp_path) == []
 
@@ -109,16 +99,13 @@ def test_non_generator_name_is_the_assumed_hole(tmp_path):
 
 
 def test_non_string_left_operand_ignored(tmp_path):
-    # `x in container` where x is not a string literal is not the fragment pattern.
+
     src = 'def test_x():\n    key = "k"\n    assert key in build_query(spec)\n'
     assert _check(src, tmp_path) == []
 
 
-# ── the detection bugs the purge audit already paid ───────────────────────────
-
-
 def test_private_name_variant_is_matched(tmp_path):
-    # Bug #2: `_build_ddl` must be caught (match on name.lstrip("_")).
+
     src = 'def test_x():\n    ddl = _build_ddl(spec)\n    assert "CREATE" in ddl\n'
     assert _check(src, tmp_path) == [(3, "_build_ddl")]
 
@@ -131,9 +118,6 @@ def test_scripts_hooks_copies_are_excluded(tmp_path):
     assert cwa.check_file(f) == []
 
 
-# ── DoD: end-to-end exit code + mutation ──────────────────────────────────────
-
-
 def _run(*args: str) -> int:
     return subprocess.run([sys.executable, str(HOOK), *args]).returncode
 
@@ -144,7 +128,7 @@ def test_mutation_reintroducing_a_fragment_assert_blocks(tmp_path):
         'def test():\n    clause = build_when_clause(t)\n    assert "MY_DAG" in clause\n',
         encoding="utf-8",
     )
-    assert _run(str(weak)) == 1  # the ratchet catches the regression
+    assert _run(str(weak)) == 1
 
 
 def test_oracle_covered_file_exits_clean(tmp_path):

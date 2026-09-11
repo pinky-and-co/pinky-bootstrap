@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-import setup.agentic_assets as agentic_assets
+from setup import agentic_assets
 from setup.agentic_assets import (
     discover_output_styles,
     discover_themes,
@@ -27,8 +27,7 @@ def isolated_home(tmp_path, monkeypatch):
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setattr(Path, "home", lambda: fake_home)
-    # `_USER_SETTINGS_PATH` is resolved once at import time (same pattern as
-    # `state_file.STATE_FILE_PATH`) — patching `Path.home` alone doesn't reach it.
+
     monkeypatch.setattr(
         agentic_assets, "_USER_SETTINGS_PATH", fake_home / ".claude" / "settings.json"
     )
@@ -38,18 +37,15 @@ def isolated_home(tmp_path, monkeypatch):
 def test_discover_output_styles_finds_adhd_with_its_frontmatter_name_as_value():
     styles = discover_output_styles()
     adhd = next(a for a in styles if a.name == "adhd")
-    assert adhd.value == "ADHD"  # frontmatter `name:`, not the lowercase filename
+    assert adhd.value == "ADHD"
     assert adhd.description
 
 
 def test_discover_themes_finds_lisible_with_custom_prefix_as_value():
     themes = discover_themes()
     lisible = next(a for a in themes if a.name == "lisible")
-    assert lisible.value == "custom:lisible"  # schema: theme is enum OR `^custom:.*`
+    assert lisible.value == "custom:lisible"
     assert lisible.description
-
-
-# ── install_output_style ─────────────────────────────────────────────────────
 
 
 def test_install_output_style_copies_file_and_sets_settings_key(isolated_home):
@@ -82,9 +78,6 @@ def test_install_output_style_merges_never_overwrites_existing_settings(isolated
     assert data["outputStyle"] == "ADHD"
 
 
-# ── install_theme ─────────────────────────────────────────────────────────────
-
-
 def test_install_theme_copies_file_and_sets_settings_key(isolated_home):
     target = install_theme("lisible")
 
@@ -99,9 +92,6 @@ def test_install_theme_copies_file_and_sets_settings_key(isolated_home):
 def test_install_theme_unknown_name_raises():
     with pytest.raises(ValueError, match="bidule"):
         install_theme("bidule")
-
-
-# ── ledger ────────────────────────────────────────────────────────────────────
 
 
 def test_install_output_style_records_in_state_file(isolated_home, monkeypatch):

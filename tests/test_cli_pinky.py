@@ -24,8 +24,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import cli_pinky
 import setup.cli_pinky as cli_pinky_impl
 
-# ── --help pins the defect the card measured ───────────────────────────────────
-
 
 def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
@@ -69,14 +67,10 @@ def test_help_names_the_command_the_reader_typed(monkeypatch, capsys):
 
 
 def test_no_command_is_an_error_not_a_silent_default(capsys):
-    # The bug being fixed: an unrecognized/absent mode used to fall through to interactive
-    # install. required=True on the subparsers makes an absent sub-command a hard argparse error.
+
     with pytest.raises(SystemExit) as exc:
         cli_pinky.main([])
     assert exc.value.code != 0
-
-
-# ── dispatch — each cmd_* is a thin, testable translation to setup.cli argv ────
 
 
 def _captured_argv(monkeypatch):
@@ -124,7 +118,7 @@ def test_distribute_dispatch_agents_md_standalone(monkeypatch):
 
 
 def test_install_dispatch_default(monkeypatch):
-    # Phase 1: install only orchestrates `rules` today — same argv as `pinky rules`.
+
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["install"])
     assert calls == [["--rules"]]
@@ -165,7 +159,7 @@ def test_install_dispatch_plugin_threads_yes_and_force(monkeypatch):
 
 
 def test_rules_dispatch_default_workspace(monkeypatch):
-    # No positional workspace -> bare `--rules` (setup.cli's own const=WORKSPACE_ROOT kicks in).
+
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["rules"])
     assert calls == [["--rules"]]
@@ -198,7 +192,6 @@ def test_plugins_reconcile_apply_dispatch(monkeypatch):
 def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
     import setup.cli
 
-    # sys.argv carries something main(argv) must NOT read — proof argv, not sys.argv, drove parsing.
     monkeypatch.setattr(sys, "argv", ["setup.py", "--rules", "/from-sys-argv"])
     seen: list = []
     monkeypatch.setattr(
@@ -211,9 +204,6 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
     setup.cli.main(["--rules", "/from-explicit-argv"])
 
     assert [workspace for workspace, _ in seen] == [Path("/from-explicit-argv")]
-
-
-# ── the root shim must stay a re-export, never a second copy ──────────────────
 
 
 def test_root_shim_reexports_the_same_objects_as_setup_cli_pinky():
