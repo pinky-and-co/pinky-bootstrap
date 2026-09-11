@@ -180,12 +180,28 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="with --llm-drift scan: print a JSON snapshot instead of the report",
     )
+    parser.add_argument(
+        "--directives",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="CODE",
+        help="print the inline directive to paste for an error code (E402, [type-arg], B608…), "
+        "or the whole table without a code",
+    )
     args, _ = parser.parse_known_args(argv)
 
     if args.doctor:
         from . import doctor
 
         raise SystemExit(1 if doctor.run_doctor(fix=args.fix) else 0)
+
+    if args.directives is not None:
+        import tool_directives
+
+        raise SystemExit(
+            tool_directives.main([args.directives] if args.directives else [])
+        )
 
     if args.llm_drift:
         from . import llm_drift

@@ -123,6 +123,13 @@ def test_llm_drift_dispatch_scan(monkeypatch):
     assert calls == [["--llm-drift", "scan", "--all", "--kind", "narrative", "--json"]]
 
 
+def test_directives_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["directives", "E402"])
+    cli_pinky.main(["directives"])
+    assert calls == [["--directives", "E402"], ["--directives"]]
+
+
 def test_llm_drift_dispatch_fix(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["llm-drift", "fix", "--repo", "pinky-core", "--dry-run"])

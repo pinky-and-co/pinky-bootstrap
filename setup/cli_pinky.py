@@ -18,6 +18,7 @@ Usage:
     python cli_pinky.py rules
     python cli_pinky.py drift
     python cli_pinky.py llm-drift scan --all
+    python cli_pinky.py directives E402
 """
 
 import argparse
@@ -168,6 +169,10 @@ def cmd_llm_drift(args: argparse.Namespace) -> None:
     if args.json:
         argv.append("--json")
     setup_main(argv)
+
+
+def cmd_directives(args: argparse.Namespace) -> None:
+    setup_main(["--directives", *([args.code] if args.code else [])])
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
@@ -336,6 +341,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="with scan: JSON snapshot instead of the report",
     )
     p.set_defaults(func=cmd_llm_drift)
+
+    p = sub.add_parser(
+        "directives",
+        help="📌 the inline directive to paste for an error code (noqa, type: ignore, nosec…)",
+    )
+    p.add_argument(
+        "code",
+        nargs="?",
+        default=None,
+        help="E402, [type-arg], B608… — omit it for the whole table",
+    )
+    p.set_defaults(func=cmd_directives)
 
     p = sub.add_parser(
         "docs",

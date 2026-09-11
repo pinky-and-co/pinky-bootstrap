@@ -58,6 +58,14 @@ def test_strip_comments_keeps_shebang_and_pep723():
     assert llm_drift.strip_comments(src) == src
 
 
+def test_strip_comments_keeps_secret_scanner_allowlists():
+    src = (
+        'TOKEN = "fake-test-token"  # gitleaks:allow\n'
+        'password = "example"  # pragma: allowlist secret\n'
+    )
+    assert llm_drift.strip_comments(src) == src
+
+
 def test_weigh_counts_lines_comments_and_chars():
     assert llm_drift.weigh(SRC) == llm_drift.Weight(
         lines=8, comment_lines=5, chars=len(SRC)

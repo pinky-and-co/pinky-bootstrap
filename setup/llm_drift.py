@@ -30,13 +30,11 @@ from .common import CORE_PRECOMMIT_DIR
 from .precommit import discover_repos
 
 import check_narrative_comments
+import tool_directives
 
 CHARS_PER_TOKEN = 4
 SCAN_KINDS_DEFAULT = ["narrative", "long-comment"]
 
-_DIRECTIVE = re.compile(
-    r"#\s*(?:noqa|type:|nosec|pragma|fmt:|pylint:|mypy:|isort:|ruff:|pyright:|pinky:|-\*-)"
-)
 _RUFF_REV = re.compile(r"ruff-pre-commit\s*\n\s*rev:\s*v?([\w.]+)")
 _UNREADABLE = (
     OSError,
@@ -132,7 +130,7 @@ def _comment_tokens(source: str) -> list[tokenize.TokenInfo]:
         if (
             in_pep723
             or (tok.start[0] == 1 and text.startswith("#!"))
-            or _DIRECTIVE.search(text)
+            or tool_directives.DIRECTIVE_RE.search(text)
         ):
             in_pep723 = in_pep723 and text != "# ///"
             continue
