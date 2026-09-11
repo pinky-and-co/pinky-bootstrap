@@ -2,7 +2,7 @@
 """
 check_snowpark_api.py — Enforce Snowpark/Core API usage conventions.
 
-Three checks run on every Python file under src/:
+Four checks run on every Python file under src/:
 
 1. session.sql() — Flag any .sql() method call.
    Use the Core API (snowflake.core) for DDL; session.table() or the
@@ -25,6 +25,11 @@ Three checks run on every Python file under src/:
 
    Note: `sort` also matches Python list.sort() — acceptable false-positive
    rate in a Snowpark src/ context where sorted() is the idiomatic alternative.
+
+4. Stored procedure calls — Flag .sql() whose text starts with CALL.
+   Use session.call("PROC", *args). A SQL expression argument goes in as a
+   Column (call_function("NAME", lit(value))), which session.call renders
+   verbatim into the CALL. No # pinky: marker suppresses this check.
 
 Suppression comments (two independent levels):
 
@@ -58,6 +63,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -167,9 +173,46 @@ def _is_dynamic_string(node: ast.expr) -> bool:
     return isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod)
 
 
+_CALL_RE = re.compile(r"\s*CALL\b", re.IGNORECASE)
+_CALL_NAME_RE = re.compile(r"\s*CALL\s+([\w$.\"]+)", re.IGNORECASE)
+
+
+def _leading_text(node: ast.expr) -> str:
+    """The static text a SQL string argument starts with, up to its first interpolation."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        text = ""
+        for part in node.values:
+            if not isinstance(part, ast.Constant):
+                break
+            text += str(part.value)
+        return text
+    if isinstance(node, ast.BinOp):
+        return _leading_text(node.left)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+    ):
+        return _leading_text(node.func.value)
+    return ""
+
+
+def _call_msg(receiver: str, text: str) -> str:
+    """Point a CALL issued through .sql() at .call(), naming the procedure when it is static."""
+    match = _CALL_NAME_RE.match(text)
+    proc = match.group(1) if match else "<procedure>"
+    return (
+        f'{receiver}.sql("CALL {proc} …") — use {receiver}.call("{proc}", *args); '
+        'pass a SQL expression argument as a Column: call_function("NAME", lit(value)). '
+        "No # pinky: marker suppresses this"
+    )
+
+
 class _Visitor(ast.NodeVisitor):
     def __init__(self) -> None:
-        self.violations: list[tuple[int, str]] = []
+        self.violations: list[tuple[int, str, str]] = []
 
     def visit_Call(self, node: ast.Call) -> None:
         if isinstance(node.func, ast.Attribute):
@@ -180,7 +223,12 @@ class _Visitor(ast.NodeVisitor):
                 if root not in ALLOW_SQL_RECEIVERS:
                     receiver = _receiver_repr(node.func.value)
                     first_arg = node.args[0] if node.args else None
-                    if first_arg and _is_dynamic_string(first_arg):
+                    leading = _leading_text(first_arg) if first_arg else ""
+                    if _CALL_RE.match(leading):
+                        self.violations.append(
+                            (node.lineno, _call_msg(receiver, leading), "CALL")
+                        )
+                    elif first_arg and _is_dynamic_string(first_arg):
                         if _has_params_kwarg(node):
                             self.violations.append(
                                 (
@@ -188,6 +236,7 @@ class _Visitor(ast.NodeVisitor):
                                     f"{receiver}.sql() — SQL injection risk: "
                                     "uses string interpolation alongside params=. "
                                     "Use ? placeholders for all values",
+                                    "SQL-INLINE",
                                 )
                             )
                         else:
@@ -198,6 +247,7 @@ class _Visitor(ast.NodeVisitor):
                                     "use params=[...] with ? placeholders for values. "
                                     "For identifiers/fragments: "
                                     "# pinky: SNOWPARK-SQL-INLINE",
+                                    "SQL-INLINE",
                                 )
                             )
                     else:
@@ -206,6 +256,7 @@ class _Visitor(ast.NodeVisitor):
                                 node.lineno,
                                 f"{receiver}.sql() — use Core API (snowflake.core) "
                                 "for DDL or session.table() / DataFrame API for queries",
+                                "API",
                             )
                         )
 
@@ -215,6 +266,7 @@ class _Visitor(ast.NodeVisitor):
                     (
                         node.lineno,
                         _canonical_msg(attr, canonical),
+                        "API",
                     )
                 )
 
@@ -229,8 +281,10 @@ def check_file(path: Path) -> list[tuple[int, str]]:
         return []
     lines = source.splitlines()
 
-    def _suppressed(lineno: int, code: str = "") -> bool:
+    def _suppressed(lineno: int, code: str) -> bool:
         line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
+        if code == "CALL":
+            return False
         if code == "SQL-INLINE":
             return "# pinky: SNOWPARK-SQL-INLINE" in line
         return "# pinky: SNOWPARK-API" in line
@@ -238,8 +292,7 @@ def check_file(path: Path) -> list[tuple[int, str]]:
     visitor = _Visitor()
     visitor.visit(tree)
     results: list[tuple[int, str]] = []
-    for ln, msg in visitor.violations:
-        code = "SQL-INLINE" if "SQL injection" in msg else ""
+    for ln, msg, code in visitor.violations:
         if not _suppressed(ln, code):
             results.append((ln, msg))
     return results
