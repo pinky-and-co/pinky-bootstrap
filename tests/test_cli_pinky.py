@@ -15,6 +15,7 @@ same function object as `cli_pinky_impl.main` — but patch dispatch targets on 
 since that's the module a `cmd_*` function's globals actually resolve `setup_main` against.
 """
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -128,6 +129,41 @@ def test_directives_dispatch(monkeypatch):
     cli_pinky.main(["directives", "E402"])
     cli_pinky.main(["directives"])
     assert calls == [["--directives", "E402"], ["--directives"]]
+
+
+def test_every_subcommand_explains_itself():
+    parser = cli_pinky_impl.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    for name, command in sub.choices.items():
+        assert command.description, name
+        assert "💡 examples:" in (command.epilog or ""), name
+        for action in command._actions:
+            if not isinstance(action, argparse._HelpAction):
+                assert action.help, f"{name} {action.dest}"
+
+
+def test_llm_drift_defaults_to_scan(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["llm-drift", "--repo", "pinky-provider"])
+    assert calls == [["--llm-drift", "scan", "--repo", "pinky-provider"]]
+
+
+def test_llm_drift_rejects_an_unknown_kind_naming_the_known_ones(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["llm-drift", "--kind", "oups"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "invalid choice: 'oups'" in err
+    for kind in ("comments", "narrative", "long-comment"):
+        assert kind in err
+
+
+def test_repo_and_all_are_mutually_exclusive(capsys):
+    for command in ("llm-drift", "distribute"):
+        with pytest.raises(SystemExit) as exc:
+            cli_pinky.main([command, "--repo", "pinky-core", "--all"])
+        assert exc.value.code == 2
+        assert "not allowed with argument" in capsys.readouterr().err
 
 
 def test_llm_drift_dispatch_fix(monkeypatch):

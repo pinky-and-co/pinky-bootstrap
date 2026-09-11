@@ -60,6 +60,7 @@ class DriftKind:
     name: str
     detect: Callable[[Path], list[Hit]]
     fix: Callable[[str], str] | None = None
+    summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -224,9 +225,22 @@ def _long_comment_hits(path: Path) -> list[Hit]:
 
 
 DRIFT_KINDS: list[DriftKind] = [
-    DriftKind("comments", _comment_hits, strip_comments),
-    DriftKind("narrative", _narrative_hits),
-    DriftKind("long-comment", _long_comment_hits),
+    DriftKind(
+        "comments",
+        _comment_hits,
+        strip_comments,
+        "every comment except tool directives, the shebang and PEP 723 blocks",
+    ),
+    DriftKind(
+        "narrative",
+        _narrative_hits,
+        summary="dates, requirement ids, chantier / card / file references",
+    ),
+    DriftKind(
+        "long-comment",
+        _long_comment_hits,
+        summary="full-line comment blocks longer than 3 lines",
+    ),
 ]
 
 
