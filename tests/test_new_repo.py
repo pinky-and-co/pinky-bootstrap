@@ -1,7 +1,7 @@
-"""`setup.py --new-repo <name>` — a new repo is born already governed (chantier-0001 card
-repo-bootstrap-from-zero). Scope decision (2026-07-11): repo nu + distribute(), no product
-scaffolding — git init + `develop` branch, then the existing distribution path (which writes
-.pre-commit-config.yaml / hooks / prek install). Idempotent: re-running converges, never re-inits.
+"""`setup.py --new-repo <name>` — a new repo is born already governed. Scope: repo nu +
+distribute(), no product scaffolding — git init + `develop` branch, then the existing
+distribution path (which writes .pre-commit-config.yaml / hooks / prek install). Idempotent:
+re-running converges, never re-inits.
 
 The git-skeleton is tested here in isolation (tmp_path); the distribution it delegates to
 (run_distribution) is already covered elsewhere and must NOT run against the real WORKSPACE_ROOT.
@@ -48,7 +48,7 @@ def test_init_repo_skeleton_idempotent(tmp_path):
 
 
 def test_bare_repo_has_no_drift_right_after_distribution(tmp_path):
-    """Regression for the card `drift-check-faux-positif-sans-manifeste`: `--new-repo` (no
+    """Regression: `--new-repo` (no
     `--scaffold`) always reported `missing hook scripts/hooks/check_weak_assertions.py` right after
     a clean distribution. Root cause was `resolve_extras()` re-scanning `*.py` on the SECOND call
     (inside `check_drift`) and finding the socle scripts `distribute()` had just copied into

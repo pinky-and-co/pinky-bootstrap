@@ -1,9 +1,9 @@
 """Oracles for `render_prek_yml` — the server-side hook suite of the NON-lib repos.
 
-Context (2026-07-25). Five repos ran the hook suite only through the LOCAL pre-commit — a net that
+Some repos ran the hook suite only through the LOCAL pre-commit — a net that
 disappears the moment a `--no-verify` passes or a machine has no hooks installed. One of them,
 `_corpus-pinky`, had no governance at all: no `.pre-commit-config.yaml`, no git hook, no CI. The
-8 libs were fine, because their `ci.yml` already runs `prek run --all-files` as its first step.
+libs were fine, because their `ci.yml` already runs `prek run --all-files` as its first step.
 
 The contract this file pins is therefore **complementarity**, not the file's contents: for any repo
 the distribution touches, the hook suite must run server-side through exactly ONE of the two
@@ -49,13 +49,13 @@ def non_lib_repo(tmp_path):
 def test_prek_lands_on_every_repo_and_ci_only_where_there_is_a_package(
     lib_repo, non_lib_repo
 ):
-    """Le partage se fait par SUJET, plus par fichier (2026-08-09).
+    """Le partage se fait par SUJET, plus par fichier.
 
     Avant : les deux renderers étaient exclusifs — la lib faisait tourner les hooks dans son ci.yml,
     donc elle ne recevait pas prek.yml. Le partage était par fichier, et il a coûté le second job de
     prek.yml : `pr-required-on-main`, le SEUL garde-fou serveur contre un push direct sur `main`
-    (la protection de branche GitHub est payante sur du privé, et aucune des deux orgs ne l'a).
-    9 repos l'avaient perdu, moteur compris, sans que rien ne le signale.
+    (la protection de branche GitHub est payante sur du privé, et aucune des deux orgs ne l'a) —
+    perdu sans que rien ne le signale.
 
     Args:
         lib_repo: Repo avec un pin Python dérivable.
@@ -82,7 +82,7 @@ def test_ci_yml_no_longer_runs_the_hook_suite(lib_repo):
 
     Les réintroduire dans ci.yml ferait tourner la suite deux fois par push sur chaque lib — le
     doublon qu'on vient de supprimer. Le job `precommit-windows` est exclu du contrôle : il exerce
-    délibérément un hook SOUS WINDOWS (portail ADR-0023), ce n'est pas la suite serveur.
+    délibérément un hook SOUS WINDOWS, ce n'est pas la suite serveur.
     """
     import yaml
 
@@ -180,7 +180,7 @@ def plugin_repo(tmp_path):
 
 def test_plugin_repo_gets_claude_cli_setup(plugin_repo):
     """`validate-plugins-strict` (plugin-repo extra) shells out to `claude` — absent from the
-    runner image by default (measured, chantier 0023: exit 1, `claude` CLI not found on PATH)."""
+    runner image by default (measured: exit 1, `claude` CLI not found on PATH)."""
     text = precommit_mod.render_prek_yml(plugin_repo)
     assert "npm install -g @anthropic-ai/claude-code" in text
     assert "actions/setup-node" in text
@@ -205,7 +205,7 @@ def test_install_walkthrough_job_only_lands_on_the_engine(tmp_path):
 
     Gaté par IDENTITÉ (`repo.resolve() == SCRIPT_DIR.resolve()`), le même axe que
     `workspace-self.yaml`, et pas par un nom ajouté à `CI_WINDOWS_PILOT` — cette liste-là est un
-    littéral d'instance dans le moteur, la classe de défaut qu'ADR-0065/0069 retirent.
+    littéral d'instance dans le moteur, la classe de défaut qu'on cherche à retirer.
 
     Sans ce test, l'erreur ne se verrait qu'en rouge sur les repos consommateurs, après distribution.
     """
@@ -230,7 +230,7 @@ def test_install_walkthrough_covers_the_real_sequence(tmp_path):
     """Le job doit couvrir `bootstrap (*.code-workspace) → distribute → drift` — la séquence qu'un
     adoptant joue.
 
-    La vérification du lanceur (`py -3` dans `.claude/settings.json`) a été retirée 2026-08-17 avec
+    La vérification du lanceur (`py -3` dans `.claude/settings.json`) a été retirée avec
     le moteur de rendu CLAUDE.md : `distribute()` ne touche plus `.claude/`, rien à figer.
     """
     fragment = (

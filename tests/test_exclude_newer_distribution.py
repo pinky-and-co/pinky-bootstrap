@@ -1,4 +1,4 @@
-"""Oracles for `render_pyproject_with_cooldown` (chantier 0024).
+"""Oracles for `render_pyproject_with_cooldown`.
 
 `[tool.uv] exclude-newer` is a **relative** cooldown span (`"3 days"`, uv >= 0.9.17), not an
 absolute date: uv resolves it at every `uv lock` and records `exclude-newer-span` in `uv.lock`, so

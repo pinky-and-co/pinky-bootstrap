@@ -1,6 +1,6 @@
-"""mypy hermetic additional_dependencies auto-derivation (ADR-0026).
+"""mypy hermetic additional_dependencies auto-derivation.
 
-Defines "done" for the chantier-0001 card `mypy-hermetique-deps-auto-derivees-adr0026`: the mypy
+The mypy
 hook's `additional_dependencies` is derived from the TARGET repo's own pyproject.toml runtime
 `dependencies` — mypy pin + every real dependency, `pinky-*` included (all public on PyPI).
 """

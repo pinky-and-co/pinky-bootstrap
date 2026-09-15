@@ -1,6 +1,6 @@
 """`setup/agents_md.py` — workspace-level AGENTS.md generator, marker-wrapped idempotent render.
 
-Witness for the marker-wrapped idiom (chantier 0023) — every section here is generator-owned, so
+Witness for the marker-wrapped idiom — every section here is generator-owned, so
 re-rendering the previous output must be a no-op (idempotency is the property under test, not just
 one-shot correctness).
 """

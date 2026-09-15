@@ -3,10 +3,10 @@
 Both are plain files this repo already carries (`agentic-harness/output-styles/*.md`,
 `agentic-harness/themes/*.json`) — no plugin-declarable slot exists for either today (unlike
 `agent`/`subagentStatusLine`, see `plugin_scope.py`), so this repo's CLI is the only installer.
-Once `pinky-bootstrap` is cloned (the `curl | bash` bootstrap's only job — Entrée 4 point 1), the
-source is already local: a copy, not a second GitHub fetch. Same merge-never-overwrite discipline
-as `plugin_scope.enable_plugin` for the `~/.claude/settings.json` key, same ledger
-(`setup.state_file`) as everything else `pinky install` writes.
+Once `pinky-bootstrap` is cloned, the source is already local: a copy, not a second GitHub fetch.
+Same merge-never-overwrite discipline as `plugin_scope.enable_plugin` for the
+`~/.claude/settings.json` key, same ledger (`setup.state_file`) as everything else `pinky install`
+writes.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class Asset:
 
     `name` is the lookup key for `--output-style`/`--theme NAME` — the file's own stem, cheap to
     type. `value` is what actually gets written to `outputStyle`/`theme` in settings.json — NOT
-    always the same string (verified against the real schema/a live install, 2026-08-21):
+    always the same string (verified against the real schema and a live install):
     outputStyle takes the frontmatter's own `name:` field (case-sensitive — the real value in use
     on this machine is `ADHD`, not the filename `adhd`); theme takes `custom:<name>` (schema:
     `theme` is an enum of built-ins OR a string matching `^custom:.*` — a bare name matches

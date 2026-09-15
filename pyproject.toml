@@ -62,15 +62,6 @@ exclude-newer = "3 days"
 # missing from this list resolves to nothing once installed, and only actually running `uv tool
 # install git+file://…` end to end (not `unzip -l`, which shows presence, never correctness of
 # what's missing) catches it.
-[tool.interrogate]
-# Temporary ratchet baseline (card `remonter-seuil-interrogate-70-vers-80`, chantier 0024) — the
-# `python` extra's interrogate hook started covering `setup/`/`hygiene/`/`tools/`/`cli_pinky.py`
-# for real for the first time on 2026-09-08 (the `_py_lint_roots` fix), measured at 71.3%.
-# interrogate's own default fail-under is 80% — never a policy this repo chose, just the tool's
-# out-of-box value, now the first thing hit by turning coverage checking on where it had never run.
-# Raise back toward 80 (or drop this section entirely) as the backfill in that card lands.
-fail-under = 70
-
 [tool.hatch.build.targets.wheel]
 packages = ["setup"]
 

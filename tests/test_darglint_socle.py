@@ -1,12 +1,12 @@
 """The socle `.darglint` carries `ignore_raise = exc` — a linter limitation, not a policy relaxation.
 
-`_write_darglint_config` converges (ADR of 2026-08-07): a repo's own `.darglint` is overwritten, on
-the finding that the four existing ones were divergence by accident rather than decisions anyone
+`_write_darglint_config` converges: a repo's own `.darglint` is overwritten, on
+the finding that the existing ones were divergence by accident rather than decisions anyone
 held. Correct — but it left no way for a repo to keep a setting it genuinely needs, while the
 function's own docstring promised one ("a repo that ever needs its own strictness will say so through
 the profile"). That mechanism does not exist.
 
-`pinky-connect` was the casualty, measured 2026-08-07: distributing the socle removed
+`pinky-connect` was the casualty: distributing the socle removed
 `ignore_raise = exc` from its `.darglint`, and darglint immediately flagged
 `src/pinky_connect/http.py:concurrent_map:225: DAR401: -r exc`.
 

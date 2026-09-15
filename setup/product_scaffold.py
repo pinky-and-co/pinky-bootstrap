@@ -1,4 +1,4 @@
-"""Product scaffolding for a from-zero repo (chantier-0001, card scaffolding-produit-from-zero).
+"""Product scaffolding for a from-zero repo.
 
 Separate from governance (``_init_repo_skeleton`` + ``distribute()``, which do NOT touch product
 files — see ``new_repo``'s docstring): this lays down the docs/ Diátaxis skeleton + the universal
@@ -7,7 +7,7 @@ something to work on. Idempotent — never overwrites a file that already exists
 Runs once (called from ``new_repo`` behind ``--scaffold``); unrelated to the commit-time
 ``generate-docs`` hook, which regenerates derived sections on every commit.
 
-``repo_type`` (card `type-de-repo-a-la-creation`) picks which manifest gets written — the ONLY
+``repo_type`` picks which manifest gets written — the ONLY
 lever. It never touches hook selection directly: ``resolve_extras()`` reads the layout this writes
 (``pyproject.toml`` → python(+snowflake via a declared dep), ``package.json`` → web, neither →
 python-lint once real ``.py`` lands) exactly as it would for a hand-built repo. A second router

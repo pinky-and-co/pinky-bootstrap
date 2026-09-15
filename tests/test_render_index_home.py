@@ -1,9 +1,9 @@
-"""`docs/index.md` generation gate (kanban card `site-mkdocs-sur-le-moteur`).
+"""`docs/index.md` generation gate.
 
 Defines "done": `has_generated_index()` is true only when `docs/mkdocs.yml` exists AND no
 `docs/.no-generated-index` marker opts the repo out — the marker exists so `pinky-workspace`'s own
 hand-curated ADR index survives adopting a mkdocs site, without hardcoding this repo's path into
-`hygiene/hooks/render_docs.py` (distributed byte-identical to every repo, ADR-0031). `distribute()`'s
+`hygiene/hooks/render_docs.py` (distributed byte-identical to every repo). `distribute()`'s
 docs/index.md step must honour the same predicate — it imports the exact same function
 (setup/common.py), never a duplicated check.
 """

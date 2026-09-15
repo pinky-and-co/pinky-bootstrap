@@ -1,10 +1,10 @@
 """`setup/plugin_scope.py` — which directories a plugin gets enabled at.
 
-`enabledPlugins` scopes by directory, not always user-level (ADR-0001, corrigé 2026-08-21). The
+`enabledPlugins` scopes by directory, not always user-level. The
 wizard picks the targets; the enable is `claude plugin install --scope project` run from each one.
 
 Boundary fake only: `subprocess.run` (the `claude` CLI) is replaced by `_ClaudeCliSim`, which
-reproduces the measured filesystem effect of `claude plugin install/uninstall` (2026-09-02) —
+reproduces the measured filesystem effect of `claude plugin install/uninstall` —
 `--scope user` writes `~/.claude/settings.json`, `--scope project` writes `<cwd>/.claude/
 settings.json`, `uninstall --scope user` removes the user key. `run_marketplace_wizard` stays real.
 """

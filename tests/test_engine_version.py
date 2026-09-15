@@ -1,9 +1,9 @@
-"""Card `versionner-le-moteur`: the moteur had no version at all — no `__version__`, no tag, no
-`pyproject.toml` — the angle blind ADR-0065's own council found under its best idea (`engine_version`
-in docs_identity.json presupposes a version that did not exist).
+"""The moteur had no version at all — no `__version__`, no tag, no
+`pyproject.toml` — even though `engine_version`
+in docs_identity.json presupposes a version that did not exist.
 
 `engine_version()` has two sources on purpose: `importlib.metadata` reads the INSTALLED
-distribution (the `uv tool install git+<url>` shape ADR-0065 decision 5 picked), which is the only
+distribution (the `uv tool install git+<url>` shape), which is the only
 one that survives SCRIPT_DIR pointing inside a venv instead of a checkout. The `pyproject.toml`
 fallback covers the shape this very repo is run in today — a plain clone, `python3 setup.py`, never
 `pip install`-ed, so there is no distribution metadata to query at all.

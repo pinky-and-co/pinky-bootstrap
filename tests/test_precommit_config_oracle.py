@@ -1,4 +1,4 @@
-"""Equality + grammar oracles for `build_precommit_config` (card `purger-generateurs-sans-oracle`).
+"""Equality + grammar oracles for `build_precommit_config`.
 
 `build_precommit_config` was the workspace's heaviest fragment-only generator (`tests.md` §
 "assertions on generated output"): every existing test asserts `f"id: {pcid}" in cfg`, which is
@@ -6,7 +6,7 @@ true of a correct config AND of a text concat that broke the YAML — the assemb
 **string concatenation of YAML fragments**, so a duplicated `repos:` key, a lost blank line or a
 mis-indented fragment produces a file prek refuses to load while every substring still matches.
 
-Two oracles, per the card's truth-source table:
+Two oracles:
 
 1. **Assembly** — a hermetic `CORE_PRECOMMIT_DIR` of stub fragments, whole-output equality. Pins
    fragment order, the single blank line between them, the trailing newline and the mypy

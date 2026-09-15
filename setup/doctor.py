@@ -26,8 +26,8 @@ import shutil
 import subprocess  # nosec B404 — `brew`/`npm`/`security`, fixed argv, never shell=True
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import plugin_install
@@ -103,7 +103,34 @@ class Check:
 # ── binaries ────────────────────────────────────────────────────────────────────────────────
 
 
-def parse_bash_binaries(allowed_tools: str) -> set[str]:
+@dataclass(frozen=True, eq=False)
+class BashBinaries:
+    """Binary names referenced by one ``allowed-tools`` value's ``Bash(...)`` entries.
+
+    Proxies `frozenset[str]` (iteration, length, equality/hash against a plain set) so the
+    existing call sites need no change.
+    """
+
+    values: frozenset[str] = frozenset()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, BashBinaries):
+            return self.values == other.values
+        if isinstance(other, frozenset | set):
+            return self.values == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.values)
+
+
+def parse_bash_binaries(allowed_tools: str) -> BashBinaries:
     """External binary names referenced by the ``Bash(...)`` entries of an ``allowed-tools`` value.
 
     Handles the forms seen in real plugin frontmatter: ``Bash(rg:*)`` → ``rg``,
@@ -133,7 +160,7 @@ def parse_bash_binaries(allowed_tools: str) -> set[str]:
         candidate = candidate.strip("\"'")
         if candidate and candidate != "command" and _BIN_NAME_RE.match(candidate):
             binaries.add(candidate)
-    return binaries
+    return BashBinaries(frozenset(binaries))
 
 
 def _frontmatter_field(path: Path, field: str) -> str | None:
@@ -176,7 +203,27 @@ def installed_plugins(path: Path | None = None) -> list[tuple[str, Path]]:
     return plugins
 
 
-def required_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list[str]]:
+@dataclass(frozen=True, eq=False)
+class _BinaryRequirers(Mapping[str, list[str]]):
+    """Non-ambient binary → sorted names of the plugins that need it.
+
+    A read-only mapping — supports `[binary]`, `.items()`, truthiness and `== {}`, exactly like
+    the plain `dict` it replaces.
+    """
+
+    by_binary: dict[str, list[str]] = field(default_factory=dict)
+
+    def __getitem__(self, key: str) -> list[str]:
+        return self.by_binary[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.by_binary)
+
+    def __len__(self) -> int:
+        return len(self.by_binary)
+
+
+def required_binaries(plugins: Iterable[tuple[str, Path]]) -> _BinaryRequirers:
     """Non-ambient binary → sorted names of the plugins whose frontmatter references it."""
     by_binary: dict[str, set[str]] = {}
     for name, plugin_dir in plugins:
@@ -186,16 +233,18 @@ def required_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list[str
         ]
         found: set[str] = set()
         for f in files:
-            for field in ("allowed-tools", "tools"):
-                value = _frontmatter_field(f, field)
+            for field_name in ("allowed-tools", "tools"):
+                value = _frontmatter_field(f, field_name)
                 if value:
-                    found |= parse_bash_binaries(value)
+                    found |= parse_bash_binaries(value).values
         for binary in found - AMBIENT_BINARIES:
             by_binary.setdefault(binary, set()).add(name)
-    return {b: sorted(names) for b, names in sorted(by_binary.items())}
+    return _BinaryRequirers(
+        {b: sorted(names) for b, names in sorted(by_binary.items())}
+    )
 
 
-def required_lsp_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list[str]]:
+def required_lsp_binaries(plugins: Iterable[tuple[str, Path]]) -> _BinaryRequirers:
     """Non-ambient binary → sorted names of the plugins whose `.lsp.json` declares it.
 
     A separate source from `required_binaries` (`allowed-tools`-derived) — an `.lsp.json`'s
@@ -204,9 +253,13 @@ def required_lsp_binaries(plugins: Iterable[tuple[str, Path]]) -> dict[str, list
     """
     by_binary: dict[str, set[str]] = {}
     for name, plugin_dir in plugins:
-        for binary in plugin_install.lsp_server_commands(plugin_dir) - AMBIENT_BINARIES:
+        for binary in (
+            plugin_install.lsp_server_commands(plugin_dir).values - AMBIENT_BINARIES
+        ):
             by_binary.setdefault(binary, set()).add(name)
-    return {b: sorted(names) for b, names in sorted(by_binary.items())}
+    return _BinaryRequirers(
+        {b: sorted(names) for b, names in sorted(by_binary.items())}
+    )
 
 
 def _install_hint(binary: str) -> str:
@@ -398,13 +451,12 @@ def format_report(checks: list[Check]) -> str:
 
 def _fix_command(check: Check) -> tuple[list[str], str] | None:
     """The command that would satisfy `check`, paired with the label for the "installé" summary —
-    or None when nothing here is the remedy (an API key, an un-pulled Ollama model — FR-0024-18).
+    or None when nothing here is the remedy (an API key, an un-pulled Ollama model).
 
     A binary's command comes from `_INSTALL_COMMAND` when it is declared there (a non-brew
     remedy — an `.lsp.json` binary via npm, so far), else the long-standing `brew install
     <formula>` default. Both package managers are handled the same way from here on: `apply_fixes`
-    checks each command's own tool is on PATH, never a blanket `brew`-only gate (FR-0024-18,
-    extended — the fixes no longer share one tool).
+    checks each command's own tool is on PATH, never a blanket `brew`-only gate.
     """
     if check.category == "binary":
         if check.name in _INSTALL_COMMAND:

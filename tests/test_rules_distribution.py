@@ -20,7 +20,7 @@ from setup.common import AGENTIC_HARNESS_DIR
 def test_kanban_proactivity_rule_lives_under_pc_kanban_not_pc_core():
     """The kanban rule is inert without pc-kanban installed — it must not ship workspace-wide.
 
-    Guards the 2026-08-28 re-bucketing (FR-0023-17/18): it is the only one of the nine
+    It is the only one of the nine
     ``rules/pc-core/`` files tied to a specific plugin.
     """
     rules_root = AGENTIC_HARNESS_DIR / "rules"
@@ -320,7 +320,7 @@ def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
 
     Proves the re-bucketing outcome end to end: with ``pc-kanban`` resolving to the target the
     kanban rule lands (and the co-resident ``pc-core`` rules survive); without it, ``pc-kanban``
-    resolves to no target and the kanban rule ships nowhere (IMP-0023-12 / IMP-0023-13).
+    resolves to no target and the kanban rule ships nowhere.
     """
     installed_plugins_file(
         {

@@ -1,12 +1,12 @@
-"""Un profil doit pouvoir ne PAS déclarer d'identité de suite (card `profil-sans-identite-de-suite`).
+"""Un profil doit pouvoir ne PAS déclarer d'identité de suite.
 
 `docs_identity.json` décrit une SUITE : un bandeau, une ligne d'appartenance, un pitch. Tous les
 profils n'en sont pas une — PLUTO livre des applications, `pinky-studio` n'a jamais rendu de pitch.
 `from_dict` exigeait pourtant ses sept champs, donc `_corpus-pluto` en portait **six vides** pour que
-le fichier existe. Le commentaire de la card fermée qui a semé celle-ci le disait déjà : « devoir
-déclarer sept champs pour dire "je n'en suis pas une" est un contournement propre, pas une réponse ».
+le fichier existe : devoir déclarer sept champs pour dire « je n'en suis pas une » est un
+contournement propre, pas une réponse.
 
-Même renversement qu'ADR-0058 → 0062 : ce qui n'est pas déclaré **n'existe pas**, au lieu d'exister
+Même renversement : ce qui n'est pas déclaré **n'existe pas**, au lieu d'exister
 vide. Seul `github_org` reste requis — l'URL du badge CI se construit avec, il n'a pas de forme
 dégradée.
 """
@@ -87,8 +87,7 @@ def test_no_pitch_declared_renders_empty_markers_not_a_hollow_section():
 
     La ligne blanche entre les deux marqueurs n'est pas cosmétique : sans elle, mdformat en
     ajoute une à chaque commit et generate-docs la retire à chaque fois — `git commit` ne
-    converge jamais sur un repo dont l'identité de groupe n'a pas encore de pitch (mesuré sur
-    `pinky-agentic-plugins`, 2026-08-21).
+    converge jamais sur un repo dont l'identité de groupe n'a pas encore de pitch.
     """
     from render_docs import README_WHY_MARK_END, README_WHY_MARK_START
 
@@ -141,9 +140,8 @@ def test_license_name_survives_a_leading_blank_line(tmp_path, text, expected):
     """Le texte Apache-2.0 canonique OUVRE sur une ligne vide.
 
     L'ancienne version lisait la ligne 0 : elle rendait un nom vide, donc la section License du
-    README aurait affiché « — see LICENSE » sur tout repo adoptant Apache. Trouvé le 2026-08-09 en
-    posant la licence du moteur. La version est jointe au nom parce qu'« Apache » seul désigne trois
-    licences ; « Apache-2.0 » est la forme SPDX.
+    README aurait affiché « — see LICENSE » sur tout repo adoptant Apache. La version est jointe
+    au nom parce qu'« Apache » seul désigne trois licences ; « Apache-2.0 » est la forme SPDX.
     """
     from render_docs import _repo_license_name
 

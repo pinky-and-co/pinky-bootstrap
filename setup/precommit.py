@@ -28,6 +28,7 @@ from .common import (
     SCRIPT_DIR,
     WORKSPACE_ROOT,
     SuiteIdentity,
+    _MarkdownParagraphs,
     engine_version,
     has_generated_index,
     inject_readme_sections_local,
@@ -60,7 +61,7 @@ def _report_unonboarded(repos: list[Path]) -> None:
     """Print a banner naming any discovered repo that has never been through distribute().
 
     ``.pre-commit-config.yaml`` absence is the single signal: distribute() writes it unconditionally
-    on every repo it touches (AGENT.md is no longer part of distribution — 2026-07-10 — so it can't
+    on every repo it touches (AGENT.md is no longer part of distribution, so it can't
     serve as the signal anymore). Called unconditionally on the FULL discover_repos() result, before
     any ``--repo`` filter — so a new repo (e.g. created by other work, never explicitly onboarded)
     surfaces on the very next setup.py invocation, of any kind, instead of silently sitting
@@ -98,14 +99,6 @@ def _python_version_pin(repo: Path) -> str | None:
     None also means the caller writes NOTHING — it never deletes. A repo with no ``requires-python``
     to derive from declares its pin by hand in ``.python-version`` instead, and distribution leaves
     it untouched. Do not "fix" this into an overwrite: hand-declared IS the fallback.
-
-    The moteur itself used to be the standing example of that fallback ("Python, but no
-    pyproject.toml, since adding one would flip resolve_extras from python-lint to python and turn
-    on src/-scoped hooks it has no src/ for") — until card `pyproject-entry-point-et-ci-windows`
-    (2026-08-07) gave it one anyway. The flip happened exactly as predicted (mypy/bandit/darglint/
-    check-typed-api now apply, all still ``files: ^src/``-scoped so still no-ops on this flat
-    layout) — a real, accepted consequence, not a bug. `.python-version` is untouched here too:
-    still hand-declared, now simply agreeing with what this function would derive anyway.
     """
     pyproject = repo / "pyproject.toml"
     if not pyproject.exists():
@@ -119,7 +112,7 @@ def _python_version_pin(repo: Path) -> str | None:
 
 
 def mypy_additional_dependencies(repo: Path) -> list[str]:
-    """additional_dependencies for the hermetic mypy hook (ADR-0026).
+    """additional_dependencies for the hermetic mypy hook.
 
     mypy pin + the repo's own runtime deps, so mypy resolves real third-party types instead of
     falling back to `--ignore-missing-imports` Any. The two known pre-hermetic failures (pinky-core
@@ -207,8 +200,9 @@ def resolve_extras(repo: Path) -> list[str]:
                     meta/tooling repo (the moteur itself, asset/infra scripts) with no src/
                     layout, so the full python extra's src/-scoped hooks (mypy, bandit,
                     interrogate, darglint) don't apply. ruff-check/ruff-format do (no src/
-                    assumption) — this is the gap the pinky-workspace-self-lint card found:
-                    the moteur's own hygiene/*.py, setup/*.py, hygiene/hooks/*.py went unlinted.
+                    assumption) — without this extra, a meta/tooling repo like the moteur itself
+                    could go entirely unlinted, including its own hygiene/*.py, setup/*.py,
+                    hygiene/hooks/*.py.
     Repos with neither pyproject, package.json, nor any .py file get base only — fine for any
     repo (zws, secrets, forbidden-keywords, commit-msg).
 
@@ -222,8 +216,8 @@ def resolve_extras(repo: Path) -> list[str]:
     (``check_zws.py``, ``check_forbidden_keywords.py``, always-on ``render_docs.py`` /
     ``generate_ci_badges.py``), which are themselves ``.py`` files; the NEXT call would then see
     them and flip a bare repo to ``python-lint``, a self-inflicted drift the repo never earned
-    (measured 2026-08-07 on a fresh ``--new-repo``: ``check_drift`` reported `check_weak_assertions.py`
-    missing, right after `distribute()` had correctly decided the repo needed no python extra at all).
+    (on a fresh ``--new-repo``, ``check_drift`` would report `check_weak_assertions.py` missing,
+    right after `distribute()` had correctly decided the repo needed no python extra at all).
     """
     extras: list[str] = []
     pyproject = repo / "pyproject.toml"
@@ -249,7 +243,7 @@ def build_precommit_config(repo: Path, extras: list[str]) -> str:
     """Assemble .pre-commit-config.yaml = base + selected extras (text concat).
 
     ``repo`` is the TARGET repo (not the source workspace) — needed to auto-derive the mypy hook's
-    ``additional_dependencies`` from that repo's own pyproject.toml (ADR-0026) when the python
+    ``additional_dependencies`` from that repo's own pyproject.toml when the python
     extra is active; a no-op placeholder substitution otherwise.
     """
     parts = [
@@ -485,21 +479,18 @@ def render_ci_yml(repo: Path) -> str | None:
 
 
 def render_prek_yml(repo: Path) -> str:
-    """Render .github/workflows/prek.yml for ``repo`` — EVERY repo gets one.
+    """Render .github/workflows/prek.yml for ``repo`` — EVERY repo gets one, whether or not it
+    also gets a ci.yml.
 
-    Until 2026-08-09 this returned None whenever ``render_ci_yml`` produced a workflow: a lib's
-    ci.yml ran the hooks itself, so a second workflow would have duplicated them. Exclusive by
-    construction, and it left a hole nobody was looking at.
+    ``prek.yml`` carries two jobs, and only the first — the hook suite — would duplicate what a
+    lib's ci.yml already runs if both ran it. The second, ``pr-required-on-main``, is the ONLY
+    server-side guard against a direct push to ``main`` — GitHub branch protection is a paid
+    feature on private repos, and neither org has it. Skipping prek.yml for any repo would
+    silently lose that guard.
 
-    ``prek.yml`` carries two jobs, and only the first was duplicated. The second,
-    ``pr-required-on-main``, is the ONLY server-side guard against a direct push to ``main`` —
-    GitHub branch protection is a paid feature on private repos, and neither org has it (measured
-    2026-08-09). So every repo that graduated to a ci.yml had silently LOST that guard: 9 of them,
-    the moteur included.
-
-    The split is now by subject rather than by file: ``prek.yml`` is hygiene + branch convention and
+    The split is by subject rather than by file: ``prek.yml`` is hygiene + branch convention and
     goes everywhere; ``ci.yml`` is build + tests and goes where there is a package to test — and it
-    no longer runs the hooks. One source for each job, no duplication, and nothing to delete from a
+    does not run the hooks. One source for each job, no duplication, and nothing to delete from a
     consumer repo.
 
     Args:
@@ -531,8 +522,8 @@ def _referenced_hook_scripts(cfg_text: str) -> set[str]:
 def _hook_files(repo: Path) -> list[Path]:
     """Hook files to distribute to THIS repo (skip __pycache__ and non-files).
 
-    Scoped to what the repo's own assembled `.pre-commit-config.yaml` actually references (ADR-0027)
-    — derived from ``build_precommit_config``, the same source of truth ``resolve_extras`` already
+    Scoped to what the repo's own assembled `.pre-commit-config.yaml` actually references —
+    derived from ``build_precommit_config``, the same source of truth ``resolve_extras`` already
     drives, instead of a second parallel classification. A repo without the ``web`` extra never gets
     the JS/HTML scripts (they'd sit dead, unreferenced by its config). ``generate_ci_badges.py`` has
     no pre-commit id (CI helper invoked from a workflow, not a hook `entry:`) and is always
@@ -553,8 +544,8 @@ _EMPTY_IDENTITY = SuiteIdentity(
     suite_line="",
     github_org="",
     pitch_heading="",
-    pitch_paragraphs=(),
-    pitch_pills=(),
+    pitch_paragraphs=_MarkdownParagraphs(),
+    pitch_pills=_MarkdownParagraphs(),
 )
 
 
@@ -625,8 +616,9 @@ def _read_docs_identity_key(repo: Path, key: str) -> str | None:
     """One string key from ``repo``'s distributed docs_identity.json, or None when unknown.
 
     Unknown covers three real cases, all of which must degrade rather than raise: a repo never
-    distributed (no file), one distributed before the key existed (the whole parc, as of
-    2026-08-08 for ``engine_version``), and a hand-edited or half-written file. ``--check-drift``
+    distributed (no file), one distributed before the key existed (true of the whole parc for a
+    newly added key like ``engine_version``), and a hand-edited or half-written file.
+    ``--check-drift``
     walks every repo ``discover_repos()`` finds, so one unreadable repo must not abort the scan.
     """
     path = repo / "scripts" / "hooks" / "docs_identity.json"
@@ -681,9 +673,9 @@ def distribute(
 ) -> None:
     """Distribute hooks + config into one repo.
 
-    Copied scripts are scoped to what THIS repo's extras actually reference (ADR-0027).
+    Copied scripts are scoped to what THIS repo's extras actually reference.
 
-    Does not touch AGENT.md (2026-07-10): its only generated content was the commit-scopes marker
+    Does not touch AGENT.md: its only generated content was the commit-scopes marker
     block, and the scope concept was dropped from the commit convention entirely — a per-repo
     scope vocabulary (scopes.yaml + a scopes-local.txt in every repo + this injection step) cost
     more mechanism than the git-log grep value it bought. AGENT.md is 100% hand-authored again.
@@ -793,7 +785,7 @@ def distribute(
     if not dry_run:
         _write_darglint_config(repo, extras, tag)
 
-    # 4. prek install (hooks runner — ADR-0023, drop-in over pre-commit, reads the same config)
+    # 4. prek install (hooks runner — drop-in over pre-commit, reads the same config)
     print(f"  {tag}install prek (+ commit-msg)")
     if not dry_run:
         _prek_install(repo)
@@ -840,22 +832,20 @@ ignore_raise = exc
 def _write_darglint_config(repo: Path, extras: list[str], tag: str = "") -> None:
     """Write `.darglint` on repos where the darglint hook runs — CONVERGING, not create-if-absent.
 
-    First written as create-if-absent, on the assumption that a repo declaring its own strictness had
-    DECIDED. Checked 2026-08-07, and it had not: the four existing `.darglint` were all created on
-    2026-06-11, three of them as side effects of unrelated commits (a model-id typo fix, a query
-    module, a connector migration). `short` on two repos and `long` on two others was divergence by
-    accident, not a position anyone held. Guarding it preserved a phantom decision.
+    Create-if-absent would assume a repo declaring its own strictness had DECIDED — checked, and it
+    had not: the existing `.darglint` files were all created as side effects of unrelated commits (a
+    model-id typo fix, a query module, a connector migration), not a position anyone held.
+    Guarding a create-if-absent file would have preserved a phantom decision.
 
     So this file is socle, like `.pre-commit-config.yaml`: distributed and overwritten — divergence
     stops being silent.
 
-    **A repo cannot hold a local exception, and there is no per-repo escape hatch** (an earlier
-    version of this docstring said there was; there never has been). A setting a repo genuinely needs
-    therefore has to go into `_DARGLINT_INI` itself — which is where `ignore_raise = exc` landed on
-    2026-08-07, after converging `pinky-connect` removed it and produced a false `DAR401`. That is
-    workable precisely because the settings at stake suppress tool limitations, inert everywhere
-    else; a setting that encoded a real per-repo *policy* would need a mechanism that does not exist
-    yet, and would be the moment to build one rather than to widen this constant.
+    **A repo cannot hold a local exception, and there is no per-repo escape hatch.** A setting a
+    repo genuinely needs therefore has to go into `_DARGLINT_INI` itself — workable precisely
+    because the settings at stake (like `ignore_raise = exc`, added after a converging repo
+    produced a false `DAR401`) suppress tool limitations, inert everywhere else; a setting that
+    encoded a real per-repo *policy* would need a mechanism that does not exist yet, and would be
+    the moment to build one rather than to widen this constant.
 
     Note it is NOT drift-checked: `check_drift` compares hook scripts, `.pre-commit-config.yaml`,
     `ci.yml` and `prek.yml` — not this file. A stale `.darglint` is invisible until the next
@@ -873,7 +863,7 @@ def _write_darglint_config(repo: Path, extras: list[str], tag: str = "") -> None
 def _ensure_secrets_baseline(repo: Path, tag: str = "") -> None:
     """Create .secrets.baseline if missing (the detect-secrets hook requires it).
 
-    Repo root, not .cache/ (ADR-0033): it's a versioned security artifact (accepted-findings
+    Repo root, not .cache/: it's a versioned security artifact (accepted-findings
     triage state), not disposable cache — keeping it out of .cache/ means that directory stays
     100% safe to delete, no gitignore exception needed.
     """
@@ -1016,8 +1006,8 @@ def commit_distribution(repo: Path, dirty_before: list[str] | None = None) -> st
 
 
 def _prek_install(repo: Path) -> None:
-    # prek is the hooks runner since ADR-0023 (single Rust binary, no Python toolchain to run itself
-    # — the whole point of the migration). `--hook-type {pre-commit,commit-msg}` are git hook-type
+    # prek is the hooks runner: a single Rust binary, no Python toolchain needed to run itself —
+    # the whole point of the migration. `--hook-type {pre-commit,commit-msg}` are git hook-type
     # names, unchanged; only the invoked binary moved from `pre-commit` to `prek`.
     if shutil.which("prek") is None:
         print(
@@ -1073,7 +1063,7 @@ def check_drift(
 ) -> int:
     """Compare each repo against the workspace source; return divergence count.
 
-    The expected hook-script set is per-repo (ADR-0027, via `_hook_files`) — scoped to what that
+    The expected hook-script set is per-repo (via `_hook_files`) — scoped to what that
     repo's own extras actually reference, not the full `hygiene/hooks/` directory.
 
     ``quiet`` returns the count without the report, for ``warn_on_drift``'s one-line advisory.
@@ -1187,11 +1177,11 @@ def check_drift(
 def warn_on_drift() -> None:
     """Advisory drift notice for the RENDER path — one line, never blocking, never fatal.
 
-    ADR-0055 folded the drift check into ``run_distribution`` so it could not be forgotten, but only
-    the distribution flags reach it. Rendering (``--provider claude`` / ``--into``) writes CLAUDE.md
-    and ``.claude/`` and checked nothing — so a session that edits
-    ``core/`` then renders, exactly what `feedback_core_edit_needs_setup` prescribes, walked away
-    believing it had distributed. 30 divergences accumulated that way by 2026-08-05.
+    The drift check lives in ``run_distribution`` so it cannot be forgotten, but only the
+    distribution flags reach it. Rendering (``--provider claude`` / ``--into``) writes CLAUDE.md
+    and ``.claude/`` and checks nothing — so a session that edits
+    ``core/`` then renders, exactly what `feedback_core_edit_needs_setup` prescribes, can walk away
+    believing it had distributed, with divergence accumulating silently that way.
 
     **Advisory, not a gate.** The render path has to keep working on a machine whose repos are not
     cloned (framework targets #2/#3), so an empty parc is silence, and any failure of the check
@@ -1230,14 +1220,14 @@ def _init_repo_skeleton(target: Path) -> bool:
 def new_repo(name: str, args) -> None:
     """Create a new repo already governed: git init + ``develop`` branch, then distribute().
 
-    Scope (chantier-0001, 2026-07-11): "repo nu + distribute()" by default — product scaffolding
-    (docs/ skeleton, README/CONTEXT/AGENT/pyproject/LICENSE stubs) is opt-in via ``--scaffold``
-    (card `scaffolding-produit-from-zero`), not automatic: a repo created for a quick experiment may
+    Scope: "repo nu + distribute()" by default — product scaffolding
+    (docs/ skeleton, README/CONTEXT/AGENT/pyproject/LICENSE stubs) is opt-in via ``--scaffold``,
+    not automatic: a repo created for a quick experiment may
     not want the full doc floor yet. The from-zero command closes the gap ``proactivity.md`` § 1
-    (ex ``repo-onboarding.md``, merged 2026-07-28) only *detected*: a new repo is born with the
+    only *detected*: a new repo is born with the
     security/commit socle + hooks, not left ungoverned until someone remembers.
 
-    ``--type`` (card `type-de-repo-a-la-creation`, requires ``--scaffold``) picks the manifest
+    ``--type`` (requires ``--scaffold``) picks the manifest
     ``scaffold_product`` writes — ``lib`` (default) / ``data`` / ``web`` / ``tooling``. It never
     touches hook selection: ``resolve_extras()`` reads the resulting layout the same way it would
     for a hand-built repo, so a repo born ``--type web`` gets the ``web`` extra because it has a
@@ -1344,7 +1334,7 @@ def run_distribution(args) -> None:
                 "Their distributed files are staged — fix the hook failure and re-commit."
             )
 
-    # Class B — a missing CLI tool left the distribution incomplete (baseline / pre-commit hooks not
+    # A missing CLI tool left the distribution incomplete (baseline / pre-commit hooks not
     # installed). Surface it as a non-zero exit instead of the misleading 'Done.' above.
     if _MISSING_TOOLS:
         print(f"\n✗ Missing tooling (not on PATH): {', '.join(sorted(_MISSING_TOOLS))}")
