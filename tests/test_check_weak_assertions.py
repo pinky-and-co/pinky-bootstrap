@@ -1,8 +1,7 @@
 """check_weak_assertions.py — the cliquet against fragment-only assertions on generated output.
 
-Defines "done" for the chantier-0001 card `hook-cliquet-weak-assertions` (stage 3 of the
-tests.md § generator-oracle pattern). Covers the narrow audit-validated heuristic AND the three
-detection bugs the purge audit already paid (scripts/hooks copies, private-name variants, oracle
+Covers the narrow audit-validated heuristic AND the three
+detection bugs already paid for (scripts/hooks copies, private-name variants, oracle
 routed through a helper), plus the DoD mutation: reintroducing `assert "MY_DAG" in clause` blocks.
 """
 

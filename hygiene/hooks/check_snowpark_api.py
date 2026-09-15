@@ -65,6 +65,7 @@ import ast
 import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
@@ -72,19 +73,33 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# Receivers whose .sql() call is NOT a Snowpark session.sql() — skip them.
-ALLOW_SQL_RECEIVERS: set[str] = {
-    "pd",
-    "pandas",
-    "sqlalchemy",
-    "sa",
-    "text",
-    "engine",
-    "conn",
-    "connection",
-    "cursor",
-    "metadata",
-}
+
+@dataclass(frozen=True)
+class AllowedSqlReceivers:
+    """Receiver names whose `.sql()` call is not a Snowpark `session.sql()`, so it is skipped."""
+
+    names: frozenset[str]
+
+    def __contains__(self, name: str) -> bool:
+        return name in self.names
+
+
+ALLOW_SQL_RECEIVERS = AllowedSqlReceivers(
+    frozenset(
+        {
+            "pd",
+            "pandas",
+            "sqlalchemy",
+            "sa",
+            "text",
+            "engine",
+            "conn",
+            "connection",
+            "cursor",
+            "metadata",
+        }
+    )
+)
 
 BANNED_METHODS: dict[str, str] = {
     # ── Column ───────────────────────────────────────────────────────────────
@@ -211,10 +226,13 @@ def _call_msg(receiver: str, text: str) -> str:
 
 
 class _Visitor(ast.NodeVisitor):
+    """Collects (lineno, message, suppression-code) for each banned Snowpark call it finds."""
+
     def __init__(self) -> None:
         self.violations: list[tuple[int, str, str]] = []
 
     def visit_Call(self, node: ast.Call) -> None:
+        """Flag `.sql()` calls (CALL / SQL-injection / generic API) and banned camelCase aliases."""
         if isinstance(node.func, ast.Attribute):
             attr = node.func.attr
 
@@ -274,6 +292,7 @@ class _Visitor(ast.NodeVisitor):
 
 
 def check_file(path: Path) -> list[tuple[int, str]]:
+    """Unsuppressed (line, message) violations found in `path`; [] on parse or read failure."""
     try:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(path))
@@ -282,6 +301,7 @@ def check_file(path: Path) -> list[tuple[int, str]]:
     lines = source.splitlines()
 
     def _suppressed(lineno: int, code: str) -> bool:
+        """True if the source line at `lineno` carries the `# pinky:` marker for `code`; CALL never is."""
         line = lines[lineno - 1] if 0 < lineno <= len(lines) else ""
         if code == "CALL":
             return False
@@ -299,11 +319,13 @@ def check_file(path: Path) -> list[tuple[int, str]]:
 
 
 def _is_disabled() -> bool:
+    """True if this hook's filename stem is listed in `PINKY_DISABLED_HOOKS` (comma-separated)."""
     disabled = os.environ.get("PINKY_DISABLED_HOOKS", "")
     return Path(__file__).stem in {h.strip() for h in disabled.split(",") if h.strip()}
 
 
 def main() -> int:
+    """Fail if any CLI argument contains a banned Snowpark call or alias; returns 1 on any match."""
     if _is_disabled():
         return 0
     failed = False

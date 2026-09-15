@@ -12,6 +12,9 @@ HOOK = setup.CORE_HOOKS_DIR / "check_snowpark_api.py"
 
 _spec = importlib.util.spec_from_file_location("check_snowpark_api", HOOK)
 csa = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = (
+    csa  # dataclasses needs its module registered to resolve KW_ONLY (py3.12)
+)
 _spec.loader.exec_module(csa)
 
 

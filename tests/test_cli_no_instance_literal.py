@@ -1,13 +1,12 @@
 """`pinky install` ne nomme aucun repo ni aucune org codés en dur.
 
-Trouvé le 2026-08-09 en rejouant l'install d'un tiers de bout en bout : la commande imprimait
+En rejouant l'install d'un tiers de bout en bout : la commande imprimait
 `git clone git@github.com:<PINKY_ORG>/pinky-core` à CHAQUE rendu. Sur une machine d'une autre org,
 elle nommait les repos privés d'une org que cet opérateur ne connaît pas — et `<PINKY_ORG>` n'était
 jamais substitué, donc le message n'était même pas utilisable par l'auteure.
 
-Un test et pas seulement un fix : le littéral d'instance dans le moteur est une classe de défaut que
-trois ADR combattent (0065, 0068, 0069) et qui revient par la sortie console, une surface qu'aucun
-autre contrôle ne regarde.
+Un test et pas seulement un fix : le littéral d'instance dans le moteur est une classe de défaut
+qui revient par la sortie console, une surface qu'aucun autre contrôle ne regarde.
 """
 
 import re

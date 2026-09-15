@@ -55,6 +55,7 @@ CORE_VENDOR_DIR = HYGIENE_DIR / "vendor"
 sys.path.insert(0, str(CORE_HOOKS_DIR))
 from render_docs import (  # noqa: E402
     SuiteIdentity,
+    _MarkdownParagraphs,
     has_generated_index,
     inject_readme_sections_local,
     render_index_home,
@@ -87,6 +88,7 @@ __all__ = [
     "CORE_CI_DIR",
     "engine_version",
     "SuiteIdentity",
+    "_MarkdownParagraphs",
     "inject_readme_sections_local",
     "has_generated_index",
     "render_index_home",

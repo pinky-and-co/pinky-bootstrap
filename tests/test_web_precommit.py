@@ -1,6 +1,6 @@
 """Web pre-commit extra — detection, assembly, and hook behaviour.
 
-Defines "done" for the chantier-0001 card `web-precommit`: a web repo (package.json, no
+A web repo (package.json, no
 pyproject) gets `extras/web.yaml`; the three warn-only hooks never block; `js-engine-sync` is a
 hard block.
 """

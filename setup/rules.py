@@ -13,6 +13,7 @@ rather than a single fixed workspace path.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -143,9 +144,29 @@ def discover_plugin_rule_dirs() -> list[Path]:
     return sorted(p for p in RULES_DIR.iterdir() if p.is_dir())
 
 
+@dataclass(frozen=True, eq=False)
+class PluginRulesResult(Mapping[Path, RulesReport]):
+    """A plugin's distribution outcome: its `RulesReport` at each resolved target directory.
+
+    A read-only mapping — supports `[target]`, `.items()`, `.keys()`, truthiness and `== {}`,
+    exactly like the plain `dict` it replaces.
+    """
+
+    by_target: dict[Path, RulesReport] = field(default_factory=dict)
+
+    def __getitem__(self, key: Path) -> RulesReport:
+        return self.by_target[key]
+
+    def __iter__(self) -> Iterator[Path]:
+        return iter(self.by_target)
+
+    def __len__(self) -> int:
+        return len(self.by_target)
+
+
 def distribute_all_plugin_rules(
     workspace_root: Path, *, apply: bool = True
-) -> dict[str, dict[Path, RulesReport]]:
+) -> dict[str, PluginRulesResult]:
     """Distribute every ``rules/<plugin>/`` to its resolved targets.
 
     Keyed by plugin name, then by target path. A plugin never installed on this machine still
@@ -180,9 +201,9 @@ def distribute_all_plugin_rules(
         for target in targets_by_plugin[plugin_dir.name]:
             plugins_by_target.setdefault(target, []).append(plugin_dir)
 
-    result: dict[str, dict[Path, RulesReport]] = {}
+    result: dict[str, PluginRulesResult] = {}
     for plugin_dir in plugin_dirs:
-        result[plugin_dir.name] = {}
+        by_target: dict[Path, RulesReport] = {}
         for target in targets_by_plugin[plugin_dir.name]:
             sibling_owned = frozenset(
                 sibling_src.name
@@ -190,9 +211,10 @@ def distribute_all_plugin_rules(
                 if other != plugin_dir
                 for sibling_src in other.glob("*.md")
             )
-            result[plugin_dir.name][target] = distribute_rules(
+            by_target[target] = distribute_rules(
                 plugin_dir, target, apply=apply, sibling_owned=sibling_owned
             )
+        result[plugin_dir.name] = PluginRulesResult(by_target)
     return result
 
 
@@ -222,7 +244,7 @@ def print_rules_report(report: RulesReport, workspace: Path) -> None:
     print(f"\n  unchanged: {len(report.unchanged)}")
 
 
-def print_all_plugin_rules_report(result: dict[str, dict[Path, RulesReport]]) -> None:
+def print_all_plugin_rules_report(result: dict[str, PluginRulesResult]) -> None:
     """Print a distribution plan or report for every plugin/target pair from
     :func:`distribute_all_plugin_rules`."""
     for plugin_name, by_target in result.items():

@@ -1,7 +1,7 @@
 """setup/plugin_reconcile.py — audit where every known plugin is actually enabled.
 
 `pinky plugins reconcile` needs the real picture before it can ask the user to fix it. Two
-registries, deliberately not merged (measured 2026-09-02):
+registries, deliberately not merged:
 
 - **`enabledPlugins`** in every `.claude/settings.json` / `.claude/settings.local.json` — where a
   plugin is *activated*. `~/.claude/settings.json` is the user scope; a file at a workspace
@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,33 @@ _USER_CLAUDE = Path.home() / ".claude"
 _REGISTRY = _USER_CLAUDE / "plugins" / "installed_plugins.json"
 
 
+@dataclass(frozen=True, eq=False)
+class _ScopeLabels:
+    """Sorted, duplicate-free scope labels — 'user', a directory label, or its '(local)' variant.
+
+    Proxies `tuple[str, ...]` (iteration, length, equality against a plain tuple) so the existing
+    `in`/`join`/`==`/set-unpacking call sites need no change.
+    """
+
+    values: tuple[str, ...] = ()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _ScopeLabels):
+            return self.values == other.values
+        if isinstance(other, tuple):
+            return self.values == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.values)
+
+
 @dataclass(frozen=True)
 class PluginState:
     """Everything the reconcile flow needs to know about one plugin, by its ``<id>@<marketplace>``
@@ -36,11 +64,11 @@ class PluginState:
 
     plugin_id: str
     marketplace: str
-    enabled_at: tuple[str, ...]
-    disabled_at: tuple[str, ...]
-    installed_scopes: tuple[str, ...]
+    enabled_at: _ScopeLabels
+    disabled_at: _ScopeLabels
+    installed_scopes: _ScopeLabels
     ships_status_line: bool
-    required_by: tuple[str, ...] = ()
+    required_by: _ScopeLabels = _ScopeLabels()
 
     @property
     def is_user_enabled(self) -> bool:
@@ -192,11 +220,13 @@ def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
         result[plugin_id] = PluginState(
             plugin_id=plugin_id,
             marketplace=marketplace,
-            enabled_at=tuple(sorted(enabled_at.get(plugin_id, ()))),
-            disabled_at=tuple(sorted(disabled_at.get(plugin_id, ()))),
-            installed_scopes=tuple(sorted(installed_scopes.get(plugin_id, ()))),
+            enabled_at=_ScopeLabels(tuple(sorted(enabled_at.get(plugin_id, ())))),
+            disabled_at=_ScopeLabels(tuple(sorted(disabled_at.get(plugin_id, ())))),
+            installed_scopes=_ScopeLabels(
+                tuple(sorted(installed_scopes.get(plugin_id, ())))
+            ),
             ships_status_line=ships_sl,
-            required_by=tuple(sorted(dependents.get(bare_id, ()))),
+            required_by=_ScopeLabels(tuple(sorted(dependents.get(bare_id, ())))),
         )
     return result
 
@@ -241,10 +271,10 @@ def print_audit_report(audit: dict[str, PluginState]) -> None:
     """Print the bare `pinky plugins reconcile` audit — one block per plugin, facts only.
 
     Takes the already-computed audit, so "n'écrit rien" holds by construction: this function
-    only reaches `print`. Facts only, every plugin, no filtering and no recommendation
-    (NFR-0023-16, ASS-0023-19, FR-0023-33) — where it is enabled / disabled / has files, and
-    whether it ships a status line. The `--apply` loop is what proposes a target; the per-plugin
-    placement recommendation lives in the chantier story for the human, never coded here.
+    only reaches `print`. Facts only, every plugin, no filtering and no recommendation — where
+    it is enabled / disabled / has files, and whether it ships a status line. The `--apply` loop
+    is what proposes a target; the per-plugin placement recommendation is a human decision,
+    never coded here.
     """
     if not audit:
         print("No plugin found in any settings file or the install registry.")
@@ -283,7 +313,7 @@ def stale_labels(
     state: PluginState,
     label_map: dict[str, Path],
     *,
-    keep: set[str],
+    keep: Iterable[str],
     include_disabled: bool = True,
 ) -> list[str]:
     """Which of `state`'s enabled (and, unless `include_disabled=False`, disabled) labels fall
@@ -303,7 +333,7 @@ def stale_labels(
 
 def _pop_key(settings_file: Path, spec: str) -> bool:
     """Delete `spec` from one settings file's `enabledPlugins`, recording the removal in the
-    installer ledger (IMP-0023-22). Returns True when a key was actually removed."""
+    installer ledger. Returns True when a key was actually removed."""
     if not settings_file.is_file():
         return False
     try:
@@ -350,7 +380,7 @@ def purge_other_enables(
     state: PluginState,
     label_map: dict[str, Path],
     *,
-    keep: set[str],
+    keep: Iterable[str],
     include_disabled: bool = True,
 ) -> None:
     """Remove every enable for `spec` whose directory is not in `keep`. `keep` holds
@@ -391,7 +421,7 @@ def purge_other_enables(
 def _uninstall_everywhere(
     spec: str, state: PluginState, label_map: dict[str, Path]
 ) -> None:
-    """`claude plugin uninstall` once per registry scope the plugin occupies (FR-0023-37), then
+    """`claude plugin uninstall` once per registry scope the plugin occupies, then
     sweep any settings key the CLI did not clear — a pure `@inline` key has no registry entry, so
     the first loop is empty and it is popped straight out of its file."""
     for scoped in state.installed_scopes:
@@ -406,7 +436,7 @@ def _decision_still_holds(
     recorded: str, state: PluginState, label_map: dict[str, Path]
 ) -> bool:
     """Does the machine still sit where a prior `--apply` left this plugin? If so a re-run skips
-    it (NFR-0023-14). `skip` records nothing, so it is never seen here — always re-prompted."""
+    it. `skip` records nothing, so it is never seen here — always re-prompted."""
     if recorded == "uninstall":
         return not (state.enabled_at or state.disabled_at or state.installed_scopes)
     if recorded == "user":
@@ -430,10 +460,10 @@ def _ensure_user_enabled(spec: str, state: PluginState) -> None:
 def apply_reconcile(workspace_root: Path) -> None:
     """Interactive `pinky plugins reconcile --apply`: walk every audited plugin, show its state,
     ask where it belongs (`user` / `project` wizard / `uninstall` / `skip`), then make the machine
-    match — including removing every enable that does not fit the chosen target (FR-0023-34/35).
+    match — including removing every enable that does not fit the chosen target.
 
-    Refuses a non-interactive shell rather than guessing (FR-0023-39). Each decision is recorded
-    in the installer ledger so a re-run only revisits what is still divergent (NFR-0023-14).
+    Refuses a non-interactive shell rather than guessing. Each decision is recorded
+    in the installer ledger so a re-run only revisits what is still divergent.
     """
     if not sys.stdin.isatty():
         print(

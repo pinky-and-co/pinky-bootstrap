@@ -1,6 +1,6 @@
 """setup/plugin_scope.py — which directories a plugin gets enabled at.
 
-`enabledPlugins` resolves per directory, not always user-level (ADR-0001, corrigé 2026-08-21) —
+`enabledPlugins` resolves per directory, not always user-level —
 `.claude/settings.json` at a directory applies to any session started under it, crossing nested
 `.git` boundaries on the way down. A plugin can therefore be enabled at the workspace root, at a
 group directory (`pinky-lib/` — not itself a git repo, several repos nested under it), or at one
@@ -8,8 +8,8 @@ specific repo, or several of these at once.
 
 The wizard picks those targets; the enable itself is `claude plugin install --scope project` run
 from each target (`plugin_install.enable_at_project`), never a hand-rolled `enabledPlugins` merge —
-Claude Code's own command writes `<target>/.claude/settings.json` and the registry entry together
-(measured 2026-09-02). User scope is the other branch: the plugin the user keeps global stays where
+Claude Code's own command writes `<target>/.claude/settings.json` and the registry entry together.
+User scope is the other branch: the plugin the user keeps global stays where
 `install_plugin_files` already enabled it.
 
 The wizard only *picks and enables targets*; the user-scope lifecycle (dropping the fetch-time

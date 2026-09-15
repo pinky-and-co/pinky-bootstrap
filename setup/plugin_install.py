@@ -2,7 +2,7 @@
 
 `claude plugin install --scope <s>` (Claude Code's own command) both fetches a plugin into
 `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/` and enables it — there is no fetch-only
-mode. Where the enablement lands is `--scope` × cwd (measured 2026-09-02):
+mode. Where the enablement lands is `--scope` × cwd:
 
 - `--scope user` → `~/.claude/settings.json` `enabledPlugins`.
 - `--scope project` run from dir X → `X/.claude/settings.json` `enabledPlugins`, plus a registry
@@ -17,7 +17,7 @@ entry once the real project targets are enabled.
 
 One thing `claude plugin install` does not do that this workspace needs: the main-session
 `statusLine` key is not readable from a plugin's bundled `settings.json` — Claude Code reads only
-`agent` and `subagentStatusLine` there (verified 2026-08-28) — so a plugin that ships a status line
+`agent` and `subagentStatusLine` there — so a plugin that ships a status line
 still needs an explicit `statusLine` entry pointing at its installed script. That entry is an
 absolute path with the plugin version in it, so `set_status_lines` re-resolves it from the install
 registry (never a guessed path) on every `pinky install` run — the replayable-converger model.
@@ -30,6 +30,8 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import state_file
@@ -124,7 +126,7 @@ def enable_at_project(
 def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
     """Uninstall the plugin at user scope — `claude plugin uninstall --scope user` removes the
     user `enabledPlugins` key and the user registry entry; the cached files stay because any
-    project entries reference the same `installPath` (measured 2026-09-02).
+    project entries reference the same `installPath`.
 
     Dumb primitive: it always uninstalls. The caller decides whether that is safe — it drops the
     entry only when it captured `is_user_enabled() is False` before the fetch, so a legitimate
@@ -174,13 +176,40 @@ def ships_lsp_server(install_path: Path) -> bool:
     """Does the installed plugin carry a language-server config on disk (`*.lsp.json`)? The
     signal `ensure_lsp_tool_enabled` needs before it writes anything — independent of which
     marketplace the plugin came from, so it stays correct if the official marketplace's
-    propagation bug (measured 2026-09-04: only LICENSE/README land in the cache) ever gets fixed
+    propagation bug (only LICENSE/README land in the cache) ever gets fixed
     upstream. A plugin whose files never carried this config, from any source, is a no-op here.
     """
     return any(install_path.rglob("*.lsp.json"))
 
 
-def lsp_server_commands(install_path: Path) -> set[str]:
+@dataclass(frozen=True, eq=False)
+class LspServerCommands:
+    """Binaries an installed plugin's `*.lsp.json` file(s) declare a language server needs.
+
+    Proxies `frozenset[str]` (iteration, length, equality/hash against a plain set) so the
+    existing call sites need no change.
+    """
+
+    values: frozenset[str] = frozenset()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, LspServerCommands):
+            return self.values == other.values
+        if isinstance(other, frozenset | set):
+            return self.values == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.values)
+
+
+def lsp_server_commands(install_path: Path) -> LspServerCommands:
     """Every `command` an installed plugin's `*.lsp.json` file(s) declare — the binaries a working
     language server needs on PATH (`pyright-langserver` for `pyright`, ...). `setup/doctor.py`'s
     `required_lsp_binaries` reads this to check they are actually installed, the same way
@@ -198,7 +227,7 @@ def lsp_server_commands(install_path: Path) -> set[str]:
         for entry in data.values():
             if isinstance(entry, dict) and isinstance(entry.get("command"), str):
                 commands.add(entry["command"])
-    return commands
+    return LspServerCommands(frozenset(commands))
 
 
 def ensure_lsp_tool_enabled() -> None:

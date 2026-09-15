@@ -1,15 +1,14 @@
-"""`cli_pinky.py` — sub-commands over `setup.py`'s flags (chantier-0001, card
-`cli-pinky-sous-commandes-au-lieu-de-flags`).
+"""`cli_pinky.py` — sub-commands over `setup.py`'s flags.
 
-Pins the exact defect the card measured: `setup.py --help` swallows `--help` as an unknown flag
+Pins the exact defect measured: `setup.py --help` swallows `--help` as an unknown flag
 (`add_help=False` + `parse_known_args`) and falls into the interactive install branch, which WRITES.
 `cli_pinky.py --help` must exit 0, print the sub-commands, and write nothing.
 
 Dispatch is tested by capturing what each `cmd_*` hands to `setup.cli.main()` — proof the helper
-stays a thin translator (the card's "zero logic" constraint), never a second copy of setup/cli.py's
+stays a thin translator ("zero logic"), never a second copy of setup/cli.py's
 mode logic.
 
-The implementation lives in `setup/cli_pinky.py` (kanban card `cli-pinky-py-n-est-pas-editable`);
+The implementation lives in `setup/cli_pinky.py`;
 `cli_pinky` (root) is a thin re-exporting shim over it. Tests call through `cli_pinky.main` — the
 same function object as `cli_pinky_impl.main` — but patch dispatch targets on `cli_pinky_impl`,
 since that's the module a `cmd_*` function's globals actually resolve `setup_main` against.

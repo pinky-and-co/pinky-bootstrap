@@ -439,7 +439,7 @@ def test_apply_fixes_npm_installs_a_missing_lsp_binary(monkeypatch):
 
 def test_apply_fixes_partitions_per_tool_brew_runs_npm_skips(monkeypatch):
     """Only `brew` is on PATH — the brew-fixable check still runs, the npm one degrades to a
-    manual instruction instead of blocking the whole batch (FR-0024-18, extended: the fixes no
+    manual instruction instead of blocking the whole batch (the fixes no
     longer share one package manager)."""
     monkeypatch.setattr(
         doctor.shutil,
@@ -520,8 +520,8 @@ def test_cmd_doctor_delegates_the_flag(monkeypatch):
     [["install"], ["install", "--plugin", "pc-snow"], ["install", "--theme", "x"]],
 )
 def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):
-    """Every `pinky install` path runs the preflight, and a missing prerequisite never raises
-    (FR-0024-19) — `--plugin` most of all: it activates a plugin whose prerequisites are new."""
+    """Every `pinky install` path runs the preflight, and a missing prerequisite never raises —
+    `--plugin` most of all: it activates a plugin whose prerequisites are new."""
     monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: None)
     ran: list[bool] = []
     # renvoie 3 (prérequis manquants) — `cmd_install` doit l'ignorer, jamais lever

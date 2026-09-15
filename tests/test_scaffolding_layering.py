@@ -1,5 +1,5 @@
 """Public-corpus hygiene — the moteur's own commands/agents/rules never leak instance-specific
-content, and every domain rule stays path-scoped (chantier-0001 card `agents-commands-layering`).
+content, and every domain rule stays path-scoped.
 """
 
 import sys
@@ -34,7 +34,7 @@ def test_every_domain_rule_is_path_scoped(tmp_path):
 
     Elle vit désormais dans le `.claude/rules/` de la racine, partagé par tous les repos frères ;
     sans `paths:` elle serait injectée même en travaillant sur un repo JS. C'est précisément la
-    dépense qu'ADR-0057 a mesurée et réduite, et le prix à payer pour avoir supprimé le sous-arbre.
+    dépense qu'on a mesurée et réduite en supprimant le sous-arbre — le prix à payer pour ça.
     """
     for f in sorted(
         (setup.AGENTIC_HARNESS_DIR / "rules" / "domain-snowflake").glob("*.md")

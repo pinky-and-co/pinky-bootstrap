@@ -1,5 +1,5 @@
-"""`setup.py --new-repo <name> --scaffold` — product scaffolding (chantier-0001 card
-scaffolding-produit-from-zero). Separate from governance (git init + distribute(), tested in
+"""`setup.py --new-repo <name> --scaffold` — product scaffolding. Separate from governance (git
+init + distribute(), tested in
 test_new_repo.py): this lays down the docs/ Diátaxis skeleton + universal stubs. Opt-in
 (`--scaffold`), idempotent (never overwrites an existing file).
 """

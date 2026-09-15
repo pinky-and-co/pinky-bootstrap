@@ -1,10 +1,8 @@
-"""pinky-bootstrap toolbox — sub-commands over setup.py's flags (chantier-0001, card
-`cli-pinky-sous-commandes-au-lieu-de-flags`).
+"""pinky-bootstrap toolbox — sub-commands over setup.py's flags.
 
 Lives in `setup/` — not at the repo root — so an editable install (`packages = ["setup"]`) picks up
 edits live. The root-level `cli_pinky.py` shim exists purely so `python cli_pinky.py …` still works
-from a bare clone (kanban card `cli-pinky-py-n-est-pas-editable`); it re-exports `main`/`setup_main`
-from here unchanged.
+from a bare clone; it re-exports `main`/`setup_main` from here unchanged.
 
 Thin dispatch ONLY: every `cmd_*` below builds the equivalent `setup.cli` flags and delegates to
 `setup.cli.main()` — the single source of truth for what each mode does stays `setup/cli.py`. Any
@@ -106,6 +104,7 @@ def _assets_epilog() -> str:
 
 
 def _epilog() -> str:
+    """Top-level `--help` epilog: the Claude Code commands index, then the standalone scripts."""
     sections = [
         (
             "🤖 Claude Code commands (see .claude/commands/, or /help in a session):",
@@ -117,6 +116,7 @@ def _epilog() -> str:
 
 
 def cmd_new_repo(args: argparse.Namespace) -> None:
+    """Translate `new-repo` flags to `setup.cli`'s `--new-repo`/`--scaffold`/`--type`."""
     argv = ["--new-repo", args.name]
     if args.scaffold or args.type:
         argv.append("--scaffold")
@@ -126,6 +126,7 @@ def cmd_new_repo(args: argparse.Namespace) -> None:
 
 
 def cmd_distribute(args: argparse.Namespace) -> None:
+    """Translate `distribute` flags to `setup.cli`'s equivalent `--repo`/`--all`/... flags."""
     argv: list[str] = []
     if args.repo:
         argv += ["--repo", args.repo]
@@ -143,6 +144,7 @@ def cmd_distribute(args: argparse.Namespace) -> None:
 
 
 def cmd_rules(args: argparse.Namespace) -> None:
+    """Translate `rules` flags to `setup.cli`'s `--rules` flag."""
     argv = ["--rules"]
     if args.workspace:
         argv.append(args.workspace)
@@ -154,10 +156,12 @@ def cmd_rules(args: argparse.Namespace) -> None:
 
 
 def cmd_drift(args: argparse.Namespace) -> None:
+    """Translate `drift` to `setup.cli`'s `--check-drift`."""
     setup_main(["--check-drift"])
 
 
 def cmd_llm_drift(args: argparse.Namespace) -> None:
+    """Translate `llm-drift` flags to `setup.cli`'s `--llm-drift` and its options."""
     argv = ["--llm-drift", args.action]
     if args.repo:
         argv += ["--repo", args.repo]
@@ -173,24 +177,28 @@ def cmd_llm_drift(args: argparse.Namespace) -> None:
 
 
 def cmd_directives(args: argparse.Namespace) -> None:
+    """Translate `directives` to `setup.cli`'s `--directives`, with the optional error code."""
     setup_main(["--directives", *([args.code] if args.code else [])])
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
+    """Translate `doctor` to `setup.cli`'s `--doctor`, with the optional `--fix`."""
     setup_main(["--doctor", *(["--fix"] if args.fix else [])])
 
 
 def cmd_docs(args: argparse.Namespace) -> None:
+    """Translate `docs <action>` to `setup.cli`'s `--live-docs-<action>`."""
     setup_main([f"--live-docs-{args.action}"])
 
 
 def cmd_plugins(args: argparse.Namespace) -> None:
+    """Translate `plugins <action>` to `setup.cli`'s `--plugins-<action>`, with the optional `-apply`."""
     flag = f"--plugins-{args.action}"
     setup_main([f"{flag}-apply"] if args.apply else [flag])
 
 
 def cmd_install(args: argparse.Namespace) -> None:
-    """Replayable installer (Entrée 4, `cli-setup-repo-lot1.md`) — converges this machine's setup.
+    """Replayable installer that converges this machine's setup.
 
     `--plugin` fetches the plugin (`claude plugin install`) then either wires its status line
     (`setup.plugin_install.set_status_lines`) or runs the scope wizard; `--output-style`/`--theme`
@@ -264,6 +272,7 @@ def _drift_kinds_epilog() -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the `pinky` argument parser: one sub-command per `cmd_*` function above."""
     parser = argparse.ArgumentParser(
         description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
         epilog=_epilog(),
@@ -545,6 +554,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command."""
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:

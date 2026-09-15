@@ -1,5 +1,5 @@
 """setup/state_file.py — the `pinky install` ledger: what it POSED, so a later run knows what it
-owns (décision 7, Entrée 4 de `cli-setup-repo-lot1.md`, arbitré 2026-08-14).
+owns.
 
 Records not just Y/N but the path and value written for each entry. On Y->N, removal happens only
 if the current value is still what we posed — if another tool changed it since, we leave it alone

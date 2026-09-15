@@ -1,4 +1,4 @@
-"""Oracles for `render_ci_yml`'s install/audit steps (chantier-0024, durcir-resolution-deps-ci).
+"""Oracles for `render_ci_yml`'s install/audit steps.
 
 `pip install -e . --group dev` ignored the committed `uv.lock` — live resolution against PyPI on
 every run. Replaced by `uv sync --locked` (fails on drift instead of installing a stale lock

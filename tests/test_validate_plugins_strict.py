@@ -60,11 +60,17 @@ class TestMain(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_all_pass_exits_zero(self):
-        with patch.object(vps, "validate", return_value=(True, "ok")):
+        with patch.object(
+            vps, "validate", return_value=vps.ValidationResult(True, "ok")
+        ):
             self.assertEqual(vps.main(), 0)
 
     def test_one_failure_exits_one(self):
-        with patch.object(vps, "validate", return_value=(False, "Unknown field")):
+        with patch.object(
+            vps,
+            "validate",
+            return_value=vps.ValidationResult(False, "Unknown field"),
+        ):
             self.assertEqual(vps.main(), 1)
 
     def test_missing_claude_cli_exits_one(self):

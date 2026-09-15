@@ -6,12 +6,12 @@ with ONLY `.darglint` changed, `setup.py --repo <name> --commit` returned
 **"up-to-date (nothing to commit)"** — measured, not assumed — while the file sat modified in the
 working tree. Not an incomplete commit: a clean bill of health over a change it never looked at.
 
-Found 2026-08-07 while adding `ignore_raise = exc` to the socle — the 9 python repos each came out
+Found while adding `ignore_raise = exc` to the socle — several python repos each came out
 with a modified `.darglint` that had to be committed by hand.
 
 **`.secrets.baseline` is deliberately NOT in the set**, and not because a human edits it — checked
 across the parc, none ever has. It is created once when missing, then rewritten by detect-secrets in
-reaction to the repo's OWN code (`pinky-provider` 3b3547a filled its `results` with findings from a
+reaction to the repo's OWN code (a real repo's baseline filled with findings from a
 `secret.py` that same commit added). A distribution therefore never modifies it, so staging it could
 only sweep a repo-side change into a distribution commit.
 """
@@ -159,8 +159,8 @@ def test_secrets_baseline_is_not_a_distributed_path():
     Asserted on the tuple rather than through a real commit, on purpose. Driving it behaviourally
     means writing a `.secrets.baseline` and committing for real — which runs the `Detect secrets`
     hook, so the test would pass or fail on whether the fixture's JSON satisfies detect-secrets and
-    on whether `prek` is on PATH (absent from the CI runner — the ambient axis that already turned
-    two tests red on 2026-08-07). The staging mechanism itself is covered behaviourally by
+    on whether `prek` is on PATH (absent from the CI runner — an ambient axis that has already
+    turned tests red before). The staging mechanism itself is covered behaviourally by
     `test_commit_distribution_stages_a_changed_darglint`; what is left to pin here is the membership
     decision, and that is exactly what this asserts.
     """

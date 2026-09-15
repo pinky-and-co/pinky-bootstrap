@@ -274,7 +274,7 @@ def _snapshot(root: Path) -> dict[str, bytes]:
 
 
 def test_report_lists_every_plugin_shape_and_writes_nothing(world, tmp_path, capsys):
-    """FR-0023-32 + FR-0023-33 oracle: the four shapes all appear, and nothing on disk moves."""
+    """Audit report: the four plugin shapes all appear, and nothing on disk moves."""
     user_claude, ws = world
     # 1) enabled only in one nested repo
     _write_enabled(
@@ -410,11 +410,11 @@ def test_purge_other_enables_include_disabled_false_leaves_the_false_key(world):
 
 class _ClaudeCliSim:
     """Faithful stand-in for `claude plugin install/uninstall` — reproduces the measured on-disk
-    effect (2026-09-02) so the whole chain runs, and records every argv+cwd for oracles.
+    effect so the whole chain runs, and records every argv+cwd for oracles.
 
     Maintains **both** files the real CLI writes: the scoped `settings.json` `enabledPlugins` key
     and the `installed_plugins.json` registry entry (`{scope, projectPath}`). `_pop_key` touching
-    only the first is exactly the gap this card closes — the sim has to model the second for a
+    only the first is exactly the gap this closes — the sim has to model the second for a
     test to see it.
     """
 
@@ -521,7 +521,7 @@ def test_apply_non_interactive_shell_errors_and_writes_nothing(
 
 
 def test_apply_prompts_once_per_plugin_and_routes_each_answer(apply_world, monkeypatch):
-    """FR-0023-34: three plugins, three prompts, each answer routed."""
+    """Three plugins, three prompts, each answer routed."""
     user_claude, ws, _sim = apply_world
     _write_enabled(
         user_claude / "settings.json",
@@ -545,7 +545,7 @@ def test_apply_prompts_once_per_plugin_and_routes_each_answer(apply_world, monke
 
 
 def test_apply_project_target_purges_user_and_parasitic_repo(apply_world, monkeypatch):
-    """FR-0023-35: enabled at user + an unwanted repo, retargeted to the group dir."""
+    """Enabled at user + an unwanted repo, retargeted to the group dir."""
     user_claude, ws, _sim = apply_world
     _write_enabled(user_claude / "settings.json", {"pc-x@mp": True})
     _write_enabled(
@@ -655,7 +655,7 @@ def test_apply_purge_removes_the_registry_entry_of_a_parasitic_project_enable(
 
 
 def test_apply_uninstall_refused_leaves_the_plugin_untouched(apply_world, monkeypatch):
-    """FR-0023-36: answer uninstall, then decline the confirmation."""
+    """Answer uninstall, then decline the confirmation."""
     user_claude, ws, sim = apply_world
     _write_enabled(user_claude / "settings.json", {"p@mp": True})
     _answers(monkeypatch, ["x", "n"])
@@ -670,7 +670,7 @@ def test_apply_uninstall_refused_leaves_the_plugin_untouched(apply_world, monkey
 def test_apply_uninstall_confirmed_call_sequence_and_inline_key(
     apply_world, monkeypatch
 ):
-    """FR-0023-37: a multi-scope plugin → one `claude plugin uninstall` per registry scope; an
+    """A multi-scope plugin → one `claude plugin uninstall` per registry scope; an
     `@inline` key with no registry entry → popped directly, no CLI call."""
     user_claude, ws, sim = apply_world
     repo = ws / "pinky-lib" / "pinky-core"
@@ -703,7 +703,7 @@ def test_apply_uninstall_confirmed_call_sequence_and_inline_key(
 def test_apply_status_line_plugin_warns_and_defaults_to_user(
     apply_world, monkeypatch, capsys
 ):
-    """FR-0023-38: a status-line plugin → warning shown, empty answer means user."""
+    """A status-line plugin → warning shown, empty answer means user."""
     user_claude, ws, sim = apply_world
     install = user_claude / "cache" / "pc-statusline"
     (install / "scripts").mkdir(parents=True)
@@ -741,7 +741,7 @@ def test_apply_status_line_plugin_warns_and_defaults_to_user(
 
 
 def test_apply_is_replayable_second_run_is_quiet(apply_world, monkeypatch):
-    """NFR-0023-14: after a full apply, a second run re-prompts nothing and writes nothing."""
+    """After a full apply, a second run re-prompts nothing and writes nothing."""
     user_claude, ws, _sim = apply_world
     _write_enabled(user_claude / "settings.json", {"a@mp": True, "b@mp": True})
     _answers(monkeypatch, ["s", "u"])

@@ -1,13 +1,12 @@
 """Tests comportementaux du hook `run-tests` — exécution réelle, pas invariant statique.
 
-Ce hook est le portier de qualité de TOUS les repos distribués, et il n'avait aucun test
-(constaté 2026-07-31). Un portier ne se prouve pas en lisant son code : la seule preuve qu'il
-bloque, c'est de le faire bloquer. Chaque cas ci-dessous lance le script dans un dossier temporaire
-et n'assertionne que sur son code de sortie — le contrat du hook, rien d'autre.
+Ce hook est le portier de qualité de TOUS les repos distribués. Un portier ne se prouve pas en
+lisant son code : la seule preuve qu'il bloque, c'est de le faire bloquer. Chaque cas ci-dessous
+lance le script dans un dossier temporaire et n'assertionne que sur son code de sortie — le contrat
+du hook, rien d'autre.
 
 Le cas qui porte la valeur est `test_js_suite_failing_blocks` : retirer la branche JS du hook doit
-le faire repasser au vert (preuve par mutation, `core/rules/base/tests.md`). Avant le 2026-07-31 le
-hook ne savait faire que du pytest, donc une suite JS rouge produisait « Passed ».
+le faire repasser au vert (preuve par mutation, `core/rules/base/tests.md`).
 """
 
 import os
@@ -31,10 +30,9 @@ def _resolve_bash() -> str:
 
     On Windows, a bare `"bash"` resolved via PATH can land on `C:\\Windows\\System32\\bash.exe` —
     the WSL launcher stub, not Git's bash — when it precedes Git's own `bin\\` on PATH. Confirmed
-    on GitHub's `windows-latest` runner (CHANTIER0001 `run-tests-hook-cassé-sous-git-bash`,
-    `bash -x` trace): it exits 1 printing "Windows Subsystem for Linux has no installed
-    distributions", never reaching the script. Git for Windows ships its own `bash.exe` next to
-    `git.exe`'s install root — prefer it explicitly rather than trusting PATH order.
+    on GitHub's `windows-latest` runner: it exits 1 printing "Windows Subsystem for Linux has no
+    installed distributions", never reaching the script. Git for Windows ships its own `bash.exe`
+    next to `git.exe`'s install root — prefer it explicitly rather than trusting PATH order.
     """
     if sys.platform != "win32":
         return "bash"
@@ -71,8 +69,8 @@ def with_python(repo: Path) -> None:
     Enveloppe et NON symlink : un lien symbolique vers l'interpréteur d'un venv (ou d'un
     environnement uv) fait remonter Python jusqu'à l'interpréteur de base pour calculer `sys.prefix`,
     qui perd alors les site-packages de l'environnement — pytest redevient introuvable et le test
-    passerait au vert pour exactement la raison qu'il est censé exclure (mesuré 2026-07-31 :
-    prefix retombé sur le framework système). L'enveloppe invoque le binaire par son vrai chemin.
+    passerait au vert pour exactement la raison qu'il est censé exclure — le prefix retombe
+    sur le framework système. L'enveloppe invoque le binaire par son vrai chemin.
     """
     venv_bin = repo / ".venv" / "bin"
     venv_bin.mkdir(parents=True)
@@ -166,10 +164,9 @@ def test_package_json_test_script_wins_over_file_discovery(tmp_path):
 def test_tests_dir_holding_only_js_does_not_block(tmp_path):
     """Un dossier tests/ sans test Python ne doit pas bloquer sur « aucun test collecté ».
 
-    Régression introduite puis corrigée le 2026-07-31 : sortir les tests JS de la racine statique
-    de PILOT vers tests/ a suffi à déclencher la branche Python, et pytest renvoie 5 quand il ne
-    collecte rien — code non nul, donc traité comme un échec. Les 22 tests JS passaient, le commit
-    était bloqué quand même. Le code 5 est « rien à exécuter », pas « la suite échoue ».
+    Sortir les tests JS de la racine statique vers tests/ suffit à déclencher la branche Python, et
+    pytest renvoie 5 quand il ne collecte rien — code non nul, donc traité comme un échec si on n'y
+    prend pas garde. Le code 5 est « rien à exécuter », pas « la suite échoue ».
     """
     tests = tmp_path / "tests"
     tests.mkdir()
@@ -225,7 +222,7 @@ def test_missing_node_warns_but_does_not_block(tmp_path):
 
 
 def test_test_gate_declares_no_files_pattern():
-    """Le portier de tests ne doit filtrer sur AUCUN motif de chemin (2026-08-07).
+    """Le portier de tests ne doit filtrer sur AUCUN motif de chemin.
 
     Il valait `^(src|tests)/`, soit une **allowlist de layouts** : fausse par défaut pour toute
     arborescence non énumérée. Le moteur lui-même en était la preuve — son code vit dans `setup/`,
@@ -263,11 +260,10 @@ def test_test_gate_declares_no_files_pattern():
 def test_darglint_config_written_when_absent(tmp_path):
     """Un repo python sans `.darglint` en reçoit un — sinon darglint retombe sur son défaut.
 
-    Son défaut est **full**, pas `long` : mesuré le 2026-08-07 sur un docstring d'une ligne avec un
-    paramètre — short 0 · long 0 · full 2 · ni flag ni fichier 2. Le commit a7250ce a retiré le flag
-    CLI `--strictness=short` en affirmant que « chaque repo porte déjà un .darglint » ; c'était faux
-    pour cinq d'entre eux, qui sont donc passés de `short` à `full` en silence. CI de
-    pluto-poc-pilot cassée, quatre autres repos en panne latente.
+    Son défaut est **full**, pas `long` — nettement plus strict, avec son lot de faux positifs sur
+    un docstring pourtant simple. Un repo qui perd ce fichier de configuration (accidentellement,
+    ou par le retrait d'un flag CLI qui le sous-tendait) passe silencieusement de `long` à `full`,
+    sans que rien ne le signale avant que CI ne casse.
     """
     import setup
 
@@ -279,13 +275,12 @@ def test_darglint_config_written_when_absent(tmp_path):
 
 
 def test_darglint_config_converges_a_diverging_repo(tmp_path):
-    """Un repo qui diverge est RAMENÉ à la valeur du socle — uniformité voulue (user, 2026-08-07).
+    """Un repo qui diverge est RAMENÉ à la valeur du socle — uniformité voulue.
 
     La première version gardait le fichier existant, en supposant qu'un repo sur `short` avait
-    décidé. Vérifié : les quatre `.darglint` du parc datent tous du 2026-06-11, trois d'entre eux
-    posés en effet de bord de commits sans rapport. `short` ici et `long` là était une divergence
-    accidentelle, pas une position. Ce test remplace `..._never_overwrites_a_repo_decision`, qui
-    protégeait une décision fantôme.
+    décidé. Vérifié : les `.darglint` du parc étaient tous des effets de bord de commits sans
+    rapport — `short` ici et `long` là était une divergence accidentelle, pas une position. Ce test
+    remplace `..._never_overwrites_a_repo_decision`, qui protégeait une décision fantôme.
     """
     import setup
 

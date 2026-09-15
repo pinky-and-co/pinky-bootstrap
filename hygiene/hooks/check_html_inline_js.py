@@ -24,6 +24,7 @@ DATA_TYPE_RE = re.compile(
 
 
 def _inline_script_count(filepath: str) -> int:
+    """Count of `<script>` blocks in `filepath` with a non-empty body and no `src`/JSON-LD type."""
     try:
         with open(filepath, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -39,11 +40,13 @@ def _inline_script_count(filepath: str) -> int:
 
 
 def _is_disabled() -> bool:
+    """True if this hook's filename stem is listed in `PINKY_DISABLED_HOOKS` (comma-separated)."""
     disabled = os.environ.get("PINKY_DISABLED_HOOKS", "")
     return Path(__file__).stem in {h.strip() for h in disabled.split(",") if h.strip()}
 
 
 def main() -> int:
+    """Warn on every `.html` argument that has an inline `<script>` body; always exits 0."""
     if _is_disabled():
         return 0
     for filepath in sys.argv[1:]:

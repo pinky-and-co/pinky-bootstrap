@@ -1,10 +1,8 @@
 """`plugin-repo` extra — the manifest/vendor gates it owns, and the quality-gate scope a plugin
 repo's *full* config (python + plugin-repo) resolves to.
 
-Card `agents-provider-routing-offline-adversarial.md` (chantier 0023) once needed a narrower copy
-of the `python` extra's hooks here because that extra was hardcoded to `^src/`. `_py_lint_roots`
-now derives the scope (chantier 0024), so the `python` extra covers `^plugins/` for a plugin repo
-and this extra carries only what has no other home.
+`_py_lint_roots` derives the scope from the repo's own layout, so the `python` extra covers
+`^plugins/` for a plugin repo and this extra carries only what has no other home.
 """
 
 import sys
@@ -51,7 +49,7 @@ def test_quality_hooks_are_not_duplicated_by_the_plugin_repo_extra(tmp_path):
 
 
 def test_validate_plugins_strict_hook_present(tmp_path):
-    """Card `declarer-dependencies-plugin-et-valider-strict.md` (chantier 0023): every plugin repo
+    """Every plugin repo
     must run `claude plugin validate --strict` on its own manifests as a commit-time gate."""
     cfg = _plugin_repo_config(tmp_path)
     assert "id: validate-plugins-strict" in cfg
@@ -105,7 +103,7 @@ def test_check_vendor_checksum_regex_covers_the_spawn_workers_copy(tmp_path):
 
 
 def test_check_vendor_checksum_hook_present(tmp_path):
-    """Card `decouper-pc-core-en-pc-git-et-pc-kanban.md` (chantier 0023): a vendored file
+    """A vendored file
     (policy_lib.py, secret_patterns.py, …) must be checked against its source checksum at commit
     time."""
     cfg = _plugin_repo_config(tmp_path)

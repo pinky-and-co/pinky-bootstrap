@@ -23,6 +23,7 @@ if sys.platform == "win32":
 
 
 def _is_disabled() -> bool:
+    """True if this hook's filename stem is listed in `PINKY_DISABLED_HOOKS` (comma-separated)."""
     disabled = os.environ.get("PINKY_DISABLED_HOOKS", "")
     return Path(__file__).stem in {h.strip() for h in disabled.split(",") if h.strip()}
 
@@ -33,6 +34,7 @@ def _min_sibling(js_path: str) -> str:
 
 
 def _staged_files() -> set[str]:
+    """Paths currently staged for commit (added/copied/modified), per `git diff --cached`."""
     result = subprocess.run(
         ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
         capture_output=True,
@@ -44,6 +46,7 @@ def _staged_files() -> set[str]:
 
 
 def main() -> int:
+    """Fail if a staged `engine.js` has no matching staged `engine.min.js`; returns 1 on any mismatch."""
     if _is_disabled():
         return 0
     staged = _staged_files()

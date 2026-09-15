@@ -74,3 +74,8 @@ live-docs/docs/
 # Claude Code local session state (permission-change skill), not source
 .claude/.guard-state.json
 .headroom_wrap_settings.lock
+
+# Ad-hoc tooling for a cross-session handoff (export to an external tool, reimport its result
+# later) — never the ephemeral session scratchpad, which is purged with the session and would
+# lose the handoff before the round trip completes.
+.local/

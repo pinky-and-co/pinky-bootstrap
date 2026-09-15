@@ -1,12 +1,12 @@
-"""The RENDER path must report drift too — the angle ADR-0055 left open.
+"""The RENDER path must report drift too.
 
-Card `render-path-ne-verifie-aucune-derive`: ADR-0055 folded the drift check into `run_distribution()`
-precisely so nobody could forget it ("the tool tells you, you don't have to think about it"). But it
+The drift check lives in `run_distribution()` precisely so nobody could forget it ("the tool tells
+you, you don't have to think about it"). But it
 only fires on the DISTRIBUTION flags (`--repo`, `--all`, `--check-drift`). The second path — rendering,
 `--provider claude` / `--into` — writes CLAUDE.md and `.claude/` and checks nothing. A session that
 edits `hygiene/pre-commit/` then runs only `--provider claude`, which is what
 `feedback_core_edit_needs_setup` prescribes to the letter, walks away believing it distributed while
-the 19 repos stay stale without a word. Measured 2026-08-05: 30 divergences accumulated that way.
+the repos it did not touch stay stale without a word.
 
 **Non-blocking, by requirement.** The render path must stay usable on a machine whose repos are not
 cloned yet (framework targets #2 and #3 — the brother's POC-light box, a colleague's own setup).

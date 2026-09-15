@@ -23,7 +23,7 @@ from setup import cli, plugin_install, plugin_reconcile, state_file
 
 
 class _ClaudeCliSim:
-    """Reproduces the measured on-disk effect of `claude plugin install/uninstall` (2026-09-02)."""
+    """Reproduces the measured on-disk effect of `claude plugin install/uninstall`."""
 
     def __init__(self, fake_home: Path):
         self.fake_home = fake_home

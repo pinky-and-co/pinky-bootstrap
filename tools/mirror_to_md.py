@@ -129,6 +129,8 @@ def convert_html(html: str) -> str | None:
 
 @dataclass
 class TopicReport:
+    """Per-topic conversion tally: page counts by outcome, byte totals, and (path, error) pairs."""
+
     topic: str
     converted: int = 0
     skipped_empty: int = 0
@@ -139,6 +141,7 @@ class TopicReport:
 
 
 def human(n: float) -> str:
+    """Human-readable byte size for `n`, scaling from B up through KB/MB/GB."""
     for unit in ("B", "KB", "MB"):
         if n < 1024:
             return f"{n:.0f}{unit}" if unit == "B" else f"{n:.1f}{unit}"
@@ -181,6 +184,7 @@ def convert_topic(topic_dir: Path, dry_run: bool) -> TopicReport:
 
 
 def discover_topics(api_root: Path, only: list[str]) -> list[Path]:
+    """Topic directories directly under `api_root` (dotdirs excluded), filtered to `only` if given."""
     topics = [
         d
         for d in sorted(api_root.iterdir())
@@ -193,6 +197,10 @@ def discover_topics(api_root: Path, only: list[str]) -> list[Path]:
 
 
 def main() -> int:
+    """Convert every discovered topic's HTML mirror to Markdown and print a per-topic + total report.
+
+    Returns 1 if any page errored during conversion, 0 otherwise.
+    """
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
