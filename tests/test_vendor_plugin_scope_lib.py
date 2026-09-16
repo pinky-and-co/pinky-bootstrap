@@ -319,3 +319,57 @@ def test_shared_backup_never_existed_is_removed_on_full_restore(monkeypatch, tmp
     settings_local.write_text(json.dumps({"enabledPlugins": {"cwd-written@mp": True}}))
     psl.restore_settings_local_shared(settings_local, "A")
     assert not settings_local.exists()
+
+
+class _FakeKernel32:
+    """Boundary fake for `ctypes.windll.kernel32` — same posture as faking
+    `subprocess.run` for the `claude` CLI elsewhere in this file."""
+
+    def __init__(self, *, handle: int, exit_code: int | None):
+        self._handle = handle
+        self._exit_code = exit_code
+        self.closed_handles: list[int] = []
+
+    def OpenProcess(self, access, inherit, pid):
+        return self._handle
+
+    def GetExitCodeProcess(self, handle, exit_code_ptr):
+        if self._exit_code is None:
+            return 0  # échec de l'appel
+        exit_code_ptr.contents.value = self._exit_code
+        return 1
+
+    def CloseHandle(self, handle):
+        self.closed_handles.append(handle)
+        return 1
+
+
+def _patch_windll(monkeypatch, kernel32: _FakeKernel32) -> None:
+    import ctypes
+
+    monkeypatch.setattr(psl.sys, "platform", "win32")
+    monkeypatch.setattr(
+        ctypes, "windll", type("W", (), {"kernel32": kernel32})(), raising=False
+    )
+
+
+def test_is_alive_windows_still_active_is_true(monkeypatch):
+    kernel32 = _FakeKernel32(handle=1, exit_code=259)  # STILL_ACTIVE
+    _patch_windll(monkeypatch, kernel32)
+    assert psl._is_alive(1234) is True
+    assert kernel32.closed_handles == [1]
+
+
+def test_is_alive_windows_exited_process_is_false(monkeypatch):
+    kernel32 = _FakeKernel32(handle=1, exit_code=0)  # sorti, pas STILL_ACTIVE
+    _patch_windll(monkeypatch, kernel32)
+    assert psl._is_alive(1234) is False
+
+
+def test_is_alive_windows_missing_pid_is_false(monkeypatch):
+    kernel32 = _FakeKernel32(
+        handle=0, exit_code=None
+    )  # OpenProcess échoue (handle nul)
+    _patch_windll(monkeypatch, kernel32)
+    assert psl._is_alive(9999) is False
+    assert kernel32.closed_handles == []  # jamais fermé un handle nul
