@@ -12,6 +12,7 @@ covered by its own tolerant loader elsewhere.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -220,3 +221,99 @@ def test_project_scope_installed_ids_matches_only_the_exact_path(monkeypatch, tm
     )
     monkeypatch.setattr(psl, "load_installed_plugins", lambda: installed)
     assert psl.project_scope_installed_ids(repo) == ["here@mp"]
+
+
+def _use_state_dir(monkeypatch, tmp_path):
+    state_dir = tmp_path / "state"
+    monkeypatch.setattr(psl, "STATE_DIR", state_dir)
+    return state_dir
+
+
+def test_shared_backup_second_session_joins_without_recapturing(monkeypatch, tmp_path):
+    _use_state_dir(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".claude").mkdir(parents=True)
+    settings_local = repo / ".claude" / "settings.local.json"
+    settings_local.write_text(json.dumps({"enabledPlugins": {"orig@mp": True}}))
+
+    psl.backup_settings_local_shared(settings_local, "A", os.getpid())
+    settings_local.write_text(
+        json.dumps({"enabledPlugins": {"orig@mp": True, "cwd-written@mp": True}})
+    )
+    psl.backup_settings_local_shared(
+        settings_local, "B", os.getpid()
+    )  # ne doit pas recapturer
+
+    psl.restore_settings_local_shared(settings_local, "A")
+    assert json.loads(settings_local.read_text())["enabledPlugins"] == {
+        "orig@mp": True,
+        "cwd-written@mp": True,
+    }  # B encore vivante — pas de restauration
+
+    psl.restore_settings_local_shared(settings_local, "B")
+    assert json.loads(settings_local.read_text()) == {
+        "enabledPlugins": {"orig@mp": True}
+    }
+
+
+def test_shared_backup_lifo_and_non_lifo_close_both_restore(monkeypatch, tmp_path):
+    _use_state_dir(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".claude").mkdir(parents=True)
+    settings_local = repo / ".claude" / "settings.local.json"
+    settings_local.write_text(json.dumps({"enabledPlugins": {"orig@mp": True}}))
+
+    psl.backup_settings_local_shared(settings_local, "A", os.getpid())
+    psl.backup_settings_local_shared(settings_local, "B", os.getpid())
+    settings_local.write_text(
+        json.dumps({"enabledPlugins": {"orig@mp": True, "cwd-written@mp": True}})
+    )
+
+    psl.restore_settings_local_shared(
+        settings_local, "B"
+    )  # non-LIFO : dernière ouverte ferme en 2ᵉ
+    assert (
+        json.loads(settings_local.read_text())["enabledPlugins"]["cwd-written@mp"]
+        is True
+    )
+    psl.restore_settings_local_shared(settings_local, "A")
+    assert json.loads(settings_local.read_text()) == {
+        "enabledPlugins": {"orig@mp": True}
+    }
+
+
+def test_shared_backup_crashed_pid_is_purged_and_restore_still_fires(
+    monkeypatch, tmp_path
+):
+    _use_state_dir(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".claude").mkdir(parents=True)
+    settings_local = repo / ".claude" / "settings.local.json"
+    settings_local.write_text(json.dumps({"enabledPlugins": {"orig@mp": True}}))
+
+    proc = subprocess.Popen(["true"])
+    dead_pid = proc.pid
+    proc.wait()  # garanti mort : le fd n'a jamais été relâché explicitement, juste fermé
+
+    psl.backup_settings_local_shared(settings_local, "crashed", dead_pid)
+    psl.backup_settings_local_shared(settings_local, "alive", os.getpid())
+    settings_local.write_text(
+        json.dumps({"enabledPlugins": {"orig@mp": True, "cwd-written@mp": True}})
+    )
+
+    psl.restore_settings_local_shared(settings_local, "alive")
+    assert json.loads(settings_local.read_text()) == {
+        "enabledPlugins": {"orig@mp": True}
+    }
+
+
+def test_shared_backup_never_existed_is_removed_on_full_restore(monkeypatch, tmp_path):
+    _use_state_dir(monkeypatch, tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".claude").mkdir(parents=True)
+    settings_local = repo / ".claude" / "settings.local.json"
+
+    psl.backup_settings_local_shared(settings_local, "A", os.getpid())
+    settings_local.write_text(json.dumps({"enabledPlugins": {"cwd-written@mp": True}}))
+    psl.restore_settings_local_shared(settings_local, "A")
+    assert not settings_local.exists()
