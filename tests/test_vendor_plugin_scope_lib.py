@@ -291,7 +291,9 @@ def test_shared_backup_crashed_pid_is_purged_and_restore_still_fires(
     settings_local = repo / ".claude" / "settings.local.json"
     settings_local.write_text(json.dumps({"enabledPlugins": {"orig@mp": True}}))
 
-    proc = subprocess.Popen(["true"])
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "pass"]
+    )  # portable, pas de "true" sous Windows
     dead_pid = proc.pid
     proc.wait()  # garanti mort : le fd n'a jamais été relâché explicitement, juste fermé
 
