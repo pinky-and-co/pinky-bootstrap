@@ -154,3 +154,69 @@ def test_enable_plugin_local_missing_cli_is_a_failure(monkeypatch, tmp_path):
     assert result == psl.EnableResult(
         success=False, already_enabled=False, stderr="claude"
     )
+
+
+def test_install_plugin_project_runs_claude_from_the_given_cwd(monkeypatch, tmp_path):
+    calls: list = []
+    monkeypatch.setattr(subprocess, "run", _fake_run(0, "", calls))
+    psl.install_plugin_project("x@mp", cwd=tmp_path)
+    cmd, kw = calls[0]
+    assert cmd == ["claude", "plugin", "install", "x@mp", "--scope", "project", "--yes"]
+    assert kw["cwd"] == tmp_path
+
+
+def test_install_plugin_project_success(monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "run", _fake_run(0, ""))
+    result = psl.install_plugin_project("x@mp", cwd=tmp_path)
+    assert result == psl.EnableResult(success=True, already_enabled=False, stderr="")
+
+
+def test_install_plugin_project_real_error_is_a_failure(monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "run", _fake_run(1, "marketplace not found"))
+    result = psl.install_plugin_project("x@mp", cwd=tmp_path)
+    assert result.success is False
+    assert result.already_enabled is False
+
+
+def test_install_plugin_project_missing_cli_is_a_failure(monkeypatch, tmp_path):
+    def boom(*_a, **_kw):
+        raise FileNotFoundError("claude")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    result = psl.install_plugin_project("x@mp", cwd=tmp_path)
+    assert result == psl.EnableResult(
+        success=False, already_enabled=False, stderr="claude"
+    )
+
+
+def test_settings_json_plugin_ids_returns_every_listed_id_on_or_off(tmp_path):
+    claude = tmp_path / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(
+        json.dumps({"enabledPlugins": {"b@mp": False, "a@mp": True}})
+    )
+    assert psl.settings_json_plugin_ids(tmp_path) == ["a@mp", "b@mp"]
+
+
+def test_settings_json_plugin_ids_absent_file_is_empty(tmp_path):
+    assert psl.settings_json_plugin_ids(tmp_path) == []
+
+
+def test_settings_json_plugin_ids_malformed_json_is_empty(tmp_path):
+    claude = tmp_path / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text("{not json")
+    assert psl.settings_json_plugin_ids(tmp_path) == []
+
+
+def test_project_scope_installed_ids_matches_only_the_exact_path(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    installed = _installed(
+        **{
+            "here@mp": [{"scope": "project", "projectPath": str(repo)}],
+            "ancestor@mp": [{"scope": "project", "projectPath": str(tmp_path)}],
+        }
+    )
+    monkeypatch.setattr(psl, "load_installed_plugins", lambda: installed)
+    assert psl.project_scope_installed_ids(repo) == ["here@mp"]
