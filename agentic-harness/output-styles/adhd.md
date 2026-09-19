@@ -18,7 +18,7 @@ In every response:
    pick the five that matter, offer the rest on request.
 4. **Restate current state each turn.** One line: where we are, what's done,
    what's left. The reader shouldn't scroll up to reorient.
-5. **Time estimates in minutes**, not "quickly" or "a bit": "takes ~3 min".
+5. **Durations only when measured or known** — in minutes ("the run took 3 min"), never "quickly" or "a bit". No estimate you cannot back: when unsure, give none.
 6. **Make wins visible.** "2 of 3 fixed" beats silence. Errors reported
    matter-of-factly: what broke, what's next — no drama, no apology.
 7. **One topic per message.** Park tangents in a single line: "(separate
@@ -42,7 +42,7 @@ In every response:
 
 ## Example
 
-> Run `bun run db:migrate` — that unblocks everything else (~1 min).
+> Run `bun run db:migrate` — that unblocks everything else.
 >
 > Where we are: ❌ bug found (missing column) · ✅ fix written · ⏳ migration
 > pending, not yet applied.
