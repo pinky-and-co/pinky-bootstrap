@@ -99,6 +99,16 @@ def test_distribute_dispatch_repo(monkeypatch):
     assert calls == [["--repo", "pinky-core", "--commit"]]
 
 
+def test_distribute_dispatch_yes_and_dry_run(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["repo", "distribute", "--repo", "pinky-core", "--dry-run"])
+    cli_pinky.main(["repo", "distribute", "--repo", "pinky-core", "--yes"])
+    assert calls == [
+        ["--repo", "pinky-core", "--dry-run"],
+        ["--repo", "pinky-core", "--yes"],
+    ]
+
+
 def test_distribute_dispatch_all(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["repo", "distribute", "--all"])

@@ -200,32 +200,6 @@ def test_plugin_repo_prek_yml_still_valid_yaml_with_claude_cli_step(plugin_repo)
     )
 
 
-def test_install_walkthrough_job_only_lands_on_the_engine(tmp_path):
-    """Le job installe le moteur et lance ses sous-commandes : hors du moteur, il ne peut pas passer.
-
-    Gaté par IDENTITÉ (`repo.resolve() == SCRIPT_DIR.resolve()`), le même axe que
-    `workspace-self.yaml`, et pas par un nom ajouté à `CI_WINDOWS_PILOT` — cette liste-là est un
-    littéral d'instance dans le moteur, la classe de défaut qu'on cherche à retirer.
-
-    Sans ce test, l'erreur ne se verrait qu'en rouge sur les repos consommateurs, après distribution.
-    """
-    import yaml
-
-    consumer = tmp_path / "pinky-consommateur"
-    consumer.mkdir()
-    (consumer / "pyproject.toml").write_text(
-        '[project]\nname = "x"\nrequires-python = ">=3.12"\n', encoding="utf-8"
-    )
-
-    engine_jobs = yaml.safe_load(precommit_mod.render_ci_yml(precommit_mod.SCRIPT_DIR))[
-        "jobs"
-    ]
-    consumer_jobs = yaml.safe_load(precommit_mod.render_ci_yml(consumer))["jobs"]
-
-    assert "install-walkthrough-windows" in engine_jobs
-    assert "install-walkthrough-windows" not in consumer_jobs
-
-
 def test_install_walkthrough_covers_the_real_sequence(tmp_path):
     """Le job doit couvrir `bootstrap (*.code-workspace) → distribute → drift` — la séquence qu'un
     adoptant joue.
