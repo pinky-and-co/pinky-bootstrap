@@ -25,6 +25,7 @@ import sys
 from collections.abc import Callable
 
 import argcomplete
+from argcomplete.shell_integration import shellcode
 
 from . import agentic_assets, plugin_catalog
 from .cli import main as setup_main
@@ -160,6 +161,12 @@ def cmd_llm_drift(args: argparse.Namespace) -> None:
     if args.json:
         argv.append("--json")
     setup_main(argv)
+
+
+def cmd_completion(args: argparse.Namespace) -> None:
+    """Print the script that registers `pinky`'s shell completion — for `eval "$(pinky completion zsh)"`."""
+    # nosec B604 — `shell` is the name of a shell ("zsh"), not subprocess's `shell=True`
+    print(shellcode(["pinky"], shell=args.shell), end="")  # nosec B604
 
 
 def cmd_directives(args: argparse.Namespace) -> None:
@@ -615,6 +622,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="also list every prerequisite that is present, by category",
     )
     p.set_defaults(func=cmd_doctor)
+
+    p = _add(
+        sub,
+        "completion",
+        "⌨️  print the script that registers pinky's completion in your shell",
+        [
+            'eval "$(pinky completion zsh)"  # in ~/.zshrc, after compinit',
+            "pinky doctor --fix  # adds those lines to ~/.zshrc for you, after asking",
+        ],
+    )
+    p.add_argument("shell", choices=["zsh", "bash"], help="your shell")
+    p.set_defaults(func=cmd_completion)
 
     p = _add(
         sub,

@@ -178,6 +178,7 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
         "install",
         "doctor",
         "directives",
+        "completion",
     }
 
 
@@ -373,3 +374,13 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
 def test_root_shim_reexports_the_same_objects_as_setup_cli_pinky():
     assert cli_pinky.main is cli_pinky_impl.main
     assert cli_pinky.setup_main is cli_pinky_impl.setup_main
+
+
+def test_completion_prints_the_zsh_registration_script(capsys):
+    """`register-python-argcomplete` lives in the tool's own environment, not on the PATH: the
+    script comes from `pinky` itself, so `eval "$(pinky completion zsh)"` works after a tool install."""
+    cli_pinky.main(["completion", "zsh"])
+
+    out = capsys.readouterr().out
+    assert out.startswith("#compdef pinky")
+    assert "compdef _python_argcomplete pinky" in out

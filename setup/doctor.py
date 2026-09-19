@@ -14,7 +14,8 @@ skill runs and `Bash` fails `command not found` — so this checks them once, up
 
 `pinky doctor` exits non-zero when a prerequisite is missing (a diagnostic meant to be actionable,
 CI-usable). `pinky install` calls it advisory — a missing prerequisite never fails the install.
-Read-only: it writes no ledger entry and no config (`--fix` shells `brew`, nothing else).
+Read-only unless asked: `--fix` runs `brew`/`npm` for a missing binary and, for the shell completion,
+adds two lines to `~/.zshrc` after showing them and asking.
 """
 
 from __future__ import annotations
@@ -413,7 +414,8 @@ _CATEGORY_TITLE = {
 }
 
 
-_COMPLETION_LINE = 'eval "$(register-python-argcomplete pinky)"'
+_COMPINIT_LINE = "autoload -Uz compinit && compinit"
+_COMPLETION_LINE = 'eval "$(pinky completion zsh)"'
 _ZSHRC = Path.home() / ".zshrc"
 
 
@@ -431,9 +433,7 @@ def check_shell(
     rc_file = zshrc or _ZSHRC
     on_path = (which or shutil.which)("pinky") is not None
     try:
-        registered = "register-python-argcomplete pinky" in rc_file.read_text(
-            encoding="utf-8"
-        )
+        registered = "pinky completion zsh" in rc_file.read_text(encoding="utf-8")
     except OSError:
         registered = False
     return [
@@ -449,9 +449,39 @@ def check_shell(
             registered,
             ""
             if registered
-            else f"add to ~/.zshrc, after compinit: {_COMPLETION_LINE}",
+            else "run `pinky doctor --fix`, it adds 2 lines to ~/.zshrc after asking",
         ),
     ]
+
+
+def zsh_completion_block(rc_text: str) -> str:
+    """The lines that register `pinky`'s completion in `~/.zshrc`. zsh's completion system has to be
+    started (`compinit`) before anything registers with it: the line is added only when the file
+    does not already start it (oh-my-zsh and most setups do)."""
+    lines = ["", "# pinky: shell completion"]
+    if "compinit" not in rc_text:
+        lines.append(_COMPINIT_LINE)
+    lines.append(_COMPLETION_LINE)
+    return "\n".join(lines) + "\n"
+
+
+def add_zsh_completion(zshrc: Path, *, confirm: Callable[[str], bool]) -> bool:
+    """Append the completion lines to `zshrc` after showing them and asking. Returns whether the
+    file changed: a file that already registers `pinky` is left alone, and so is one the user
+    declined to change."""
+    current = zshrc.read_text(encoding="utf-8") if zshrc.exists() else ""
+    if "pinky completion zsh" in current:
+        return False
+    block = zsh_completion_block(current)
+    shown = "".join(
+        f"  {line}\n"
+        for line in block.splitlines()
+        if line and not line.startswith("#")
+    )
+    if not confirm(f"Add these lines to {zshrc}?\n\n{shown}\n[y/N] "):
+        return False
+    zshrc.write_text(current + block, encoding="utf-8")
+    return True
 
 
 def collect_checks(
@@ -558,6 +588,7 @@ def apply_fixes(
     *,
     runner: Callable[[list[str]], object] | None = None,
     confirm: Callable[[str], bool] | None = None,
+    zshrc: Path | None = None,
 ) -> list[str]:
     """Prompt for and run the fix command for each fixable missing Check. Returns the labels run.
 
@@ -572,7 +603,12 @@ def apply_fixes(
     fixable: list[tuple[Check, list[str], str]] = []
     manual: list[Check] = []
     manual_tools: set[str] = set()
+    installed: list[str] = []
     for check in missing:
+        if check.category == "shell" and check.name == "zsh completion":
+            if add_zsh_completion(zshrc or _ZSHRC, confirm=ask):
+                installed.append(check.name)
+            continue
         resolved = _fix_command(check)
         if resolved is None:
             continue
@@ -587,7 +623,6 @@ def apply_fixes(
         for check in manual:
             if check.detail:
                 print(f"  {check.name} : {check.detail}")
-    installed: list[str] = []
     for check, command, label in fixable:
         if ask(f"{' '.join(command)} ? [y/N] "):
             run(command)
@@ -616,5 +651,10 @@ def run_doctor(
         if installed:
             print(
                 f"\ninstalled: {', '.join(installed)} — run `pinky doctor` again to re-check"
+                + (
+                    "; open a new terminal for the completion"
+                    if "zsh completion" in installed
+                    else ""
+                )
             )
     return len(missing)

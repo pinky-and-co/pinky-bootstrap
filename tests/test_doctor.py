@@ -364,7 +364,7 @@ def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
     monkeypatch.setattr(doctor, "_read_ollama_tags", tags)
     monkeypatch.setattr(doctor, "_keychain_has", keychain)
     zshrc = tmp_path / ".zshrc"
-    zshrc.write_text('eval "$(register-python-argcomplete pinky)"\n', encoding="utf-8")
+    zshrc.write_text('eval "$(pinky completion zsh)"\n', encoding="utf-8")
     monkeypatch.setattr(doctor, "_ZSHRC", zshrc)
 
 
@@ -628,13 +628,16 @@ def test_check_shell_flags_completion_missing_from_zshrc_with_the_line_to_add(tm
 
     completion = next(c for c in checks if c.name == "zsh completion")
     assert completion.ok is False
-    assert 'eval "$(register-python-argcomplete pinky)"' in completion.detail
+    assert (
+        completion.detail
+        == "run `pinky doctor --fix`, it adds 2 lines to ~/.zshrc after asking"
+    )
 
 
 def test_check_shell_accepts_completion_registered_in_zshrc(tmp_path):
     zshrc = tmp_path / ".zshrc"
     zshrc.write_text(
-        'autoload -Uz compinit && compinit\neval "$(register-python-argcomplete pinky)"\n',
+        'autoload -Uz compinit && compinit\neval "$(pinky completion zsh)"\n',
         encoding="utf-8",
     )
 
@@ -656,3 +659,76 @@ def test_the_shell_checks_are_part_of_the_doctor_report():
 
     assert "\nshell\n  ✓ zsh completion" in report
     assert "✗ pinky on PATH — uv tool install --editable X" in report
+
+
+def test_the_completion_block_starts_zsh_completion_only_when_the_file_does_not_already():
+    assert doctor.zsh_completion_block("export A=1\n") == (
+        "\n"
+        "# pinky: shell completion\n"
+        "autoload -Uz compinit && compinit\n"
+        'eval "$(pinky completion zsh)"\n'
+    )
+    assert doctor.zsh_completion_block("autoload -Uz compinit && compinit\n") == (
+        '\n# pinky: shell completion\neval "$(pinky completion zsh)"\n'
+    )
+
+
+def test_adding_the_completion_appends_to_zshrc_after_a_yes(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text("export A=1\n", encoding="utf-8")
+
+    changed = doctor.add_zsh_completion(zshrc, confirm=lambda prompt: True)
+
+    assert changed is True
+    assert zshrc.read_text(encoding="utf-8") == (
+        "export A=1\n"
+        "\n"
+        "# pinky: shell completion\n"
+        "autoload -Uz compinit && compinit\n"
+        'eval "$(pinky completion zsh)"\n'
+    )
+
+
+def test_adding_the_completion_twice_changes_nothing_the_second_time(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+    doctor.add_zsh_completion(zshrc, confirm=lambda prompt: True)
+    once = zshrc.read_text(encoding="utf-8")
+
+    assert doctor.add_zsh_completion(zshrc, confirm=lambda prompt: True) is False
+    assert zshrc.read_text(encoding="utf-8") == once
+
+
+def test_declining_writes_nothing(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+
+    assert doctor.add_zsh_completion(zshrc, confirm=lambda prompt: False) is False
+    assert not zshrc.exists()
+
+
+def test_the_prompt_shows_the_lines_before_asking(tmp_path):
+    prompts: list[str] = []
+
+    doctor.add_zsh_completion(
+        tmp_path / ".zshrc", confirm=lambda prompt: prompts.append(prompt) or False
+    )
+
+    assert prompts == [
+        "Add these lines to "
+        + str(tmp_path / ".zshrc")
+        + "?\n\n"
+        + "  autoload -Uz compinit && compinit\n"
+        + '  eval "$(pinky completion zsh)"\n\n'
+        + "[y/N] "
+    ]
+
+
+def test_fix_offers_the_completion_and_reports_it_as_installed(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+    missing = [
+        doctor.Check("shell", "zsh completion", False, "run `pinky doctor --fix`")
+    ]
+
+    installed = doctor.apply_fixes(missing, confirm=lambda prompt: True, zshrc=zshrc)
+
+    assert installed == ["zsh completion"]
+    assert 'eval "$(pinky completion zsh)"' in zshrc.read_text(encoding="utf-8")
