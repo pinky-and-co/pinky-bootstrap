@@ -1,4 +1,4 @@
-"""`setup/plugin_reconcile.py::audit_plugins` — the state reader behind `pinky plugins reconcile`.
+"""`setup/plugin_reconcile.py::audit_plugins` — the state reader behind `pinky claude-plugin list`.
 
 No mocks: `audit_plugins` only reads files. The fixture builds a fake `~/.claude` and a fake
 workspace tree on `tmp_path` and points the module's two roots at them.
@@ -346,17 +346,17 @@ def _plugin_state(
     )
 
 
-def test_keeps_user_scope_covers_status_line_and_always_on(monkeypatch):
-    """`_keeps_user_scope` is true for a status-line plugin and for one in `KEEP_USER_SCOPE` — the
+def testkeeps_user_scope_covers_status_line_and_always_on(monkeypatch):
+    """`keeps_user_scope` is true for a status-line plugin and for one in `KEEP_USER_SCOPE` — the
     pair the `--apply` loop defaults to `user` and never nudges out of user scope."""
     monkeypatch.setattr(plugin_install, "KEEP_USER_SCOPE", frozenset({"pc-always"}))
-    assert plugin_reconcile._keeps_user_scope(
+    assert plugin_reconcile.keeps_user_scope(
         _plugin_state("sl@mp", ships_status_line=True)
     )
-    assert plugin_reconcile._keeps_user_scope(
+    assert plugin_reconcile.keeps_user_scope(
         _plugin_state("pc-always@mp", ships_status_line=False)
     )
-    assert not plugin_reconcile._keeps_user_scope(
+    assert not plugin_reconcile.keeps_user_scope(
         _plugin_state("plain@mp", ships_status_line=False)
     )
 
@@ -574,7 +574,7 @@ def test_apply_sweeps_a_stale_false_key_when_consolidating_to_user(
 ):
     """The other half of the `include_disabled` split: `apply_reconcile` keeps the default
     (`True`), so consolidating a plugin to one scope clears a stale `false` opt-out too —
-    unlike the `pinky install --plugin` path, which leaves it alone."""
+    unlike the `pinky claude-plugin install` path, which leaves it alone."""
     user_claude, ws, _sim = apply_world
     _write_enabled(user_claude / "settings.json", {"pc-x@mp": True})
     repo_settings = ws / "pinky-lib" / "pinky-core" / ".claude" / "settings.json"

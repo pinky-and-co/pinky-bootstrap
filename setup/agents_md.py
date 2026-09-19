@@ -52,9 +52,9 @@ GOTCHAS = [
         "explicitly referenced."
     ),
     (
-        "A raw `claude plugin install` places a plugin but skips its `rules` distribution and "
-        "the reconciliation ledger — use `pinky plugins reconcile [--apply]` then `pinky rules` "
-        "instead."
+        "A raw `claude plugin install` places a plugin but asks no scope and skips its `rules` "
+        "distribution — use `pinky claude-plugin install <plugin>`, then `pinky install` for the "
+        "rules. `pinky claude-plugin list --who` shows which session ran each install."
     ),
 ]
 

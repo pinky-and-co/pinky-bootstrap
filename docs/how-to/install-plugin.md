@@ -2,16 +2,17 @@
 *Update date : 2026-09-08 22:16*
 
 ```bash
-pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes] [--force]
+pinky claude-plugin install <plugin-id> --marketplace <marketplace> [--yes] [--force]
 ```
 
 One command. It:
 
-1. **Fetches the plugin's files** — shells out to `claude plugin install <plugin-id>@<marketplace>
-   --scope user --yes` (then `claude plugin update`, so a re-run picks up a changed plugin). There
-   is no fetch-only mode, so this also enables the plugin at user scope — **transiently**: for a
-   plugin that ends up project-scoped, step 2 drops that user enable once the real targets are
-   placed. It stays only for a plugin you keep at user scope (a status line).
+1. **Asks where first, then downloads there.** Nothing is downloaded before the scope is chosen.
+   `claude plugin install <plugin-id>@<marketplace> --scope project --yes` run from each chosen
+   target downloads the plugin and enables it at that target; `--scope user` is used only when you
+   pick user scope, or for an always-on plugin (`pc-autodiscovery`, `pc-statusline`). Claude needs
+   no user-scope step first (measured 2026-09-02 and 2026-09-19). A plugin's dependencies land at
+   the same scope as the plugin.
 
    `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
    <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
@@ -21,26 +22,19 @@ One command. It:
    the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
    refused, not removed.
 
-2. **Then, one of two things:**
-   - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes
-     `statusLine` and `subagentStatusLine` into `~/.claude/settings.json`, pointing at the installed
-     scripts (resolved from `~/.claude/plugins/installed_plugins.json`, never a guessed path). The
-     main-session `statusLine` key has no plugin-manifest slot — only `agent` and
-     `subagentStatusLine` are read from a plugin's bundled `settings.json` — so `pinky` wires it
-     explicitly. User scope: a status line is a cross-session preference (ADR-0001), so the step-1
-     enable is correct and stays. Re-run after `claude plugin update` — the path carries the
-     plugin version.
-   - **Any other plugin** → an interactive wizard asks **user or project**, then (project) a depth
-     (root / a group like `pinky-lib/` / a repo nested under a group) and **one or more targets**
-     at that depth. Each target gets `claude plugin install --scope project` run from its own
-     directory — Claude Code's own command writes `<target>/.claude/settings.json` `enabledPlugins`
-     and a `{scope: project, projectPath: <target>}` registry entry (measured 2026-09-02); `pinky`
-     no longer hand-merges the key. `pinky` then drops the transient user-scope enable from step 1
-     — unless the plugin was already a legitimate global enable before the command ran, in which
-     case it is left alone. A wizard refusal (bad answer, no tty) undoes the step-1 enable the same
-     way.
+2. **The scope wizard** asks **user or project**, then (project) a depth (root / a group like
+   `pinky-lib/` / a repo nested under a group) and **one or more targets** at that depth. Each
+   target gets `claude plugin install --scope project` run from its own directory — Claude Code's
+   own command writes `<target>/.claude/settings.json` `enabledPlugins` and a
+   `{scope: project, projectPath: <target>}` registry entry. A refusal (bad answer, no tty, Ctrl-C)
+   leaves nothing installed.
 
-3. **Rescopes — removes an enable the new targets no longer cover.** Before steps 1–2 run, `pinky`
+   **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
+   `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
+   (resolved from `installed_plugins.json`, never a guessed path). Re-run after `claude plugin
+   update` — the path carries the plugin version.
+
+3. **Rescopes — removes an enable the new targets no longer cover.** Before step 1 runs, `pinky`
    snapshots where this plugin is currently enabled. Once the wizard's targets are known, any
    snapshotted scope that isn't among them is removed too — a real `claude plugin uninstall
    --scope <scope>` per stale scope, so re-running `--plugin` with different targets no longer
@@ -92,7 +86,7 @@ plugin initializes; **not verified today which of these need `/reload-plugins --
 session) vs pick up live**. Until checked case by case, keep reloading for anything beyond editing
 an existing hook/skill script's own logic.
 
-Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky distribute`/`pinky
+Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky repo distribute`/`pinky
 rules` renders into a *consuming* repo are a **copy**, made by that CLI step — unrelated to
 marketplace source type. Editing the plugin's source never updates that copy; only rerunning the
 CLI distribution command does, `directory`-source or not.
@@ -100,7 +94,7 @@ CLI distribution command does, `directory`-source or not.
 ## Why two steps, not one
 
 `enabledPlugins` does **not** trigger an automatic download — a plugin listed there has no effect
-until it's already installed locally (`claude plugin install` first). `pinky install --plugin`
+until it's already installed locally (`claude plugin install` first). `pinky claude-plugin install`
 therefore assumes the plugin is already installed; it only handles *where* it's enabled (and, as
 of step 3, where it's no longer supposed to be).
 
@@ -122,15 +116,15 @@ applies to sessions started in any repo nested under it. Three real targets, one
 - **Does not re-decide `enabledPlugins` scope for a status-line plugin** — those go to user scope
   unconditionally (a cross-session preference), no depth wizard.
 - **Does not refresh a stale `statusLine` path on its own after `claude plugin update`** — the
-  written path carries the plugin version, so re-run `pinky install --plugin <id>` to re-resolve it
+  written path carries the plugin version, so re-run `pinky claude-plugin install <id>` to re-resolve it
   (it reads the live path from `installed_plugins.json` every run).
 - **Does not see a scope inside a git repo nested in another git repo.** The scope scan
   (`plugin_scope._collect`) prunes at the first `.git` it meets and never descends into a repo, so
   a `.claude/settings.json` in a repo-within-a-repo is invisible to both the rescope snapshot and
-  `pinky plugins reconcile`, and stays untouched however you rescope. Group nesting itself is
+  `pinky claude-plugin list`, and stays untouched however you rescope. Group nesting itself is
   unbounded — a group many levels down still counts.
 - **Does not know when a scope is required by another plugin's declared dependency.** Step 3 only
   ever purges the plugin you're installing — rescoping `pc-craft` never touches `pc-privacy`'s
   scopes even when `pc-craft` declares `pc-privacy` in its `.claude-plugin/plugin.json`
-  `dependencies`. `pinky plugins reconcile` surfaces that as `required by: pc-craft` on the
+  `dependencies`. `pinky claude-plugin list` surfaces that as `required by: pc-craft` on the
   dependency's block; this command does not warn you before you remove such a scope yourself.

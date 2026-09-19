@@ -29,7 +29,7 @@
         run: pip install ./engine
 
       - name: Install the tooling the distribution requires
-        # `pinky distribute` refuse de finir sans `prek` ni `detect-secrets` sur le PATH (échec
+        # `pinky repo distribute` refuse de finir sans `prek` ni `detect-secrets` sur le PATH (échec
         # explicite, exit 1). Ce sont donc des prérequis d'INSTALL au même titre que Python — le
         # how-to ne les listait pas, trou trouvé par ce job au deuxième run (2026-08-09).
         run: pip install prek detect-secrets
@@ -58,13 +58,13 @@
           # distribution en échec passe inaperçue et les assertions suivantes mesurent un état
           # qu'aucune commande n'a produit. Constaté au premier run de ce job (2026-08-09).
           $ErrorActionPreference = 'Stop'
-          pinky distribute --repo pinky-demo-repo --dry-run
+          pinky repo distribute --repo pinky-demo-repo --dry-run
           if ($LASTEXITCODE -ne 0) { throw "distribute --dry-run a échoué ($LASTEXITCODE)" }
-          pinky distribute --repo pinky-demo-repo
+          pinky repo distribute --repo pinky-demo-repo
           if ($LASTEXITCODE -ne 0) { throw "distribute a échoué ($LASTEXITCODE)" }
           # `drift` sort 0 même quand il ne trouve AUCUN repo : c'est le no-op silencieux
           # d'ADR-0065. On exige donc que le repo soit nommé dans la sortie, pas juste un code 0.
-          $out = pinky drift | Out-String
+          $out = pinky repo drift | Out-String
           if ($LASTEXITCODE -ne 0) { throw "drift a échoué ($LASTEXITCODE)" }
           Write-Output $out
           if ($out -notmatch 'pinky-demo-repo') { throw "drift n'a découvert aucun repo — no-op silencieux" }

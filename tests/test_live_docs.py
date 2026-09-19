@@ -1,4 +1,4 @@
-"""`setup/live_docs.py` — the `pinky install --live-docs` asset.
+"""`setup/live_docs.py` — the `pinky live-docs install` asset.
 
 Boundary fakes only: `launchctl` and the `mkdocs serve` runner (external processes). Copy, symlink
 generation, plist rendering and the ledger stay real. `render_plist` is pinned by a whole-string
@@ -517,7 +517,7 @@ def test_pinky_install_live_docs_delegates(monkeypatch):
     monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: calls.append(argv))
     monkeypatch.setattr(doctor, "run_doctor", lambda **k: 0)  # advisory preflight
 
-    cli_pinky.main(["install", "--live-docs"])
+    cli_pinky.main(["live-docs", "install"])
 
     assert ["--live-docs"] in calls
 
@@ -528,7 +528,7 @@ def test_pinky_install_live_docs_force_delegates(monkeypatch):
     monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: calls.append(argv))
     monkeypatch.setattr(doctor, "run_doctor", lambda **k: 0)
 
-    cli_pinky.main(["install", "--live-docs", "--force"])
+    cli_pinky.main(["live-docs", "install", "--force"])
 
     assert ["--live-docs", "--force"] in calls
 
@@ -538,12 +538,12 @@ def test_pinky_docs_subcommands_delegate(monkeypatch, action):
     calls = []
     monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: calls.append(argv))
 
-    cli_pinky.main(["docs", action])
+    cli_pinky.main(["live-docs", action])
 
     assert calls == [[f"--live-docs-{action}"]]
 
 
-def test_pinky_docs_is_in_help(capsys):
+def test_pinky_live_docs_is_in_help(capsys):
     with pytest.raises(SystemExit):
         cli_pinky.main(["--help"])
-    assert "docs" in capsys.readouterr().out
+    assert "live-docs" in capsys.readouterr().out

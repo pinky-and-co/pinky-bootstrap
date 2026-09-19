@@ -159,28 +159,6 @@ def test_force_refetch_refuses_a_cache_entry_symlinked_outside(home, capsys):
     assert "refusing --force" in capsys.readouterr().err
 
 
-def test_is_user_enabled_true_when_the_key_is_set(home):
-    (home / "settings.json").write_text(
-        json.dumps({"enabledPlugins": {"pc-snow@mp": True}}), encoding="utf-8"
-    )
-    assert plugin_install.is_user_enabled("pc-snow", "mp") is True
-
-
-def test_is_user_enabled_false_when_absent_or_no_settings_file(home):
-    assert plugin_install.is_user_enabled("pc-snow", "mp") is False
-    (home / "settings.json").write_text(
-        json.dumps({"enabledPlugins": {"other@mp": True}}), encoding="utf-8"
-    )
-    assert plugin_install.is_user_enabled("pc-snow", "mp") is False
-
-
-def test_is_user_enabled_false_when_the_value_is_literally_false(home):
-    (home / "settings.json").write_text(
-        json.dumps({"enabledPlugins": {"pc-snow@mp": False}}), encoding="utf-8"
-    )
-    assert plugin_install.is_user_enabled("pc-snow", "mp") is False
-
-
 def test_enable_at_project_installs_from_the_target_dir(home, monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(

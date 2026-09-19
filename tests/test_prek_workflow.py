@@ -238,5 +238,5 @@ def test_install_walkthrough_covers_the_real_sequence(tmp_path):
     ).read_text(encoding="utf-8")
 
     assert ".code-workspace" in fragment
-    assert "pinky distribute" in fragment
-    assert "pinky drift" in fragment
+    assert "pinky repo distribute" in fragment
+    assert "pinky repo drift" in fragment

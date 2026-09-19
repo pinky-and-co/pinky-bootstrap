@@ -175,8 +175,6 @@ def distribute_all_plugin_rules(
 
     The per-target mirror purge is scoped to the union of every plugin that resolves to that
     target: a file in ``.claude/rules/`` is purged only when no such plugin has a source for it.
-    Otherwise ``pc-core`` and ``pc-kanban`` — both ``user``-scoped, so both landing at the
-    workspace root — would purge each other's rules on alternate passes.
 
     Args:
         workspace_root: The directory a ``user``-scope plugin's rules resolve to.

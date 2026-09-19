@@ -32,11 +32,13 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     assert exc.value.code == 0
     out = capsys.readouterr().out
     for name in (
-        "new-repo",
-        "distribute",
+        "claude-plugin",
+        "claude-config-preset",
+        "live-docs",
+        "repo",
         "install",
-        "rules",
-        "drift",
+        "doctor",
+        "directives",
     ):
         assert name in out
     assert list(tmp_path.iterdir()) == []
@@ -45,8 +47,8 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
 def test_help_names_the_command_the_reader_typed(monkeypatch, capsys):
     """L'aide nomme `argv[0]`, jamais un nom de fichier codé en dur.
 
-    `prog="cli_pinky.py"` était figé, donc `pinky drift --help` répondait
-    `usage: cli_pinky.py drift` — le nom d'un fichier que personne ne tape, propagé à CHAQUE
+    `prog="cli_pinky.py"` était figé, donc `pinky repo drift --help` répondait
+    `usage: cli_pinky.py repo drift` — le nom d'un fichier que personne ne tape, propagé à CHAQUE
     sous-commande (elles héritent du prog du parent). Les deux points d'entrée sont légitimes
     (console script `pinky`, run direct `python cli_pinky.py`), donc aucun littéral ne peut être
     juste pour les deux : le défaut est le codage en dur lui-même, pas la valeur choisie.
@@ -60,10 +62,10 @@ def test_help_names_the_command_the_reader_typed(monkeypatch, capsys):
     ):
         monkeypatch.setattr(sys, "argv", [argv0])
         with pytest.raises(SystemExit) as exc:
-            cli_pinky.main(["drift", "--help"])
+            cli_pinky.main(["repo", "drift", "--help"])
         assert exc.value.code == 0
         out = capsys.readouterr().out
-        assert out.startswith(f"usage: {expected} drift"), out.splitlines()[0]
+        assert out.startswith(f"usage: {expected} repo drift"), out.splitlines()[0]
 
 
 def test_no_command_is_an_error_not_a_silent_default(capsys):
@@ -81,45 +83,47 @@ def _captured_argv(monkeypatch):
 
 def test_new_repo_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["new-repo", "pinky-foo", "--scaffold", "--type", "web"])
+    cli_pinky.main(["repo", "new", "pinky-foo", "--scaffold", "--type", "web"])
     assert calls == [["--new-repo", "pinky-foo", "--scaffold", "--type", "web"]]
 
 
 def test_new_repo_type_implies_scaffold(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["new-repo", "pinky-foo", "--type", "data"])
+    cli_pinky.main(["repo", "new", "pinky-foo", "--type", "data"])
     assert calls == [["--new-repo", "pinky-foo", "--scaffold", "--type", "data"]]
 
 
 def test_distribute_dispatch_repo(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["distribute", "--repo", "pinky-core", "--commit"])
+    cli_pinky.main(["repo", "distribute", "--repo", "pinky-core", "--commit"])
     assert calls == [["--repo", "pinky-core", "--commit"]]
 
 
 def test_distribute_dispatch_all(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["distribute", "--all"])
+    cli_pinky.main(["repo", "distribute", "--all"])
     assert calls == [["--all"]]
 
 
 def test_distribute_dispatch_agents_md(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["distribute", "--repo", "pinky-core", "--agents-md"])
+    cli_pinky.main(["repo", "distribute", "--repo", "pinky-core", "--agents-md"])
     assert calls == [["--repo", "pinky-core", "--agents-md"]]
 
 
 def test_distribute_dispatch_agents_md_standalone(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(
-        ["distribute", "--repo", "pinky-core", "--agents-md", "--standalone"]
+        ["repo", "distribute", "--repo", "pinky-core", "--agents-md", "--standalone"]
     )
     assert calls == [["--repo", "pinky-core", "--agents-md", "--standalone"]]
 
 
 def test_llm_drift_dispatch_scan(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["llm-drift", "scan", "--all", "--kind", "narrative", "--json"])
+    cli_pinky.main(
+        ["repo", "llm-drift", "scan", "--all", "--kind", "narrative", "--json"]
+    )
     assert calls == [["--llm-drift", "scan", "--all", "--kind", "narrative", "--json"]]
 
 
@@ -130,26 +134,63 @@ def test_directives_dispatch(monkeypatch):
     assert calls == [["--directives", "E402"], ["--directives"]]
 
 
+def _walk_commands(parser, path=()):
+    """Every (path, parser) below `parser`, depth-first: subjects, then their verbs."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for name, command in action.choices.items():
+                yield path + (name,), command
+                yield from _walk_commands(command, path + (name,))
+
+
 def test_every_subcommand_explains_itself():
     parser = cli_pinky_impl.build_parser()
-    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-    for name, command in sub.choices.items():
+    for path, command in _walk_commands(parser):
+        name = " ".join(path)
         assert command.description, name
         assert "💡 examples:" in (command.epilog or ""), name
         for action in command._actions:
             if not isinstance(action, argparse._HelpAction):
-                assert action.help, f"{name} {action.dest}"
+                assert action.help or isinstance(action, argparse._SubParsersAction), (
+                    f"{name} {action.dest}"
+                )
+
+
+def test_help_lists_exactly_the_subjects_of_the_grid():
+    """`pinky --help` presents each subject under one name — no subject reachable two ways."""
+    parser = cli_pinky_impl.build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    assert set(sub.choices) == {
+        "claude-plugin",
+        "claude-config-preset",
+        "live-docs",
+        "repo",
+        "install",
+        "doctor",
+        "directives",
+    }
+
+
+@pytest.mark.parametrize(
+    "old_name",
+    ["plugins", "rules", "new-repo", "distribute", "drift", "llm-drift", "docs"],
+)
+def test_a_retired_top_level_name_is_an_unknown_command(old_name, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main([old_name])
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_llm_drift_defaults_to_scan(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["llm-drift", "--repo", "pinky-provider"])
+    cli_pinky.main(["repo", "llm-drift", "--repo", "pinky-provider"])
     assert calls == [["--llm-drift", "scan", "--repo", "pinky-provider"]]
 
 
 def test_llm_drift_rejects_an_unknown_kind_naming_the_known_ones(capsys):
     with pytest.raises(SystemExit) as exc:
-        cli_pinky.main(["llm-drift", "--kind", "oups"])
+        cli_pinky.main(["repo", "llm-drift", "--kind", "oups"])
     assert exc.value.code == 2
     err = capsys.readouterr().err
     assert "invalid choice: 'oups'" in err
@@ -160,14 +201,14 @@ def test_llm_drift_rejects_an_unknown_kind_naming_the_known_ones(capsys):
 def test_repo_and_all_are_mutually_exclusive(capsys):
     for command in ("llm-drift", "distribute"):
         with pytest.raises(SystemExit) as exc:
-            cli_pinky.main([command, "--repo", "pinky-core", "--all"])
+            cli_pinky.main(["repo", command, "--repo", "pinky-core", "--all"])
         assert exc.value.code == 2
         assert "not allowed with argument" in capsys.readouterr().err
 
 
 def test_llm_drift_dispatch_fix(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["llm-drift", "fix", "--repo", "pinky-core", "--dry-run"])
+    cli_pinky.main(["repo", "llm-drift", "fix", "--repo", "pinky-core", "--dry-run"])
     assert calls == [["--llm-drift", "fix", "--repo", "pinky-core", "--dry-run"]]
 
 
@@ -184,18 +225,24 @@ def test_install_dispatch_yes(monkeypatch):
     assert calls == [["--rules", "--yes"]]
 
 
-def test_install_dispatch_plugin(monkeypatch):
+def test_install_dispatch_dry_run(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install", "--plugin", "pc-statusline"])
+    cli_pinky.main(["install", "--dry-run", "--yes"])
+    assert calls == [["--rules", "--dry-run", "--yes"]]
+
+
+def test_claude_plugin_install_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "install", "pc-statusline"])
     assert calls == [["--plugin", "pc-statusline"]]
 
 
-def test_install_dispatch_plugin_with_marketplace(monkeypatch):
+def test_claude_plugin_install_with_marketplace(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(
         [
+            "claude-plugin",
             "install",
-            "--plugin",
             "pc-statusline",
             "--marketplace",
             "pinky-agentic-plugins",
@@ -206,40 +253,93 @@ def test_install_dispatch_plugin_with_marketplace(monkeypatch):
     ]
 
 
-def test_install_dispatch_plugin_threads_yes_and_force(monkeypatch):
+def test_claude_plugin_install_threads_yes_and_force(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install", "--plugin", "pc-x", "--yes", "--force"])
+    cli_pinky.main(["claude-plugin", "install", "pc-x", "--yes", "--force"])
     assert calls == [["--plugin", "pc-x", "--yes", "--force"]]
 
 
-def test_rules_dispatch_default_workspace(monkeypatch):
+def test_claude_plugin_install_needs_a_plugin(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["claude-plugin", "install"])
+    assert exc.value.code == 2
 
+
+def test_claude_config_preset_install_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["rules"])
-    assert calls == [["--rules"]]
+    cli_pinky.main(["claude-config-preset", "install", "theme", "lisible"])
+    cli_pinky.main(["claude-config-preset", "install", "output-style", "adhd"])
+    assert calls == [["--theme", "lisible"], ["--output-style", "adhd"]]
 
 
-def test_rules_dispatch_explicit_workspace(monkeypatch):
+def test_live_docs_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["rules", "/tmp/some-workspace", "--dry-run", "--yes"])
-    assert calls == [["--rules", "/tmp/some-workspace", "--dry-run", "--yes"]]
+    cli_pinky.main(["live-docs", "install"])
+    cli_pinky.main(["live-docs", "install", "--force"])
+    for verb in ("serve", "status", "uninstall"):
+        cli_pinky.main(["live-docs", verb])
+    assert calls == [
+        ["--live-docs"],
+        ["--live-docs", "--force"],
+        ["--live-docs-serve"],
+        ["--live-docs-status"],
+        ["--live-docs-uninstall"],
+    ]
 
 
 def test_drift_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["drift"])
+    cli_pinky.main(["repo", "drift"])
     assert calls == [["--check-drift"]]
 
 
-def test_plugins_reconcile_dispatch(monkeypatch):
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["install", "--plugin", "pc-x"],
+        ["install", "--output-style", "adhd"],
+        ["install", "--theme", "lisible"],
+        ["install", "--live-docs"],
+    ],
+)
+def test_install_no_longer_takes_the_options_that_moved_to_their_subject(argv, capsys):
+    """`pinky install` is the machine bootstrap: plugin, preset and viewer moved to their own
+    subject, so their old options fail."""
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(argv)
+    assert exc.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_repo_exposes_new_distribute_drift_and_llm_drift():
+    parser = cli_pinky_impl.build_parser()
+    verbs = {p[1] for p, _ in _walk_commands(parser) if len(p) == 2 and p[0] == "repo"}
+    assert verbs == {"new", "distribute", "drift", "llm-drift"}
+
+
+def test_live_docs_exposes_install_serve_status_and_uninstall():
+    parser = cli_pinky_impl.build_parser()
+    verbs = {
+        p[1] for p, _ in _walk_commands(parser) if len(p) == 2 and p[0] == "live-docs"
+    }
+    assert verbs == {"install", "serve", "status", "uninstall"}
+
+
+def test_claude_plugin_list_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["plugins", "reconcile"])
+    cli_pinky.main(["claude-plugin", "list"])
     assert calls == [["--plugins-reconcile"]]
 
 
-def test_plugins_reconcile_apply_dispatch(monkeypatch):
+def test_claude_plugin_list_who_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["plugins", "reconcile", "--apply"])
+    cli_pinky.main(["claude-plugin", "list", "--who"])
+    assert calls == [["--plugins-who"]]
+
+
+def test_claude_plugin_reconcile_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "reconcile"])
     assert calls == [["--plugins-reconcile-apply"]]
 
 

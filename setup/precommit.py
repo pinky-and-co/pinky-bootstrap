@@ -73,7 +73,7 @@ def _report_unonboarded(repos: list[Path]) -> None:
             f"\n⚠️  {len(missing)} repo(s) never onboarded (no .pre-commit-config.yaml): "
             f"{', '.join(missing)}"
         )
-        print("   Onboard with: pinky distribute --repo <name>\n")
+        print("   Onboard with: pinky repo distribute --repo <name>\n")
 
 
 MYPY_PIN = "2.0.0"
@@ -355,7 +355,7 @@ COOLDOWN_COMMENT = (
     f"# Fenêtre de cooldown (chantier 0024) : `uv lock` ignore tout paquet publié depuis moins\n"
     f"# de {_span_days} jours — protège la résolution contre une dépendance fraîchement compromise\n"
     f"# republiée sur PyPI. Durée relative : uv la résout au lock, `grep exclude-newer-span\n"
-    f"# uv.lock` dit la fenêtre appliquée. Posée par `pinky distribute`, jamais éditée à la main.\n"
+    f"# uv.lock` dit la fenêtre appliquée. Posée par `pinky repo distribute`, jamais éditée à la main.\n"
 )
 
 
@@ -1154,7 +1154,7 @@ def check_drift(
             f"{len(version_lag)} repo(s) behind engine v{current_version} — advisory, never fatal:"
         )
         for name, recorded in version_lag:
-            say(f"  {name}: v{recorded} → pinky distribute --repo {name}")
+            say(f"  {name}: v{recorded} → pinky repo distribute --repo {name}")
     if cache_gaps:
         say(
             f"{len(cache_gaps)} repo(s) missing the `.cache/` convention — advisory, "
@@ -1198,7 +1198,7 @@ def warn_on_drift() -> None:
     if drifted:
         print(
             f"\n⚠ {len(drifted)} repo(s) drifted from core/: {', '.join(drifted)}\n"
-            "  Rendering does not distribute. Run: pinky drift  (then pinky distribute --repo <name>)"
+            "  Rendering does not distribute. Run: pinky repo drift  (then pinky repo distribute --repo <name>)"
         )
 
 
@@ -1273,7 +1273,7 @@ def run_distribution(args) -> None:
     if not (args.all or args.repo):
         print("Refusing to distribute to ALL repos without --all (use --repo <name>).")
         print(
-            "Tip: dry-run a single repo first → pinky distribute --repo pinky-provider --dry-run"
+            "Tip: dry-run a single repo first → pinky repo distribute --repo pinky-provider --dry-run"
         )
         sys.exit(1)
 

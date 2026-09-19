@@ -1,6 +1,6 @@
 """setup/plugin_reconcile.py — audit where every known plugin is actually enabled.
 
-`pinky plugins reconcile` needs the real picture before it can ask the user to fix it. Two
+`pinky claude-plugin list` needs the real picture before it can ask the user to fix it. Two
 registries, deliberately not merged:
 
 - **`enabledPlugins`** in every `.claude/settings.json` / `.claude/settings.local.json` — where a
@@ -236,7 +236,7 @@ def _is_always_on(plugin_id: str) -> bool:
     return plugin_id.split("@", 1)[0] in plugin_install.KEEP_USER_SCOPE
 
 
-def _keeps_user_scope(state: PluginState) -> bool:
+def keeps_user_scope(state: PluginState) -> bool:
     """A plugin that belongs at user scope whatever the wizard would pick: it ships a status line
     (a move breaks the `statusLine` wiring) or it is always-on (`plugin_install.KEEP_USER_SCOPE`)."""
     return state.ships_status_line or _is_always_on(state.plugin_id)
@@ -268,7 +268,7 @@ def _print_plugin_block(state: PluginState) -> None:
 
 
 def print_audit_report(audit: dict[str, PluginState]) -> None:
-    """Print the bare `pinky plugins reconcile` audit — one block per plugin, facts only.
+    """Print the bare `pinky claude-plugin list` audit — one block per plugin, facts only.
 
     Takes the already-computed audit, so "n'écrit rien" holds by construction: this function
     only reaches `print`. Facts only, every plugin, no filtering and no recommendation — where
@@ -294,6 +294,30 @@ def _spec_parts(spec: str) -> tuple[str, str | None]:
     return plugin_id, (marketplace or None)
 
 
+def resolve_spec(
+    plugin_id: str, marketplace: str | None, audit: dict[str, PluginState]
+) -> str:
+    """The audit key (`<id>@<marketplace>`) a `--plugin` name refers to.
+
+    A given marketplace is taken as is. Without one, the audit's keys carrying the bare id decide:
+    one match is the answer, none leaves the bare id (a first install, nothing recorded yet), and
+    several ask the user which marketplace — never a guess.
+    """
+    if marketplace:
+        return f"{plugin_id}@{marketplace}"
+    candidates = sorted(key for key in audit if _spec_parts(key)[0] == plugin_id)
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else plugin_id
+    for i, key in enumerate(candidates):
+        print(f"  {i}) {_spec_parts(key)[1]}")
+    answer = input(f"Which marketplace carries {plugin_id}? ").strip()
+    try:
+        return candidates[int(answer)]
+    except (ValueError, IndexError):
+        print(f"Invalid choice: {answer!r}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
 def label_to_settings(workspace_root: Path) -> dict[str, Path]:
     """`enabled_at` / `disabled_at` label → the settings file that carries that key. Public: also
     called from `cli.py`'s `--plugin` flow (rescope-on-reinstall), not just `apply_reconcile`."""
@@ -303,7 +327,7 @@ def label_to_settings(workspace_root: Path) -> dict[str, Path]:
 def _rescope_labels(state: PluginState, *, include_disabled: bool) -> set[str]:
     """The labels a rescope may act on. `include_disabled=False` leaves `disabled_at` alone: a
     `false` key is a deliberate "parent wins, off here" opt-out, not scope accumulation, so the
-    `pinky install --plugin` path must not silently strip it (it only ever *adds* a scope).
+    `pinky claude-plugin install` path must not silently strip it (it only ever *adds* a scope).
     `apply_reconcile` passes `True` — consolidating a plugin to one scope is meant to clear stale
     disables too."""
     return {*state.enabled_at, *(state.disabled_at if include_disabled else ())}
@@ -458,7 +482,7 @@ def _ensure_user_enabled(spec: str, state: PluginState) -> None:
 
 
 def apply_reconcile(workspace_root: Path) -> None:
-    """Interactive `pinky plugins reconcile --apply`: walk every audited plugin, show its state,
+    """Interactive `pinky claude-plugin reconcile`: walk every audited plugin, show its state,
     ask where it belongs (`user` / `project` wizard / `uninstall` / `skip`), then make the machine
     match — including removing every enable that does not fit the chosen target.
 
@@ -480,11 +504,11 @@ def apply_reconcile(workspace_root: Path) -> None:
 
         _print_plugin_block(state)
         plugin_id, marketplace = _spec_parts(spec)
-        default = "u" if _keeps_user_scope(state) else "s"
+        default = "u" if keeps_user_scope(state) else "s"
         if state.ships_status_line:
             print(
                 "  ⚠️  moving a status-line plugin breaks the `statusLine` wiring — "
-                "keep it at user unless `pinky install --plugin` will re-wire it."
+                "keep it at user unless `pinky claude-plugin install` will re-wire it."
             )
         elif _is_always_on(plugin_id):
             print(

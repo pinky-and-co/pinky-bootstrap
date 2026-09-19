@@ -10,12 +10,12 @@ rule that lands here instead is a bug. `setup.py` itself stays fully usable with
 the test suite and a third-party machine call the engine directly, this is a facade over it.
 
 Usage:
-    python cli_pinky.py new-repo pluto-poc-x --scaffold --type web
-    python cli_pinky.py distribute --repo pinky-core
+    python cli_pinky.py repo new pluto-poc-x --scaffold --type web
+    python cli_pinky.py repo distribute --repo pinky-core
     python cli_pinky.py install
-    python cli_pinky.py rules
-    python cli_pinky.py drift
-    python cli_pinky.py llm-drift scan --all
+    python cli_pinky.py claude-plugin install pc-kanban
+    python cli_pinky.py repo drift
+    python cli_pinky.py repo llm-drift scan --all
     python cli_pinky.py directives E402
 """
 
@@ -79,24 +79,17 @@ def _assets_epilog() -> str:
     does --output-style/--theme NAME actually do", without leaving the terminal."""
     sections = [
         (
-            "🎨 Available output-styles (pinky install --output-style NAME):",
+            "🎨 Available output-styles (pinky claude-config-preset install output-style NAME):",
             "\n".join(
                 f"  {a.name:<12} {a.description}"
                 for a in agentic_assets.discover_output_styles()
             ),
         ),
         (
-            "🖌️  Available themes (pinky install --theme NAME):",
+            "🖌️  Available themes (pinky claude-config-preset install theme NAME):",
             "\n".join(
                 f"  {a.name:<12} {a.description}"
                 for a in agentic_assets.discover_themes()
-            ),
-        ),
-        (
-            "📖 Other assets:",
-            (
-                "  --live-docs   local MkDocs viewer of the kanban boards + agent logs "
-                "(macOS: launchd service)"
             ),
         ),
     ]
@@ -143,25 +136,13 @@ def cmd_distribute(args: argparse.Namespace) -> None:
     setup_main(argv)
 
 
-def cmd_rules(args: argparse.Namespace) -> None:
-    """Translate `rules` flags to `setup.cli`'s `--rules` flag."""
-    argv = ["--rules"]
-    if args.workspace:
-        argv.append(args.workspace)
-    if args.dry_run:
-        argv.append("--dry-run")
-    if args.yes:
-        argv.append("--yes")
-    setup_main(argv)
-
-
 def cmd_drift(args: argparse.Namespace) -> None:
-    """Translate `drift` to `setup.cli`'s `--check-drift`."""
+    """Translate `repo drift` to `setup.cli`'s `--check-drift`."""
     setup_main(["--check-drift"])
 
 
 def cmd_llm_drift(args: argparse.Namespace) -> None:
-    """Translate `llm-drift` flags to `setup.cli`'s `--llm-drift` and its options."""
+    """Translate `repo llm-drift` flags to `setup.cli`'s `--llm-drift` and its options."""
     argv = ["--llm-drift", args.action]
     if args.repo:
         argv += ["--repo", args.repo]
@@ -186,26 +167,29 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     setup_main(["--doctor", *(["--fix"] if args.fix else [])])
 
 
-def cmd_docs(args: argparse.Namespace) -> None:
-    """Translate `docs <action>` to `setup.cli`'s `--live-docs-<action>`."""
-    setup_main([f"--live-docs-{args.action}"])
+def cmd_live_docs(args: argparse.Namespace) -> None:
+    """Translate `live-docs <verb>` to `setup.cli`'s `--live-docs` / `--live-docs-<verb>`."""
+    if args.verb == "install":
+        setup_main(["--live-docs", *(["--force"] if args.force else [])])
+    else:
+        setup_main([f"--live-docs-{args.verb}"])
 
 
-def cmd_plugins(args: argparse.Namespace) -> None:
-    """Translate `plugins <action>` to `setup.cli`'s `--plugins-<action>`, with the optional `-apply`."""
-    flag = f"--plugins-{args.action}"
-    setup_main([f"{flag}-apply"] if args.apply else [flag])
+def _run_doctor_advisory() -> None:
+    """The prerequisites report that closes an install — advisory, never fails the install."""
+    from . import doctor
+
+    print()
+    doctor.run_doctor(fix=False)
 
 
-def cmd_install(args: argparse.Namespace) -> None:
-    """Replayable installer that converges this machine's setup.
+def cmd_claude_plugin(args: argparse.Namespace) -> None:
+    """Translate `claude-plugin <verb>` to `setup.cli`'s plugin flags.
 
-    `--plugin` fetches the plugin (`claude plugin install`) then either wires its status line
-    (`setup.plugin_install.set_status_lines`) or runs the scope wizard; `--output-style`/`--theme`
-    install one named asset (`setup.agentic_assets`) — each a different concern from the default
-    rules step, each behind its own `setup.state_file` ledger entry.
+    `install` fetches the plugin then runs the scope wizard (`--plugin`); `list` is the audit
+    report, `who` the provenance report, `reconcile` the interactive placer.
     """
-    if args.plugin:
+    if args.verb == "install":
         argv = ["--plugin", args.plugin]
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
@@ -214,22 +198,29 @@ def cmd_install(args: argparse.Namespace) -> None:
         if args.force:
             argv.append("--force")
         setup_main(argv)
-    elif args.output_style:
-        setup_main(["--output-style", args.output_style])
-    elif args.theme:
-        setup_main(["--theme", args.theme])
-    elif args.live_docs:
-        setup_main(["--live-docs", *(["--force"] if args.force else [])])
+        _run_doctor_advisory()
+    elif args.verb == "list":
+        setup_main(["--plugins-who"] if args.who else ["--plugins-reconcile"])
     else:
-        argv = ["--rules"]
-        if args.yes:
-            argv.append("--yes")
-        setup_main(argv)
+        setup_main(["--plugins-reconcile-apply"])
 
-    from . import doctor
 
-    print()
-    doctor.run_doctor(fix=False)
+def cmd_claude_config_preset(args: argparse.Namespace) -> None:
+    """Translate `claude-config-preset install <type> <name>` to `--output-style` / `--theme`."""
+    setup_main([f"--{args.kind}", args.name])
+    _run_doctor_advisory()
+
+
+def cmd_install(args: argparse.Namespace) -> None:
+    """Replayable installer that converges this machine's setup: the workspace rules, then the
+    prerequisites report."""
+    argv = ["--rules"]
+    if args.dry_run:
+        argv.append("--dry-run")
+    if args.yes:
+        argv.append("--yes")
+    setup_main(argv)
+    _run_doctor_advisory()
 
 
 def _examples(lines: list[str]) -> str:
@@ -271,8 +262,20 @@ def _drift_kinds_epilog() -> str:
     return "🧹 drift kinds:\n" + "\n".join(lines)
 
 
+def _subject(
+    sub: "argparse._SubParsersAction[argparse.ArgumentParser]",
+    name: str,
+    summary: str,
+    examples: list[str],
+    extra: str = "",
+) -> "argparse._SubParsersAction[argparse.ArgumentParser]":
+    """A subject (`claude-plugin`, `repo`…): a sub-command whose own sub-commands are its verbs."""
+    parser = _add(sub, name, summary, examples, extra)
+    return parser.add_subparsers(dest="verb", required=True, metavar="VERB")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """Build the `pinky` argument parser: one sub-command per `cmd_*` function above."""
+    """Build the `pinky` argument parser: subject then verb, like `claude plugin install`."""
     parser = argparse.ArgumentParser(
         description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
         epilog=_epilog(),
@@ -280,13 +283,141 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=False)
 
-    p = _add(
+    verbs = _subject(
         sub,
-        "new-repo",
+        "claude-plugin",
+        "🧩 install, place and audit Claude Code plugins across the workspace",
+        [
+            "pinky claude-plugin install pc-kanban  # download + the scope wizard",
+            "pinky claude-plugin list  # where each plugin is enabled",
+            "pinky claude-plugin list --who  # which session ran each install",
+        ],
+    )
+    p = _add(
+        verbs,
+        "install",
+        "download a plugin and enable it through the scope wizard (user/project, depth, targets)",
+        [
+            "pinky claude-plugin install pc-kanban  # ask the scope, then download there",
+            "pinky claude-plugin install pc-x --marketplace pinky-agentic-plugins --force",
+        ],
+    )
+    p.add_argument(
+        "plugin", metavar="PLUGIN", help="the plugin, without its marketplace"
+    )
+    p.add_argument(
+        "--marketplace",
+        default=None,
+        help="the marketplace it comes from (asked when several carry the plugin)",
+    )
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply without asking (required in a non-interactive shell)",
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="delete the plugin's cache dir before fetching, so a plugin pinned at 0.1.0 "
+        "re-pulls the working tree (dev cache-bust)",
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+    p = _add(
+        verbs,
+        "list",
+        "per-plugin audit: where it is enabled, where its files are, whether it ships a status line",
+        [
+            "pinky claude-plugin list  # writes nothing",
+            "pinky claude-plugin list --who  # the session transcript behind each install",
+        ],
+    )
+    p.add_argument(
+        "--who",
+        action="store_true",
+        help="show which session ran each install instead: the proof of who installed what",
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+    p = _add(
+        verbs,
+        "reconcile",
+        "interactively place each plugin (user / project / uninstall / skip), purging the enables "
+        "that do not match",
+        ["pinky claude-plugin reconcile  # one question per plugin"],
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+
+    verbs = _subject(
+        sub,
+        "claude-config-preset",
+        "🎨 install a preset into ~/.claude: an output style or a theme",
+        [
+            "pinky claude-config-preset install output-style adhd",
+            "pinky claude-config-preset install theme lisible",
+        ],
+        extra=_assets_epilog(),
+    )
+    p = _add(
+        verbs,
+        "install",
+        "copy a preset to ~/.claude and set the matching setting",
+        ["pinky claude-config-preset install theme lisible  # one named theme"],
+    )
+    p.add_argument(
+        "kind",
+        choices=["output-style", "theme"],
+        help="the kind of preset",
+    )
+    p.add_argument("name", help="the preset, from the list below")
+    p.set_defaults(func=cmd_claude_config_preset)
+
+    verbs = _subject(
+        sub,
+        "live-docs",
+        "📖 live board/log viewer — install it, serve it, check its status, or remove it",
+        [
+            "pinky live-docs install  # MkDocs tooling, board mounts, launchd service",
+            "pinky live-docs serve  # run the site now, no service",
+            "pinky live-docs status",
+        ],
+    )
+    p = _add(
+        verbs,
+        "install",
+        "install the viewer (MkDocs; on macOS a launchd service)",
+        ["pinky live-docs install  # first time", "pinky live-docs install --force"],
+    )
+    p.add_argument(
+        "--force",
+        action="store_true",
+        help="replace a launchd agent pinky did not install",
+    )
+    p.set_defaults(func=cmd_live_docs)
+    for verb, summary in (
+        ("serve", "run the site live, no service"),
+        ("status", "posed / not-mine / absent"),
+        ("uninstall", "remove what `pinky live-docs install` posed"),
+    ):
+        p = _add(verbs, verb, summary, [f"pinky live-docs {verb}"])
+        p.set_defaults(func=cmd_live_docs)
+
+    verbs = _subject(
+        sub,
+        "repo",
+        "📦 create, govern and audit the repos of the workspace",
+        [
+            "pinky repo new pinky-foo  # git init + the hooks",
+            "pinky repo distribute --all --commit  # the hygiene hooks, one commit each",
+            "pinky repo drift  # where each repo differs from the hooks",
+        ],
+    )
+    p = _add(
+        verbs,
+        "new",
         "🌱 create a new (pinky-*/pluto-*) repo, already governed",
         [
-            "pinky new-repo pinky-foo  # git init + the hooks, nothing else",
-            "pinky new-repo pluto-poc-x --type web  # plus the docs skeleton and stubs",
+            "pinky repo new pinky-foo  # git init + the hooks, nothing else",
+            "pinky repo new pluto-poc-x --type web  # plus the docs skeleton and stubs",
         ],
     )
     p.add_argument("name", help="the repo to create — pinky-* or pluto-*")
@@ -304,12 +435,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_new_repo)
 
     p = _add(
-        sub,
+        verbs,
         "distribute",
-        "📦 distribute the hygiene hooks (pre-commit, CI) to one repo or --all",
+        "distribute the hygiene hooks (pre-commit, CI) to one repo or --all",
         [
-            "pinky distribute --repo pinky-core --dry-run  # preview one repo",
-            "pinky distribute --all --commit  # every repo, one commit each",
+            "pinky repo distribute --repo pinky-core --dry-run  # preview one repo",
+            "pinky repo distribute --all --commit  # every repo, one commit each",
         ],
     )
     target = p.add_mutually_exclusive_group()
@@ -340,102 +471,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_distribute)
 
     p = _add(
-        sub,
-        "install",
-        "🚀 replayable installer — converges this machine's setup",
-        [
-            "pinky install  # the workspace rules, then the doctor",
-            "pinky install --plugin pc-kanban  # enable a plugin through the scope wizard",
-            "pinky install --theme lisible  # one named theme",
-        ],
-        extra=_assets_epilog(),
-    )
-    p.add_argument(
-        "--yes",
-        "-y",
-        action="store_true",
-        help="apply without asking (required in a non-interactive shell)",
-    )
-    p.add_argument(
-        "--plugin",
-        default=None,
-        metavar="PLUGIN_ID",
-        help="enable this plugin via the interactive scope wizard (user/project/depth/target)",
-    )
-    p.add_argument(
-        "--marketplace",
-        default=None,
-        help="with --plugin: the marketplace it comes from",
-    )
-    p.add_argument(
-        "--output-style",
-        default=None,
-        metavar="NAME",
-        help="install this output-style (see the list below)",
-    )
-    p.add_argument(
-        "--theme",
-        default=None,
-        metavar="NAME",
-        help="install this theme (see the list below)",
-    )
-    p.add_argument(
-        "--live-docs",
-        action="store_true",
-        help="install the live board/log viewer (MkDocs; macOS launchd service). "
-        "Then `pinky docs serve` / `status` / `uninstall`.",
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="with --live-docs: replace a launchd agent pinky did not install. "
-        "with --plugin: bust the plugin's cache dir before fetching (dev cache-bust)",
-    )
-    p.set_defaults(func=cmd_install)
-
-    p = _add(
-        sub,
-        "rules",
-        "📐 distribute each plugin's rules to the same scope its plugin is installed at",
-        [
-            "pinky rules --dry-run  # show the plan, write nothing",
-            "pinky rules --yes  # apply the plan without asking",
-        ],
-    )
-    p.add_argument(
-        "workspace",
-        nargs="?",
-        default=None,
-        help="the workspace root to resolve install scopes from (default: the detected one)",
-    )
-    p.add_argument(
-        "--dry-run", action="store_true", help="print the plan and stop, never ask"
-    )
-    p.add_argument(
-        "--yes",
-        "-y",
-        action="store_true",
-        help="apply the plan without asking (required in a non-interactive shell)",
-    )
-    p.set_defaults(func=cmd_rules)
-
-    p = _add(
-        sub,
+        verbs,
         "drift",
-        "🧭 report where each repo differs from the hooks pinky-bootstrap distributes",
-        ["pinky drift  # every repo, writes nothing"],
+        "report where each repo differs from the hooks pinky-bootstrap distributes",
+        ["pinky repo drift  # every repo, writes nothing"],
     )
     p.set_defaults(func=cmd_drift)
 
     p = _add(
-        sub,
+        verbs,
         "llm-drift",
-        "🧹 find what agents leave in Python code that every read pays for, and clean it",
+        "find what agents leave in Python code that every read pays for, and clean it",
         [
-            "pinky llm-drift  # scan the repo you are in",
-            "pinky llm-drift --repo pinky-provider  # scan one repo",
-            "pinky llm-drift fix --repo pinky-provider --dry-run  # what a cleanup would save",
-            "pinky llm-drift fix --all  # clean every repo (never commits)",
+            "pinky repo llm-drift  # scan the repo you are in",
+            "pinky repo llm-drift --repo pinky-provider  # scan one repo",
+            "pinky repo llm-drift fix --repo pinky-provider --dry-run  # what a cleanup would save",
+            "pinky repo llm-drift fix --all  # clean every repo (never commits)",
         ],
         extra=_drift_kinds_epilog(),
     )
@@ -478,61 +529,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = _add(
         sub,
-        "directives",
-        "📌 the inline directive to paste for an error code (noqa, type: ignore, nosec…)",
+        "install",
+        "🚀 replayable installer — the workspace rules, then the prerequisites report",
         [
-            "pinky directives E402  # → # noqa: E402",
-            "pinky directives '[type-arg]'  # quote brackets, zsh globs them",
-            "pinky directives  # the whole table",
+            "pinky install  # distribute the rules, then the doctor",
+            "pinky install --dry-run  # show the rules plan, write nothing",
         ],
     )
     p.add_argument(
-        "code",
-        nargs="?",
-        default=None,
-        help="the code a tool printed — E402, [type-arg], B608… (omit it for the whole table)",
-    )
-    p.set_defaults(func=cmd_directives)
-
-    p = _add(
-        sub,
-        "docs",
-        "📖 live board/log viewer — serve it, check its status, or remove it",
-        [
-            "pinky install --live-docs  # install it first",
-            "pinky docs serve  # run the site now, no service",
-            "pinky docs status",
-        ],
+        "--dry-run", action="store_true", help="print the plan and stop, never ask"
     )
     p.add_argument(
-        "action",
-        choices=["serve", "status", "uninstall"],
-        help="serve: run the site live, no service · status: posed / not-mine / absent · "
-        "uninstall: remove what `pinky install --live-docs` posed",
-    )
-    p.set_defaults(func=cmd_docs)
-
-    p = _add(
-        sub,
-        "plugins",
-        "🧩 audit / reconcile where each plugin is enabled across the workspace",
-        [
-            "pinky plugins reconcile  # audit, writes nothing",
-            "pinky plugins reconcile --apply  # place each plugin, interactively",
-        ],
-    )
-    p.add_argument(
-        "action",
-        choices=["reconcile"],
-        help="reconcile: per-plugin audit of where it is enabled / has files / ships a "
-        "status line (writes nothing)",
-    )
-    p.add_argument(
-        "--apply",
+        "--yes",
+        "-y",
         action="store_true",
-        help="with reconcile: interactively place each plugin and purge non-matching enables",
+        help="apply the plan without asking (required in a non-interactive shell)",
     )
-    p.set_defaults(func=cmd_plugins)
+    p.set_defaults(func=cmd_install)
 
     p = _add(
         sub,
@@ -549,6 +562,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="offer to `brew install` each missing binary and Ollama",
     )
     p.set_defaults(func=cmd_doctor)
+
+    p = _add(
+        sub,
+        "directives",
+        "📌 the inline directive to paste for an error code (noqa, type: ignore, nosec…)",
+        [
+            "pinky directives E402  # → # noqa: E402",
+            "pinky directives '[type-arg]'  # quote brackets, zsh globs them",
+            "pinky directives  # the whole table",
+        ],
+    )
+    p.add_argument(
+        "code",
+        nargs="?",
+        default=None,
+        help="the code a tool printed — E402, [type-arg], B608… (omit it for the whole table)",
+    )
+    p.set_defaults(func=cmd_directives)
 
     return parser
 

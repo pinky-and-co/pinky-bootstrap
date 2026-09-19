@@ -142,13 +142,20 @@ def main(argv: list[str] | None = None) -> None:
         "--plugins-reconcile",
         action="store_true",
         help="audit where every known plugin is enabled / has files / ships a status line, "
-        "then write nothing (the `pinky plugins reconcile` report)",
+        "then write nothing (the `pinky claude-plugin list` report)",
     )
     parser.add_argument(
         "--plugins-reconcile-apply",
         action="store_true",
         help="interactive: place each plugin (user / project / uninstall / skip) and purge "
-        "every enable that does not match (`pinky plugins reconcile --apply`)",
+        "every enable that does not match (`pinky claude-plugin reconcile`)",
+    )
+    parser.add_argument(
+        "--plugins-who",
+        action="store_true",
+        help="for every plugin install in the registry, the session transcript that ran the "
+        "command (or none: a hook or a script) — the proof of who installed what "
+        "(`pinky claude-plugin list --who`)",
     )
     parser.add_argument(
         "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
@@ -248,7 +255,13 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  mounts: {', '.join(result.mounts) or '(none found)'}")
         print(f"  service: {result.service}")
         if result.service != "loaded":
-            print(f"  `pinky docs serve` to view (http://{live_docs.SERVE_ADDR})")
+            print(f"  `pinky live-docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        return
+
+    if args.plugins_who:
+        from . import plugin_provenance
+
+        print(plugin_provenance.format_origins(plugin_provenance.registry_origins()))
         return
 
     if args.plugins_reconcile or args.plugins_reconcile_apply:
@@ -268,48 +281,52 @@ def main(argv: list[str] | None = None) -> None:
         # Snapshot BEFORE touching anything — same discipline as apply_reconcile's own loop (audit
         # once, act, purge against the pre-action snapshot). `spec` mirrors plugin_install._spec's
         # format exactly; it stays private there, this is cheap enough not to warrant exporting it.
-        spec = f"{args.plugin}@{args.marketplace}" if args.marketplace else args.plugin
         label_map = plugin_reconcile.label_to_settings(WORKSPACE_ROOT)
-        prior_state = plugin_reconcile.audit_plugins(WORKSPACE_ROOT).get(spec)
+        audit = plugin_reconcile.audit_plugins(WORKSPACE_ROOT)
+        spec = plugin_reconcile.resolve_spec(args.plugin, args.marketplace, audit)
+        prior_state = audit.get(spec)
+        args.marketplace = args.marketplace or spec.partition("@")[2] or None
 
-        # Was it already a legit global enable before we touch anything? Decides whether the
-        # fetch-time user-scope enable is ours to drop later.
-        was_user_enabled = plugin_install.is_user_enabled(args.plugin, args.marketplace)
         # 0. Dev cache-bust: `claude plugin install`/`update` only ever fills an absent cache dir,
         #    so a plugin pinned at 0.1.0 can go on serving a stale build after an edit, no signal.
         #    `--force` deletes it first — a no-op on a first install (nothing cached yet).
         if args.force and plugin_install.force_refetch(args.plugin, args.marketplace):
             print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
-        # 1. Fetch the plugin's files (transient user-scope enable) via Claude Code's own command.
-        plugin_install.install_plugin_files(args.plugin, args.marketplace)
-        install_path = plugin_install.resolve_install_path(
-            args.plugin, args.marketplace
-        )
-        # 2a. A plugin that ships a status line: `statusLine` has no plugin-manifest slot, so wire
-        #     it (user scope — a cross-session UI preference, ADR-0001). The user-scope enable
-        #     from step 1 is correct here, so it stays. No depth question to ask.
-        written = plugin_install.set_status_lines(install_path)
-        if written:
-            print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
-            return
+        # 1. An always-on plugin (autodiscovery, statusline) is user scope by design — the only case
+        #    where `pinky` writes there. No depth question to ask.
         if args.plugin in plugin_install.KEEP_USER_SCOPE:
+            plugin_install.install_plugin_files(args.plugin, args.marketplace)
+            written = plugin_install.set_status_lines(
+                plugin_install.resolve_install_path(args.plugin, args.marketplace)
+            )
+            if written:
+                print(
+                    f"status line wired ({', '.join(written)}) → ~/.claude/settings.json"
+                )
             print(
                 f"{args.plugin} kept at user scope (always-on) → ~/.claude/settings.json"
             )
             return
-        try:
-            roots = run_marketplace_wizard(
-                WORKSPACE_ROOT, args.plugin, args.marketplace, install_path=install_path
-            )
-        except SystemExit:
-            if not was_user_enabled:
-                plugin_install.drop_user_scope(args.plugin, args.marketplace)
-            raise
-        if roots != [Path.home()] and not was_user_enabled:
-            plugin_install.drop_user_scope(args.plugin, args.marketplace)
+        # 2. Scope first: nothing is downloaded before the user picked where it goes. A project
+        #    target downloads and enables the plugin right there (`claude plugin install --scope
+        #    project`); user scope is written only when the user chooses it.
+        roots = run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
+        if roots == [Path.home()]:
+            plugin_install.install_plugin_files(args.plugin, args.marketplace)
+        # 3. The files are cached now, wherever they went: wire what needs them.
+        install_path = plugin_install.resolve_install_path(
+            args.plugin, args.marketplace
+        )
+        written = plugin_install.set_status_lines(install_path)
+        if written:
+            print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
+        if plugin_install.ships_lsp_server(install_path):
+            plugin_install.ensure_lsp_tool_enabled()
 
         keep = {str(Path.home())} if roots == [Path.home()] else {str(r) for r in roots}
-        if was_user_enabled:
+        # Only a plugin that belongs at user scope (status line, always-on) keeps a user-scope enable
+        # that predates this run: for any other one it is a leftover, offered for removal below.
+        if prior_state is not None and plugin_reconcile.keeps_user_scope(prior_state):
             keep.add(str(Path.home()))
         if prior_state is not None:
             removed = plugin_reconcile.stale_labels(
