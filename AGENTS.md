@@ -37,6 +37,10 @@ orientation only.
 - `test_validate_frontmatter.py` defines the contract for `scripts/hooks/validate_frontmatter.py`
   — a validator for SKILL.md / agent frontmatter that also rejects legacy `commands/` directories
   in plugin repos. Write the hook to satisfy the existing tests, not the reverse.
+- Who installed a plugin, or wrote an enable: `pinky plugins who` matches each `installed_plugins.json`
+  entry to the session transcript (`~/.claude/projects/`) that ran `claude plugin install` at that
+  time; an entry no command matches came from a hook or a script (`pc-autodiscovery`, `chantier`,
+  `spawn-workers`). Run it before diagnosing an unexpected enable, and read `_AGENT_LOG` first.
 - Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer = "3 days"` — a relative
   cooldown span (uv ≥ 0.9.17) against a freshly compromised dependency republished on PyPI: uv
   ignores, at every `uv lock`, any package published in the last 3 days, and records the span

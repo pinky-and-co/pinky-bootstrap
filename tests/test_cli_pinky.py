@@ -237,6 +237,12 @@ def test_plugins_reconcile_dispatch(monkeypatch):
     assert calls == [["--plugins-reconcile"]]
 
 
+def test_plugins_who_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["plugins", "who"])
+    assert calls == [["--plugins-who"]]
+
+
 def test_plugins_reconcile_apply_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["plugins", "reconcile", "--apply"])

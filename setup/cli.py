@@ -151,6 +151,13 @@ def main(argv: list[str] | None = None) -> None:
         "every enable that does not match (`pinky plugins reconcile --apply`)",
     )
     parser.add_argument(
+        "--plugins-who",
+        action="store_true",
+        help="for every plugin install in the registry, the session transcript that ran the "
+        "command (or none: a hook or a script) — the proof of who installed what "
+        "(`pinky plugins who`)",
+    )
+    parser.add_argument(
         "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
     )
     parser.add_argument(
@@ -249,6 +256,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  service: {result.service}")
         if result.service != "loaded":
             print(f"  `pinky docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        return
+
+    if args.plugins_who:
+        from . import plugin_provenance
+
+        print(plugin_provenance.format_origins(plugin_provenance.registry_origins()))
         return
 
     if args.plugins_reconcile or args.plugins_reconcile_apply:

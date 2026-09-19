@@ -194,7 +194,9 @@ def cmd_docs(args: argparse.Namespace) -> None:
 def cmd_plugins(args: argparse.Namespace) -> None:
     """Translate `plugins <action>` to `setup.cli`'s `--plugins-<action>`, with the optional `-apply`."""
     flag = f"--plugins-{args.action}"
-    setup_main([f"{flag}-apply"] if args.apply else [flag])
+    setup_main(
+        [f"{flag}-apply"] if args.apply and args.action == "reconcile" else [flag]
+    )
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -519,13 +521,14 @@ def build_parser() -> argparse.ArgumentParser:
         [
             "pinky plugins reconcile  # audit, writes nothing",
             "pinky plugins reconcile --apply  # place each plugin, interactively",
+            "pinky plugins who  # which session ran each install (proof of who installed what)",
         ],
     )
     p.add_argument(
         "action",
-        choices=["reconcile"],
+        choices=["reconcile", "who"],
         help="reconcile: per-plugin audit of where it is enabled / has files / ships a "
-        "status line (writes nothing)",
+        "status line (writes nothing) · who: the session transcript behind each install",
     )
     p.add_argument(
         "--apply",
