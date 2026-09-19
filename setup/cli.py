@@ -61,7 +61,7 @@ def main(argv: list[str] | None = None) -> None:
         "--yes",
         "-y",
         action="store_true",
-        help="with --rules: apply the plan without asking for confirmation "
+        help="with --rules or a distribution: apply the plan without asking for confirmation "
         "(required in a non-interactive shell — no stdin to prompt on)",
     )
     parser.add_argument(
