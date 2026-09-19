@@ -734,14 +734,15 @@ def _diff_lines(change: PlannedWrite, color: bool) -> list[str]:
     except UnicodeDecodeError:
         return ["    (binary file changed)"]
     lines = list(difflib.unified_diff(old, new, n=1, lineterm=""))[2:]
+    codes = style.diff_codes()
     shown: list[str] = []
     for line in lines[:_MAX_DIFF_LINES]:
         if line.startswith("@@"):
             shown.append("    " + style.paint(line, style.DIM, color=color))
         elif line.startswith("-"):
-            shown.append("    " + style.paint(line, style.RED_BOLD, color=color))
+            shown.append("    " + style.paint(line, codes.removed, color=color))
         elif line.startswith("+"):
-            shown.append("    " + style.paint(line, style.GREEN, color=color))
+            shown.append("    " + style.paint(line, codes.added, color=color))
         else:
             shown.append("    " + line)
     if len(lines) > _MAX_DIFF_LINES:
