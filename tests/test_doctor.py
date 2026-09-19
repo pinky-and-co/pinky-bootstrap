@@ -144,7 +144,7 @@ def test_check_binaries_merges_allowed_tools_and_lsp_sources(tmp_path, monkeypat
 
     assert set(checks) == {"rg", "pyright-langserver"}
     assert checks["pyright-langserver"].detail == (
-        "npm install -g pyright (requis par : pyright-fork)"
+        "npm install -g pyright (required by: pyright-fork)"
     )
 
 
@@ -250,50 +250,102 @@ def test_check_keys_empty_when_no_settings(tmp_path):
 
 # ── format_report — oracle ──────────────────────────────────────────────────────────────────
 
+_MIXED = [
+    doctor.Check("binary", "rg", True, "required by: pc-alpha"),
+    doctor.Check(
+        "binary", "yt-dlp", False, "brew install yt-dlp (required by: pc-kanban)"
+    ),
+    doctor.Check("ollama", "endpoint", True, "http://localhost:11434"),
+    doctor.Check("ollama", "gemma4:12b", False, "ollama pull gemma4:12b"),
+    doctor.Check("key", "MISTRAL_API_KEY", True, ""),
+]
+
 
 def test_format_report_is_empty_case():
     assert doctor.format_report([]) == (
-        "pinky doctor — prérequis des plugins installés\n"
+        "pinky doctor — plugin prerequisites\n"
         "\n"
-        "  (aucun plugin installé, ou aucun prérequis déclaré)"
+        "  (no plugin installed, or no prerequisite declared)"
     )
 
 
-def test_format_report_full_string_oracle():
-    checks = [
-        doctor.Check("binary", "rg", True, "requis par : pc-alpha"),
-        doctor.Check(
-            "binary", "yt-dlp", False, "brew install yt-dlp (requis par : pc-kanban)"
-        ),
-        doctor.Check("ollama", "endpoint", True, "http://localhost:11434"),
-        doctor.Check("ollama", "gemma4:12b", False, "ollama pull gemma4:12b"),
-        doctor.Check("key", "MISTRAL_API_KEY", True, ""),
-    ]
-
-    assert doctor.format_report(checks) == (
-        "pinky doctor — prérequis des plugins installés\n"
+def test_format_report_puts_what_is_missing_first_and_sums_up_the_rest():
+    """The reader's job is to see what to install: the missing ones come first, with their
+    command, and everything that is fine collapses to one line."""
+    assert doctor.format_report(_MIXED) == (
+        "pinky doctor — plugin prerequisites\n"
         "\n"
-        "binaires\n"
-        "  ✓ rg — requis par : pc-alpha\n"
-        "  ✗ yt-dlp — brew install yt-dlp (requis par : pc-kanban)\n"
+        "✗ 2 prerequisites missing\n"
+        "\n"
+        "  ✗ yt-dlp — brew install yt-dlp (required by: pc-kanban)\n"
+        "  ✗ gemma4:12b — ollama pull gemma4:12b\n"
+        "\n"
+        "✓ 3 present — `pinky doctor --verbose` lists them"
+    )
+
+
+def test_format_report_verbose_lists_the_present_ones_by_category_without_repeating_the_missing():
+    """The missing ones are already at the top with their command: the category listing adds only
+    what was collapsed into the "present" line."""
+    assert doctor.format_report(_MIXED, verbose=True) == (
+        "pinky doctor — plugin prerequisites\n"
+        "\n"
+        "✗ 2 prerequisites missing\n"
+        "\n"
+        "  ✗ yt-dlp — brew install yt-dlp (required by: pc-kanban)\n"
+        "  ✗ gemma4:12b — ollama pull gemma4:12b\n"
+        "\n"
+        "✓ 3 present\n"
+        "\n"
+        "binaries\n"
+        "  ✓ rg — required by: pc-alpha\n"
         "\n"
         "ollama\n"
         "  ✓ endpoint — http://localhost:11434\n"
-        "  ✗ gemma4:12b — ollama pull gemma4:12b\n"
         "\n"
-        "clés API\n"
-        "  ✓ MISTRAL_API_KEY\n"
-        "\n"
-        "2 prérequis manquants"
+        "API keys\n"
+        "  ✓ MISTRAL_API_KEY"
     )
 
 
-def test_format_report_all_present_singular_and_plural():
-    ok = [doctor.Check("binary", "rg", True, "requis par : x")]
-    assert doctor.format_report(ok).endswith("tous les prérequis sont présents")
+def test_format_report_all_present():
+    ok = [doctor.Check("binary", "rg", True, "required by: x")]
+    assert doctor.format_report(ok) == (
+        "pinky doctor — plugin prerequisites\n"
+        "\n"
+        "✓ all 1 present — `pinky doctor --verbose` lists them"
+    )
 
+
+def test_format_report_singular_missing():
     one = [doctor.Check("binary", "rg", False, "brew install ripgrep")]
-    assert doctor.format_report(one).endswith("1 prérequis manquant")
+    assert doctor.format_report(one) == (
+        "pinky doctor — plugin prerequisites\n"
+        "\n"
+        "✗ 1 prerequisite missing\n"
+        "\n"
+        "  ✗ rg — brew install ripgrep"
+    )
+
+
+def test_format_report_in_color_makes_the_missing_ones_stand_out():
+    one = [
+        doctor.Check("binary", "rg", False, "brew install ripgrep"),
+        doctor.Check("binary", "jq", True, ""),
+    ]
+
+    report = doctor.format_report(one, color=True)
+
+    assert "\x1b[1;31m✗ 1 prerequisite missing\x1b[0m" in report
+    assert (
+        "  \x1b[1;31m✗\x1b[0m \x1b[1mrg\x1b[0m — \x1b[2mbrew install ripgrep\x1b[0m"
+        in report
+    )
+    assert "\x1b[32m✓\x1b[0m \x1b[2m1 present" in report
+
+
+def test_format_report_without_color_has_no_escape_code():
+    assert "\x1b" not in doctor.format_report(_MIXED, verbose=True)
 
 
 def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
@@ -311,6 +363,9 @@ def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
     monkeypatch.setattr(doctor.shutil, "which", which)
     monkeypatch.setattr(doctor, "_read_ollama_tags", tags)
     monkeypatch.setattr(doctor, "_keychain_has", keychain)
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text('eval "$(register-python-argcomplete pinky)"\n', encoding="utf-8")
+    monkeypatch.setattr(doctor, "_ZSHRC", zshrc)
 
 
 def test_run_doctor_returns_zero_when_all_present(tmp_path, monkeypatch, capsys):
@@ -337,8 +392,13 @@ def test_run_doctor_reports_exactly_the_missing_prerequisites(tmp_path, monkeypa
     checks = doctor.collect_checks()
     missing = {(c.category, c.name) for c in checks if not c.ok}
 
-    assert missing == {("binary", "rg"), ("ollama", "gemma4:12b"), ("key", "A_KEY")}
-    assert doctor.run_doctor() == 3
+    assert missing == {
+        ("binary", "rg"),
+        ("ollama", "gemma4:12b"),
+        ("key", "A_KEY"),
+        ("shell", "pinky on PATH"),
+    }
+    assert doctor.run_doctor() == 4
 
 
 def test_run_doctor_output_is_stable_across_two_runs(tmp_path, monkeypatch, capsys):
@@ -377,7 +437,7 @@ def test_apply_fixes_never_touches_keys_or_ollama_models(monkeypatch):
 
     installed = doctor.apply_fixes(
         [
-            doctor.Check("key", "MISTRAL_API_KEY", False, "définir $MISTRAL_API_KEY"),
+            doctor.Check("key", "MISTRAL_API_KEY", False, "set $MISTRAL_API_KEY"),
             doctor.Check("ollama", "gemma4:12b", False, "ollama pull gemma4:12b"),
         ],
         runner=calls.append,
@@ -413,7 +473,7 @@ def test_apply_fixes_no_brew_runs_nothing(monkeypatch, capsys):
 
     assert calls == []
     assert installed == []
-    assert "brew` absent" in capsys.readouterr().out
+    assert "`brew` not on PATH" in capsys.readouterr().out
 
 
 def test_apply_fixes_npm_installs_a_missing_lsp_binary(monkeypatch):
@@ -426,7 +486,7 @@ def test_apply_fixes_npm_installs_a_missing_lsp_binary(monkeypatch):
                 "binary",
                 "pyright-langserver",
                 False,
-                "npm install -g pyright (requis par : pyright-fork)",
+                "npm install -g pyright (required by: pyright-fork)",
             )
         ],
         runner=calls.append,
@@ -455,7 +515,7 @@ def test_apply_fixes_partitions_per_tool_brew_runs_npm_skips(monkeypatch):
                 "binary",
                 "pyright-langserver",
                 False,
-                "npm install -g pyright (requis par : pyright-fork)",
+                "npm install -g pyright (required by: pyright-fork)",
             ),
         ],
         runner=calls.append,
@@ -511,8 +571,9 @@ def test_cmd_doctor_delegates_the_flag(monkeypatch):
 
     cli_pinky.main(["doctor"])
     cli_pinky.main(["doctor", "--fix"])
+    cli_pinky.main(["doctor", "--verbose"])
 
-    assert calls == [["--doctor"], ["--doctor", "--fix"]]
+    assert calls == [["--doctor"], ["--doctor", "--fix"], ["--doctor", "--verbose"]]
 
 
 @pytest.mark.parametrize(
@@ -534,3 +595,64 @@ def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):
     cli_pinky.main(install_args)
 
     assert ran == [True]
+
+
+def test_check_shell_flags_pinky_missing_from_the_path_with_the_command_to_install_it(
+    tmp_path,
+):
+    """`pinky` must be a command of its own on the PATH: shell completion is registered per command
+    name, and `uv run pinky` makes `uv` the command."""
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text("", encoding="utf-8")
+
+    checks = doctor.check_shell(zshrc=zshrc, which=lambda name: None)
+
+    path_check = next(c for c in checks if c.name == "pinky on PATH")
+    assert path_check.category == "shell"
+    assert path_check.ok is False
+    assert "uv tool install --editable" in path_check.detail
+
+
+def test_check_shell_accepts_pinky_on_the_path(tmp_path):
+    checks = doctor.check_shell(
+        zshrc=tmp_path / ".zshrc", which=lambda name: "/usr/local/bin/pinky"
+    )
+
+    assert next(c for c in checks if c.name == "pinky on PATH").ok is True
+
+
+def test_check_shell_flags_completion_missing_from_zshrc_with_the_line_to_add(tmp_path):
+    checks = doctor.check_shell(
+        zshrc=tmp_path / "absent", which=lambda name: "/usr/local/bin/pinky"
+    )
+
+    completion = next(c for c in checks if c.name == "zsh completion")
+    assert completion.ok is False
+    assert 'eval "$(register-python-argcomplete pinky)"' in completion.detail
+
+
+def test_check_shell_accepts_completion_registered_in_zshrc(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text(
+        'autoload -Uz compinit && compinit\neval "$(register-python-argcomplete pinky)"\n',
+        encoding="utf-8",
+    )
+
+    checks = doctor.check_shell(zshrc=zshrc, which=lambda name: "/usr/local/bin/pinky")
+
+    assert next(c for c in checks if c.name == "zsh completion").ok is True
+
+
+def test_the_shell_checks_are_part_of_the_doctor_report():
+    report = doctor.format_report(
+        [
+            doctor.Check(
+                "shell", "pinky on PATH", False, "uv tool install --editable X"
+            ),
+            doctor.Check("shell", "zsh completion", True, ""),
+        ],
+        verbose=True,
+    )
+
+    assert "\nshell\n  ✓ zsh completion" in report
+    assert "✗ pinky on PATH — uv tool install --editable X" in report

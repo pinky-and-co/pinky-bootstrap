@@ -22,8 +22,11 @@ Usage:
 import argparse
 import re
 import sys
+from collections.abc import Callable
 
-from . import agentic_assets
+import argcomplete
+
+from . import agentic_assets, plugin_catalog
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .llm_drift import DRIFT_KINDS, SCAN_KINDS_DEFAULT
@@ -165,8 +168,14 @@ def cmd_directives(args: argparse.Namespace) -> None:
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
-    """Translate `doctor` to `setup.cli`'s `--doctor`, with the optional `--fix`."""
-    setup_main(["--doctor", *(["--fix"] if args.fix else [])])
+    """Translate `doctor` to `setup.cli`'s `--doctor`, with the optional `--fix` / `--verbose`."""
+    setup_main(
+        [
+            "--doctor",
+            *(["--fix"] if args.fix else []),
+            *(["--verbose"] if args.verbose else []),
+        ]
+    )
 
 
 def cmd_live_docs(args: argparse.Namespace) -> None:
@@ -175,6 +184,31 @@ def cmd_live_docs(args: argparse.Namespace) -> None:
         setup_main(["--live-docs", *(["--force"] if args.force else [])])
     else:
         setup_main([f"--live-docs-{args.verb}"])
+
+
+def _completing(
+    action: argparse.Action, completer: Callable[..., list[str]]
+) -> argparse.Action:
+    """Attach `completer` to an argument — the attribute `argcomplete` reads, which argparse's
+    `Action` does not declare."""
+    action.completer = completer  # type: ignore[attr-defined]
+    return action
+
+
+def _complete_plugin(prefix: str, **_: object) -> list[str]:
+    """Shell completion: the plugins installed or published by a known marketplace."""
+    return [
+        name for name in plugin_catalog.known_plugin_names() if name.startswith(prefix)
+    ]
+
+
+def _complete_marketplace(prefix: str, **_: object) -> list[str]:
+    """Shell completion: the marketplaces registered with Claude Code."""
+    return [
+        name
+        for name in plugin_catalog.known_marketplace_names()
+        if name.startswith(prefix)
+    ]
 
 
 def _run_doctor_advisory() -> None:
@@ -304,13 +338,19 @@ def build_parser() -> argparse.ArgumentParser:
             "pinky claude-plugin install pc-x --marketplace pinky-agentic-plugins --force",
         ],
     )
-    p.add_argument(
-        "plugin", metavar="PLUGIN", help="the plugin, without its marketplace"
+    _completing(
+        p.add_argument(
+            "plugin", metavar="PLUGIN", help="the plugin, without its marketplace"
+        ),
+        _complete_plugin,
     )
-    p.add_argument(
-        "--marketplace",
-        default=None,
-        help="the marketplace it comes from (asked when several carry the plugin)",
+    _completing(
+        p.add_argument(
+            "--marketplace",
+            default=None,
+            help="the marketplace it comes from (asked when several carry the plugin)",
+        ),
+        _complete_marketplace,
     )
     p.add_argument(
         "--yes",
@@ -569,6 +609,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="offer to `brew install` each missing binary and Ollama",
     )
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="also list every prerequisite that is present, by category",
+    )
     p.set_defaults(func=cmd_doctor)
 
     p = _add(
@@ -595,6 +640,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command."""
     parser = build_parser()
+    argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()

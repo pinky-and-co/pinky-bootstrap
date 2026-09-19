@@ -24,7 +24,9 @@ authors = [{ name = "Pinky & Co" }]
 # `choisir-license-pinky-workspace` (Apache-2.0 recommended, ADR-0065 decision 8).
 # No third-party runtime dependency: every mode (--repo/--all/--check-drift, --agents-md) is
 # stdlib-only.
-dependencies = []
+dependencies = [
+    "argcomplete>=3.7.2",
+]
 
 [project.scripts]
 pinky = "cli_pinky:main"
