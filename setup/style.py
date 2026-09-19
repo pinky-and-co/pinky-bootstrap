@@ -8,8 +8,9 @@ is not a terminal (a pipe, a file, CI) and whenever `NO_COLOR` is set, so logs a
 from __future__ import annotations
 
 import os
+import subprocess  # nosec B404 — `defaults`, fixed argv, never shell=True
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TextIO
 
@@ -43,17 +44,49 @@ class DiffCodes:
     added: str
 
 
-# Chosen by `PINKY_DIFF_STYLE`. The 16-color codes (`bg16`) are cases of the terminal's own palette
-# and follow its theme; the truecolor ones are fixed values, one set per light or dark background.
-_DIFF_STYLES = {
-    "text": DiffCodes(RED_BOLD, GREEN),
-    "bg16": DiffCodes("97;41", "30;42"),
-    "github-light": DiffCodes("48;2;255;235;233", "48;2;218;251;225"),
-    "github-dark": DiffCodes("48;2;61;22;26", "48;2;18;38;30"),
-}
+_DIFF_ON_DARK = DiffCodes(RED_BOLD, GREEN)
+# Pastel backgrounds like GitHub's light diff: fixed truecolor values, legible only on a light
+# background — which is why they are used on a light theme alone.
+_DIFF_ON_LIGHT = DiffCodes("48;2;255;235;233", "48;2;218;251;225")
 
 
-def diff_codes(environ: Mapping[str, str] | None = None) -> DiffCodes:
-    """The codes for the diff style named by `PINKY_DIFF_STYLE` (colored text when unset or unknown)."""
+def is_light_theme(
+    environ: Mapping[str, str] | None = None,
+    *,
+    platform: str | None = None,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> bool:
+    """Whether the terminal has a light background, best effort.
+
+    `PINKY_THEME=light|dark` decides when set. Otherwise macOS says so: `AppleInterfaceStyle` reads
+    `Dark` in dark mode and nothing in light mode. Elsewhere `COLORFGBG` (`fg;bg`, set by some
+    terminals) is read. Anything undecided counts as dark, where colored text is legible.
+    """
     env = os.environ if environ is None else environ
-    return _DIFF_STYLES.get(env.get("PINKY_DIFF_STYLE", "text"), _DIFF_STYLES["text"])
+    forced = env.get("PINKY_THEME", "").lower()
+    if forced in ("light", "dark"):
+        return forced == "light"
+    if (platform or sys.platform) == "darwin":
+        result = run(
+            ["defaults", "read", "-g", "AppleInterfaceStyle"],  # nosec B603, B607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        return "dark" not in result.stdout.lower()
+    background = env.get("COLORFGBG", "").rsplit(";", 1)[-1]
+    return background.isdigit() and int(background) in (7, 9, 10, 11, 12, 13, 14, 15)
+
+
+def diff_codes(
+    environ: Mapping[str, str] | None = None,
+    *,
+    platform: str | None = None,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> DiffCodes:
+    """How a removed and an added diff line are painted: a pastel background on a light theme,
+    colored text (the terminal's own red and green) otherwise."""
+    if is_light_theme(environ, platform=platform, run=run):
+        return _DIFF_ON_LIGHT
+    return _DIFF_ON_DARK

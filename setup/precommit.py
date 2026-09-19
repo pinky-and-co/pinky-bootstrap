@@ -734,7 +734,7 @@ def _diff_lines(change: PlannedWrite, color: bool) -> list[str]:
     except UnicodeDecodeError:
         return ["    (binary file changed)"]
     lines = list(difflib.unified_diff(old, new, n=1, lineterm=""))[2:]
-    codes = style.diff_codes()
+    codes = style.diff_codes() if color else style.DiffCodes("", "")
     shown: list[str] = []
     for line in lines[:_MAX_DIFF_LINES]:
         if line.startswith("@@"):
