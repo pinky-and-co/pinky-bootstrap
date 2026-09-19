@@ -30,7 +30,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import plugin_install
+from . import plugin_install, style
 from .common import SCRIPT_DIR
 
 _CLAUDE_DIR = Path.home() / ".claude"
@@ -290,9 +290,9 @@ def check_binaries(
         ok = shutil.which(binary) is not None
         by = ", ".join(needed_by)
         detail = (
-            f"requis par : {by}"
+            f"required by: {by}"
             if ok
-            else f"{_install_hint(binary)} (requis par : {by})"
+            else f"{_install_hint(binary)} (required by: {by})"
         )
         checks.append(Check("binary", binary, ok, detail))
     return checks
@@ -346,7 +346,7 @@ def check_ollama(
                 "ollama",
                 "endpoint",
                 False,
-                f"démarrer Ollama — `brew services start ollama` ({url})",
+                f"start Ollama — `brew services start ollama` ({url})",
             )
         ]
     checks = [Check("ollama", "endpoint", True, url)]
@@ -396,9 +396,7 @@ def check_keys(
         service = entry.get("service", name)
         ok = bool(environ.get(name)) or lookup(service)
         detail = (
-            ""
-            if ok
-            else f"définir ${name}, ou l'ajouter au trousseau (service {service})"
+            "" if ok else f"set ${name}, or add it to the keychain (service {service})"
         )
         checks.append(Check("key", name, ok, detail))
     return checks
@@ -408,9 +406,9 @@ def check_keys(
 
 _CATEGORY_ORDER = {"binary": 0, "ollama": 1, "key": 2, "shell": 3}
 _CATEGORY_TITLE = {
-    "binary": "binaires",
+    "binary": "binaries",
     "ollama": "ollama",
-    "key": "clés API",
+    "key": "API keys",
     "shell": "shell",
 }
 
@@ -470,35 +468,72 @@ def collect_checks(
     ]
 
 
-def format_report(checks: list[Check]) -> str:
-    """The full report as one string — grouped by category, deterministic order."""
-    lines = ["pinky doctor — prérequis des plugins installés"]
+def _line(check: Check, color: bool) -> str:
+    """One prerequisite: the mark, the name, then what to do about it (or what needs it)."""
+    if check.ok:
+        mark = style.paint("✓", style.GREEN, color=color)
+    else:
+        mark = style.paint("✗", style.RED_BOLD, color=color)
+    name = (
+        style.paint(check.name, style.BOLD, color=color) if not check.ok else check.name
+    )
+    suffix = (
+        f" — {style.paint(check.detail, style.DIM, color=color)}"
+        if check.detail
+        else ""
+    )
+    return f"  {mark} {name}{suffix}"
+
+
+def format_report(
+    checks: list[Check], *, verbose: bool = False, color: bool = False
+) -> str:
+    """The report as one string: what is missing first, with its command, then one line for
+    everything that is fine. `verbose` lists every prerequisite by category after that."""
+    lines = ["pinky doctor — plugin prerequisites"]
     if not checks:
         lines.append("")
-        lines.append("  (aucun plugin installé, ou aucun prérequis déclaré)")
+        lines.append("  (no plugin installed, or no prerequisite declared)")
         return "\n".join(lines)
     ordered = sorted(checks, key=lambda c: (_CATEGORY_ORDER.get(c.category, 9), c.name))
-    current = None
-    for check in ordered:
-        if check.category != current:
-            current = check.category
-            lines.append("")
-            lines.append(_CATEGORY_TITLE.get(current, current))
-        mark = "✓" if check.ok else "✗"
-        suffix = f" — {check.detail}" if check.detail else ""
-        lines.append(f"  {mark} {check.name}{suffix}")
-    missing = sum(1 for c in checks if not c.ok)
+    missing = [c for c in ordered if not c.ok]
+    present = len(checks) - len(missing)
+    hint = "`pinky doctor --verbose` lists them"
     lines.append("")
-    lines.append(
-        "tous les prérequis sont présents"
-        if not missing
-        else f"{missing} prérequis manquant{'s' if missing > 1 else ''}"
-    )
+    if missing:
+        noun = "prerequisite" if len(missing) == 1 else "prerequisites"
+        lines.append(
+            style.paint(f"✗ {len(missing)} {noun} missing", style.RED_BOLD, color=color)
+        )
+        lines.append("")
+        lines.extend(_line(c, color) for c in missing)
+        lines.append("")
+        summary = f"{present} present"
+    else:
+        summary = f"all {present} present"
+    if present or not missing:
+        tick = style.paint("✓", style.GREEN, color=color)
+        tail = summary if verbose else f"{summary} — {hint}"
+        lines.append(f"{tick} {style.paint(tail, style.DIM, color=color)}")
+    elif lines[-1] == "":
+        lines.pop()
+    if verbose:
+        current = None
+        for check in ordered:
+            if check.category != current:
+                current = check.category
+                lines.append("")
+                lines.append(
+                    style.paint(
+                        _CATEGORY_TITLE.get(current, current), style.BOLD, color=color
+                    )
+                )
+            lines.append(_line(check, color))
     return "\n".join(lines)
 
 
 def _fix_command(check: Check) -> tuple[list[str], str] | None:
-    """The command that would satisfy `check`, paired with the label for the "installé" summary —
+    """The command that would satisfy `check`, paired with the label for the "installed" summary —
     or None when nothing here is the remedy (an API key, an un-pulled Ollama model).
 
     A binary's command comes from `_INSTALL_COMMAND` when it is declared there (a non-brew
@@ -547,9 +582,7 @@ def apply_fixes(
             manual.append(check)
             manual_tools.add(command[0])
     if manual:
-        print(
-            f"`{'`, `'.join(sorted(manual_tools))}` absent du PATH — à installer manuellement :"
-        )
+        print(f"`{'`, `'.join(sorted(manual_tools))}` not on PATH — install manually:")
         for check in manual:
             if check.detail:
                 print(f"  {check.name} : {check.detail}")
@@ -564,6 +597,7 @@ def apply_fixes(
 def run_doctor(
     *,
     fix: bool = False,
+    verbose: bool = False,
     plugins: Iterable[tuple[str, Path]] | None = None,
     settings_pinky_path: Path | None = None,
 ) -> int:
@@ -573,13 +607,13 @@ def run_doctor(
     ``pinky install`` ignores it (advisory).
     """
     checks = collect_checks(plugins=plugins, settings_pinky_path=settings_pinky_path)
-    print(format_report(checks))
+    print(format_report(checks, verbose=verbose, color=style.use_color()))
     missing = [c for c in checks if not c.ok]
     if fix and missing:
         print()
         installed = apply_fixes(missing)
         if installed:
             print(
-                f"\ninstallé : {', '.join(installed)} — relance `pinky doctor` pour revérifier"
+                f"\ninstalled: {', '.join(installed)} — run `pinky doctor` again to re-check"
             )
     return len(missing)

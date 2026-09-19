@@ -166,8 +166,14 @@ def cmd_directives(args: argparse.Namespace) -> None:
 
 
 def cmd_doctor(args: argparse.Namespace) -> None:
-    """Translate `doctor` to `setup.cli`'s `--doctor`, with the optional `--fix`."""
-    setup_main(["--doctor", *(["--fix"] if args.fix else [])])
+    """Translate `doctor` to `setup.cli`'s `--doctor`, with the optional `--fix` / `--verbose`."""
+    setup_main(
+        [
+            "--doctor",
+            *(["--fix"] if args.fix else []),
+            *(["--verbose"] if args.verbose else []),
+        ]
+    )
 
 
 def cmd_live_docs(args: argparse.Namespace) -> None:
@@ -594,6 +600,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fix",
         action="store_true",
         help="offer to `brew install` each missing binary and Ollama",
+    )
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="also list every prerequisite that is present, by category",
     )
     p.set_defaults(func=cmd_doctor)
 

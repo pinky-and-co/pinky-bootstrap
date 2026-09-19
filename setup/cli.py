@@ -79,6 +79,11 @@ def main(argv: list[str] | None = None) -> None:
         help="with --doctor: offer to `brew install` each missing binary and Ollama",
     )
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="with --doctor: also list every prerequisite that is present, by category",
+    )
+    parser.add_argument(
         "--commit",
         action="store_true",
         help="after distributing, commit the distributed files in each repo",
@@ -201,7 +206,9 @@ def main(argv: list[str] | None = None) -> None:
     if args.doctor:
         from . import doctor
 
-        raise SystemExit(1 if doctor.run_doctor(fix=args.fix) else 0)
+        raise SystemExit(
+            1 if doctor.run_doctor(fix=args.fix, verbose=args.verbose) else 0
+        )
 
     if args.directives is not None:
         import tool_directives
