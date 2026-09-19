@@ -320,6 +320,11 @@ CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
 CI_D1_DATABASE_PLACEHOLDER = "__D1_DATABASE__"
 
+# `on.push.paths` s'applique au workflow ENTIER : sans ces chemins, un push qui ne touche que le
+# Worker ne lance rien, donc `worker-deploy` non plus, et rien ne devient rouge.
+CI_PUSH_PATHS_ANCHOR = '      - ".github/**"\n'
+CI_WORKER_PUSH_PATHS = ("src/**", "wrangler.jsonc", "migrations/**")
+
 CI_DEFAULT_INSTALL_CMD = "uv sync --locked --no-sources --group dev"
 
 CI_DEFAULT_TESTS_CMD = "pytest"
@@ -469,6 +474,15 @@ def render_ci_yml(repo: Path) -> str | None:
         )
     d1_database = _d1_database_name(repo)
     if d1_database is not None:
+        worker_paths = "".join(f'      - "{path}"\n' for path in CI_WORKER_PUSH_PATHS)
+        text = text.replace(
+            CI_PUSH_PATHS_ANCHOR,
+            CI_PUSH_PATHS_ANCHOR
+            + "      # `worker-deploy` en a besoin : `paths` filtre le workflow entier, pas seulement\n"
+            + "      # le job de tests.\n"
+            + worker_paths,
+            1,
+        )
         fragment = (
             CI_WORKER_FRAGMENT_PATH.read_text(encoding="utf-8")
             .replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
