@@ -137,6 +137,15 @@ repos:
         language: python
         pass_filenames: true
 
+  # ── Raw LaTeX notation (local LLM fallback, e.g. Gemma via Ollama) ────────
+  - repo: local
+    hooks:
+      - id: check-latex-notation
+        name: "[LATEX] Raw LaTeX instead of Unicode symbol"
+        entry: python scripts/hooks/check_latex_notation.py
+        language: python
+        pass_filenames: true
+
   # ── Employer reference guard ──────────────────────────────────────────────
   - repo: local
     hooks:
@@ -197,7 +206,7 @@ repos:
         # pinky-* packages (pre-release, not on PyPI, excluded from the derivation).
         # --ignore-missing-imports stays as the residual fallback for those excluded imports only.
         language: python
-        additional_dependencies: ["mypy==2.0.0"]
+        additional_dependencies: ["mypy==2.0.0", "argcomplete>=3.7.2"]
         types: [python]
         args: [--ignore-missing-imports]
         files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/

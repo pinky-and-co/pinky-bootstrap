@@ -88,8 +88,12 @@ class SuiteIdentity:
     pitch_heading: (
         str  # the README '## <heading>' pitch section title, e.g. "Why pinky?"
     )
-    pitch_paragraphs: _MarkdownParagraphs  # pitch manifesto, one markdown paragraph each
-    pitch_pills: _MarkdownParagraphs  # short positioning pills, rendered "· "-joined and bolded
+    pitch_paragraphs: (
+        _MarkdownParagraphs  # pitch manifesto, one markdown paragraph each
+    )
+    pitch_pills: (
+        _MarkdownParagraphs  # short positioning pills, rendered "· "-joined and bolded
+    )
 
     _FIELDS = (
         "header_image_url",
