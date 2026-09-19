@@ -118,12 +118,14 @@ def test_a_repo_without_a_worker_gets_no_worker_workflow(tmp_path):
     assert precommit.render_worker_yml(_repo(tmp_path)) is None
 
 
-def test_the_windows_gate_is_its_own_workflow_for_the_pilot_repos_only(tmp_path):
-    text = _text(precommit.render_windows_yml(_repo(tmp_path, "pinky-core")))
+def test_the_windows_gate_is_its_own_workflow_and_only_the_engine_carries_it(tmp_path):
+    """The gate proves the distributed hooks run on Windows; the engine, which ships them, is the
+    one witness — a lib such as `pinky-core` does not need its own."""
+    text = _text(precommit.render_windows_yml(_repo(tmp_path, "pinky-bootstrap")))
 
     assert _workflow_name(text) == "Windows"
     assert _job_names(text) == ["precommit-windows"]
-    assert precommit.render_windows_yml(_repo(tmp_path, "other-repo")) is None
+    assert precommit.render_windows_yml(_repo(tmp_path, "pinky-core")) is None
 
 
 def test_the_install_walkthrough_is_its_own_workflow_for_the_engine_only(tmp_path):
@@ -179,7 +181,7 @@ def test_a_ci_yml_from_the_old_layout_is_rewritten_and_worker_yml_added(tmp_path
 def test_a_generated_workflow_says_so(name, tmp_path):
     """A file `pinky` writes is overwritten on every distribution: say it at the top, where the
     next hand-edit would happen."""
-    repo = _repo(tmp_path, "pinky-core", worker=True)
+    repo = _repo(tmp_path, "pinky-bootstrap", worker=True)
     render = {
         "ci.yml": precommit.render_ci_yml,
         "windows.yml": precommit.render_windows_yml,

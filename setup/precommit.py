@@ -406,7 +406,7 @@ def render_pyproject_with_cooldown(repo: Path) -> str | None:
     return new_text if new_text != text else None
 
 
-CI_WINDOWS_PILOT: frozenset[str] = frozenset({"pinky-core", "pinky-bootstrap"})
+CI_WINDOWS_PILOT: frozenset[str] = frozenset({"pinky-bootstrap"})
 
 
 def _d1_database_name(repo: Path) -> str | None:
