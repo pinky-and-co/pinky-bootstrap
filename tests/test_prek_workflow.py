@@ -214,3 +214,13 @@ def test_install_walkthrough_covers_the_real_sequence(tmp_path):
     assert ".code-workspace" in fragment
     assert "pinky repo distribute" in fragment
     assert "pinky repo drift" in fragment
+
+
+def test_the_walkthrough_distributes_without_a_prompt():
+    """CI has no terminal: since `distribute` asks before it writes, the real distribution the
+    walkthrough plays must pass `--yes`, or it refuses and the job fails."""
+    template = (
+        precommit_mod.CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
+    ).read_text(encoding="utf-8")
+
+    assert "pinky repo distribute --repo pinky-demo-repo --yes" in template

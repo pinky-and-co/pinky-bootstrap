@@ -182,7 +182,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           pinky repo distribute --repo pinky-demo-repo --dry-run
           if ($LASTEXITCODE -ne 0) { throw "distribute --dry-run a échoué ($LASTEXITCODE)" }
-          pinky repo distribute --repo pinky-demo-repo
+          pinky repo distribute --repo pinky-demo-repo --yes
           if ($LASTEXITCODE -ne 0) { throw "distribute a échoué ($LASTEXITCODE)" }
           # `drift` sort 0 même quand il ne trouve AUCUN repo : c'est le no-op silencieux
           # d'ADR-0065. On exige donc que le repo soit nommé dans la sortie, pas juste un code 0.
