@@ -179,4 +179,7 @@ def test_distributed_paths_is_pinned_whole():
         "scripts/hooks",
         ".github/workflows/ci.yml",
         ".github/workflows/prek.yml",
+        ".github/workflows/windows.yml",
+        ".github/workflows/worker.yml",
+        ".github/workflows/install-walkthrough.yml",
     )

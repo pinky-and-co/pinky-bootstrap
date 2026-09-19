@@ -272,9 +272,9 @@ def build_precommit_config(repo: Path, extras: list[str]) -> str:
 
 
 CI_TPL_PATH = CORE_CI_DIR / "ci.yml.tpl"
-CI_WINDOWS_FRAGMENT_PATH = CORE_CI_DIR / "windows-pilot.yml.tpl"
-CI_WORKER_FRAGMENT_PATH = CORE_CI_DIR / "worker-python.yml.tpl"
-CI_INSTALL_WALKTHROUGH_PATH = CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
+CI_WINDOWS_TPL_PATH = CORE_CI_DIR / "windows-pilot.yml.tpl"
+CI_WORKER_TPL_PATH = CORE_CI_DIR / "worker-python.yml.tpl"
+CI_INSTALL_WALKTHROUGH_TPL_PATH = CORE_CI_DIR / "windows-install-walkthrough.yml.tpl"
 # La version que `prek.yml.tpl` porte en dur, remplacée par le pin du repo quand il en a un.
 PREK_DEFAULT_PYTHON = "3.12"
 # Server-side hook suite for the repos ci.yml.tpl does not cover (see render_prek_yml).
@@ -435,13 +435,11 @@ def _d1_database_name(repo: Path) -> str | None:
     return match.group(1) if match else None
 
 
-def render_ci_yml(repo: Path) -> str | None:
-    """Render .github/workflows/ci.yml for ``repo`` from hygiene/ci/ci.yml.tpl, or None.
-
-    None when the repo has no derivable Python version pin (see ``_python_version_pin`` — no
-    ``pyproject.toml`` or no ``requires-python``): same gate as the ``python`` pre-commit extra,
-    so a non-lib repo (or the moteur itself) never gets a ci.yml it has no pytest target for.
-    """
+def _render_ci_template(repo: Path, template: Path) -> str | None:
+    """Fill a `hygiene/ci/*.tpl` workflow for ``repo``, or None when the repo has no derivable
+    Python version pin (see ``_python_version_pin`` — no ``pyproject.toml`` or no
+    ``requires-python``): same gate as the ``python`` pre-commit extra, so a non-lib repo (or the
+    moteur itself) never gets a workflow it has no pytest target for."""
     python_version = _python_version_pin(repo)
     if python_version is None:
         return None
@@ -449,33 +447,57 @@ def render_ci_yml(repo: Path) -> str | None:
     if repo.name in CI_NO_LOCK_REPOS:
         install_cmd = install_cmd.replace("--locked ", "")
     tests_cmd = CI_TESTS_OVERRIDES.get(repo.name, CI_DEFAULT_TESTS_CMD)
-    text = CI_TPL_PATH.read_text(encoding="utf-8")
+    text = template.read_text(encoding="utf-8")
     text = text.replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
     text = text.replace(CI_INSTALL_CMD_PLACEHOLDER, install_cmd)
-    text = text.replace(CI_TESTS_CMD_PLACEHOLDER, tests_cmd)
-    if repo.name in CI_WINDOWS_PILOT:
-        fragment = (
-            CI_WINDOWS_FRAGMENT_PATH.read_text(encoding="utf-8")
-            .replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
-            .replace(CI_INSTALL_CMD_PLACEHOLDER, install_cmd)
-            .replace(CI_TESTS_CMD_PLACEHOLDER, tests_cmd)
-        )
-        text = text.rstrip("\n") + "\n" + fragment
-    if repo.resolve() == SCRIPT_DIR.resolve():
-        text = (
-            text.rstrip("\n")
-            + "\n"
-            + CI_INSTALL_WALKTHROUGH_PATH.read_text(encoding="utf-8")
-        )
+    return text.replace(CI_TESTS_CMD_PLACEHOLDER, tests_cmd)
+
+
+def render_ci_yml(repo: Path) -> str | None:
+    """Render .github/workflows/ci.yml for ``repo`` from hygiene/ci/ci.yml.tpl, or None.
+
+    The same for every repo that has a package to test: what is specific to one repo (the Worker
+    deploy, the Windows gate, the install walkthrough) is a workflow of its own, with its own
+    triggers — ``on.push.paths`` filters a workflow as a whole, so a job with other triggers cannot
+    live here.
+    """
+    return _render_ci_template(repo, CI_TPL_PATH)
+
+
+def render_windows_yml(repo: Path) -> str | None:
+    """Render .github/workflows/windows.yml — the Windows pilot gate — or None outside the repos
+    listed in ``CI_WINDOWS_PILOT``."""
+    if repo.name not in CI_WINDOWS_PILOT:
+        return None
+    return _render_ci_template(repo, CI_WINDOWS_TPL_PATH)
+
+
+def render_install_walkthrough_yml(repo: Path) -> str | None:
+    """Render .github/workflows/install-walkthrough.yml — the install replayed end to end on
+    Windows — or None for every repo but the engine (gated by identity, not by a name list)."""
+    if repo.resolve() != SCRIPT_DIR.resolve():
+        return None
+    return _render_ci_template(repo, CI_INSTALL_WALKTHROUGH_TPL_PATH)
+
+
+def render_worker_yml(repo: Path) -> str | None:
+    """Render .github/workflows/worker.yml — bundle check and deploy of a Python Worker — or None
+    when the repo declares no D1 binding in ``wrangler.jsonc`` (the signal of a Worker repo)."""
     d1_database = _d1_database_name(repo)
-    if d1_database is not None:
-        fragment = (
-            CI_WORKER_FRAGMENT_PATH.read_text(encoding="utf-8")
-            .replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
-            .replace(CI_D1_DATABASE_PLACEHOLDER, d1_database)
-        )
-        text = text.rstrip("\n") + "\n" + fragment
-    return text
+    if d1_database is None:
+        return None
+    text = _render_ci_template(repo, CI_WORKER_TPL_PATH)
+    if text is None:
+        return None
+    return text.replace(CI_D1_DATABASE_PLACEHOLDER, d1_database)
+
+
+# Workflows written next to `ci.yml` and `prek.yml`, each only where it applies.
+SPECIFIC_WORKFLOWS = (
+    ("windows.yml", render_windows_yml),
+    ("worker.yml", render_worker_yml),
+    ("install-walkthrough.yml", render_install_walkthrough_yml),
+)
 
 
 def render_prek_yml(repo: Path) -> str:
@@ -776,6 +798,22 @@ def distribute(
                 prek_path.parent.mkdir(parents=True, exist_ok=True)
                 prek_path.write_text(prek_yml, encoding="utf-8")
 
+    for workflow_name, render in SPECIFIC_WORKFLOWS:
+        rendered = render(repo)
+        if rendered is None:
+            continue
+        workflow_path = repo / ".github" / "workflows" / workflow_name
+        current = (
+            workflow_path.read_text(encoding="utf-8")
+            if workflow_path.exists()
+            else None
+        )
+        if current != rendered:
+            print(f"  {tag}ci      .github/workflows/{workflow_name}")
+            if not dry_run:
+                workflow_path.parent.mkdir(parents=True, exist_ok=True)
+                workflow_path.write_text(rendered, encoding="utf-8")
+
     # 3. secrets baseline — detect-secrets hook needs .secrets.baseline to exist
     if not dry_run:
         _ensure_secrets_baseline(repo, tag)
@@ -894,6 +932,9 @@ DISTRIBUTED_PATHS = (
     "scripts/hooks",
     ".github/workflows/ci.yml",
     ".github/workflows/prek.yml",
+    ".github/workflows/windows.yml",
+    ".github/workflows/worker.yml",
+    ".github/workflows/install-walkthrough.yml",
 )
 
 SHARED_DISTRIBUTED_PATHS = (
@@ -1129,6 +1170,16 @@ def check_drift(
                 issues.append("missing .github/workflows/prek.yml")
             elif prek_path.read_text(encoding="utf-8") != expected_prek:
                 issues.append("differs .github/workflows/prek.yml")
+
+        for workflow_name, render in SPECIFIC_WORKFLOWS:
+            expected_workflow = render(repo)
+            if expected_workflow is None:
+                continue
+            workflow_path = repo / ".github" / "workflows" / workflow_name
+            if not workflow_path.exists():
+                issues.append(f"missing .github/workflows/{workflow_name}")
+            elif workflow_path.read_text(encoding="utf-8") != expected_workflow:
+                issues.append(f"differs .github/workflows/{workflow_name}")
 
         recorded_version = repo_engine_version(repo)
         if recorded_version is not None and recorded_version != current_version:
