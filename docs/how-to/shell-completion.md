@@ -3,23 +3,45 @@
 `pinky <TAB>` completes subjects, verbs, options and plugin names — the plugins installed and
 those a known marketplace publishes (`pinky claude-plugin install pc-<TAB>`).
 
-Completion is registered **per command name**, so `pinky` has to be a command of its own: after
-`uv run pinky`, the command is `uv` and nothing completes.
+Three things to do, once. Nothing to look up: `pinky doctor` tells you which one is missing.
 
-1. Put `pinky` on the PATH, once, from the repo:
+## 1. Make `pinky` a command of your own
 
-   ```bash
-   uv tool install --editable .
-   ```
+From the `pinky-bootstrap` folder:
 
-   `--editable` keeps it pointing at the working tree: edits are picked up without reinstalling.
+```bash
+uv tool install --editable .
+```
 
-2. Register the completion, once, in `~/.zshrc` (after `compinit`):
+After `uv run pinky`, the command your shell sees is `uv`, and nothing completes.
+`--editable` keeps `pinky` pointing at this folder: edits are picked up without reinstalling.
 
-   ```bash
-   autoload -Uz compinit && compinit
-   eval "$(register-python-argcomplete pinky)"
-   ```
+## 2. Add two lines to `~/.zshrc`
 
-`pinky doctor` reports both steps under `shell` while either is missing, with the line to run or
-add.
+Easiest — let `pinky` do it, it shows the lines and asks before writing:
+
+```bash
+pinky doctor --fix
+```
+
+Answer `y`.
+
+Or do it yourself, by pasting this in the terminal (it appends to the end of `~/.zshrc`):
+
+```bash
+cat >> ~/.zshrc <<'EOF'
+
+# pinky: shell completion
+autoload -Uz compinit && compinit
+eval "$(pinky completion zsh)"
+EOF
+```
+
+The first line starts zsh's completion system (skip it if your `~/.zshrc` already has `compinit`,
+as oh-my-zsh does). The second one asks `pinky` for the script that registers its completion.
+
+## 3. Open a new terminal
+
+Then type `pinky ` and press TAB: the subjects appear.
+
+`pinky doctor` reports both steps under `shell` while either is missing.
