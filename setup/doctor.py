@@ -489,7 +489,8 @@ def format_report(
     checks: list[Check], *, verbose: bool = False, color: bool = False
 ) -> str:
     """The report as one string: what is missing first, with its command, then one line for
-    everything that is fine. `verbose` lists every prerequisite by category after that."""
+    everything that is fine. `verbose` lists that fine part by category, the missing ones not
+    repeated."""
     lines = ["pinky doctor — plugin prerequisites"]
     if not checks:
         lines.append("")
@@ -519,7 +520,7 @@ def format_report(
         lines.pop()
     if verbose:
         current = None
-        for check in ordered:
+        for check in (c for c in ordered if c.ok):
             if check.category != current:
                 current = check.category
                 lines.append("")

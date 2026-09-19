@@ -284,7 +284,9 @@ def test_format_report_puts_what_is_missing_first_and_sums_up_the_rest():
     )
 
 
-def test_format_report_verbose_lists_every_prerequisite_by_category():
+def test_format_report_verbose_lists_the_present_ones_by_category_without_repeating_the_missing():
+    """The missing ones are already at the top with their command: the category listing adds only
+    what was collapsed into the "present" line."""
     assert doctor.format_report(_MIXED, verbose=True) == (
         "pinky doctor — plugin prerequisites\n"
         "\n"
@@ -297,11 +299,9 @@ def test_format_report_verbose_lists_every_prerequisite_by_category():
         "\n"
         "binaries\n"
         "  ✓ rg — required by: pc-alpha\n"
-        "  ✗ yt-dlp — brew install yt-dlp (required by: pc-kanban)\n"
         "\n"
         "ollama\n"
         "  ✓ endpoint — http://localhost:11434\n"
-        "  ✗ gemma4:12b — ollama pull gemma4:12b\n"
         "\n"
         "API keys\n"
         "  ✓ MISTRAL_API_KEY"
@@ -645,9 +645,14 @@ def test_check_shell_accepts_completion_registered_in_zshrc(tmp_path):
 
 def test_the_shell_checks_are_part_of_the_doctor_report():
     report = doctor.format_report(
-        [doctor.Check("shell", "pinky on PATH", False, "uv tool install --editable X")],
+        [
+            doctor.Check(
+                "shell", "pinky on PATH", False, "uv tool install --editable X"
+            ),
+            doctor.Check("shell", "zsh completion", True, ""),
+        ],
         verbose=True,
     )
 
-    assert "shell" in report
+    assert "\nshell\n  ✓ zsh completion" in report
     assert "✗ pinky on PATH — uv tool install --editable X" in report
