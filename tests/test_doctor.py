@@ -311,6 +311,9 @@ def _full_setup(tmp_path, monkeypatch, *, which, tags, keychain):
     monkeypatch.setattr(doctor.shutil, "which", which)
     monkeypatch.setattr(doctor, "_read_ollama_tags", tags)
     monkeypatch.setattr(doctor, "_keychain_has", keychain)
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text('eval "$(register-python-argcomplete pinky)"\n', encoding="utf-8")
+    monkeypatch.setattr(doctor, "_ZSHRC", zshrc)
 
 
 def test_run_doctor_returns_zero_when_all_present(tmp_path, monkeypatch, capsys):
@@ -337,8 +340,13 @@ def test_run_doctor_reports_exactly_the_missing_prerequisites(tmp_path, monkeypa
     checks = doctor.collect_checks()
     missing = {(c.category, c.name) for c in checks if not c.ok}
 
-    assert missing == {("binary", "rg"), ("ollama", "gemma4:12b"), ("key", "A_KEY")}
-    assert doctor.run_doctor() == 3
+    assert missing == {
+        ("binary", "rg"),
+        ("ollama", "gemma4:12b"),
+        ("key", "A_KEY"),
+        ("shell", "pinky on PATH"),
+    }
+    assert doctor.run_doctor() == 4
 
 
 def test_run_doctor_output_is_stable_across_two_runs(tmp_path, monkeypatch, capsys):
@@ -534,3 +542,58 @@ def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):
     cli_pinky.main(install_args)
 
     assert ran == [True]
+
+
+def test_check_shell_flags_pinky_missing_from_the_path_with_the_command_to_install_it(
+    tmp_path,
+):
+    """`pinky` must be a command of its own on the PATH: shell completion is registered per command
+    name, and `uv run pinky` makes `uv` the command."""
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text("", encoding="utf-8")
+
+    checks = doctor.check_shell(zshrc=zshrc, which=lambda name: None)
+
+    path_check = next(c for c in checks if c.name == "pinky on PATH")
+    assert path_check.category == "shell"
+    assert path_check.ok is False
+    assert "uv tool install --editable" in path_check.detail
+
+
+def test_check_shell_accepts_pinky_on_the_path(tmp_path):
+    checks = doctor.check_shell(
+        zshrc=tmp_path / ".zshrc", which=lambda name: "/usr/local/bin/pinky"
+    )
+
+    assert next(c for c in checks if c.name == "pinky on PATH").ok is True
+
+
+def test_check_shell_flags_completion_missing_from_zshrc_with_the_line_to_add(tmp_path):
+    checks = doctor.check_shell(
+        zshrc=tmp_path / "absent", which=lambda name: "/usr/local/bin/pinky"
+    )
+
+    completion = next(c for c in checks if c.name == "zsh completion")
+    assert completion.ok is False
+    assert 'eval "$(register-python-argcomplete pinky)"' in completion.detail
+
+
+def test_check_shell_accepts_completion_registered_in_zshrc(tmp_path):
+    zshrc = tmp_path / ".zshrc"
+    zshrc.write_text(
+        'autoload -Uz compinit && compinit\neval "$(register-python-argcomplete pinky)"\n',
+        encoding="utf-8",
+    )
+
+    checks = doctor.check_shell(zshrc=zshrc, which=lambda name: "/usr/local/bin/pinky")
+
+    assert next(c for c in checks if c.name == "zsh completion").ok is True
+
+
+def test_the_shell_checks_are_part_of_the_doctor_report():
+    report = doctor.format_report(
+        [doctor.Check("shell", "pinky on PATH", False, "uv tool install --editable X")]
+    )
+
+    assert "shell" in report
+    assert "✗ pinky on PATH — uv tool install --editable X" in report

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import plugin_install
+from .common import SCRIPT_DIR
 
 _CLAUDE_DIR = Path.home() / ".claude"
 INSTALLED_PLUGINS_PATH = _CLAUDE_DIR / "plugins" / "installed_plugins.json"
@@ -405,8 +406,54 @@ def check_keys(
 
 # ── report + orchestration ──────────────────────────────────────────────────────────────────
 
-_CATEGORY_ORDER = {"binary": 0, "ollama": 1, "key": 2}
-_CATEGORY_TITLE = {"binary": "binaires", "ollama": "ollama", "key": "clés API"}
+_CATEGORY_ORDER = {"binary": 0, "ollama": 1, "key": 2, "shell": 3}
+_CATEGORY_TITLE = {
+    "binary": "binaires",
+    "ollama": "ollama",
+    "key": "clés API",
+    "shell": "shell",
+}
+
+
+_COMPLETION_LINE = 'eval "$(register-python-argcomplete pinky)"'
+_ZSHRC = Path.home() / ".zshrc"
+
+
+def check_shell(
+    *,
+    zshrc: Path | None = None,
+    which: Callable[[str], str | None] | None = None,
+) -> list[Check]:
+    """`pinky` a command of its own on the PATH, and its zsh completion registered.
+
+    Completion is registered per command name: after `uv run pinky` the command is `uv`, so
+    `pinky` has to be installed as a tool (`uv tool install --editable`) before the completion
+    line in `~/.zshrc` can do anything.
+    """
+    rc_file = zshrc or _ZSHRC
+    on_path = (which or shutil.which)("pinky") is not None
+    try:
+        registered = "register-python-argcomplete pinky" in rc_file.read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        registered = False
+    return [
+        Check(
+            "shell",
+            "pinky on PATH",
+            on_path,
+            "" if on_path else f"uv tool install --editable {SCRIPT_DIR}",
+        ),
+        Check(
+            "shell",
+            "zsh completion",
+            registered,
+            ""
+            if registered
+            else f"add to ~/.zshrc, after compinit: {_COMPLETION_LINE}",
+        ),
+    ]
 
 
 def collect_checks(
@@ -419,6 +466,7 @@ def collect_checks(
         *check_binaries(plugins),
         *check_ollama(settings_pinky_path),
         *check_keys(settings_pinky_path),
+        *check_shell(),
     ]
 
 
