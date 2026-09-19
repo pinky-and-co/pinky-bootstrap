@@ -34,7 +34,8 @@ def _complete(line: str, home: Path | None = None) -> list[str]:
         "COMP_POINT": str(len(line)),
     }
     if home is not None:
-        env["HOME"] = str(home)
+        # `Path.home()` reads HOME on POSIX and USERPROFILE on Windows
+        env["HOME"] = env["USERPROFILE"] = str(home)
     result = subprocess.run(
         [sys.executable, "-c", _SCRIPT],
         env=env,
