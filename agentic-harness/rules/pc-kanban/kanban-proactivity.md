@@ -7,8 +7,11 @@ stays the decider, the clerical layer is automated. See the `kanban` skill for t
 
 Do not wait for "create a card" or "move it to done". Surface the board update as part of the work:
 
-- **Capture → card.** When the user surfaces a new task, idea, or request, write a card for it —
-  without being asked.
+- **Capture → card.** A card exists for a reader who was not in this conversation — a later
+  session, or a worker the orchestrator hands it to. What is surfaced and handled right here
+  crosses no session boundary: no card. What is still open when this session ends is a card,
+  side-quests included; write it without being asked. If it shares the subject of a card in
+  progress, make it a `sert` child of that card instead of a new root.
 - **Select → commit.** The commitment column is a user decision by default; the agent may *propose*
   a selection, never select unasked.
 - **Progress → move.** Taking a card in means moving it to in-progress; finished and verified means
