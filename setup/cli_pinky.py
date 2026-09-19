@@ -320,7 +320,7 @@ def _subject(
 def build_parser() -> argparse.ArgumentParser:
     """Build the `pinky` argument parser: subject then verb, like `claude plugin install`."""
     parser = argparse.ArgumentParser(
-        description="🧰 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
+        description="🔧 pinky-bootstrap toolbox — see setup.py for the underlying flags.",
         epilog=_epilog(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -329,7 +329,7 @@ def build_parser() -> argparse.ArgumentParser:
     verbs = _subject(
         sub,
         "claude-plugin",
-        "🧩 install, place and audit Claude Code plugins across the workspace",
+        "🔌 install, place and audit Claude Code plugins across the workspace",
         [
             "pinky claude-plugin install pc-kanban  # download + the scope wizard",
             "pinky claude-plugin list  # where each plugin is enabled",
@@ -605,7 +605,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = _add(
         sub,
         "doctor",
-        "🩺 check the prerequisites installed plugins assume (binaries, Ollama, API keys)",
+        "🏥 check the prerequisites installed plugins assume (binaries, Ollama, API keys)",
         [
             "pinky doctor  # report what is missing",
             "pinky doctor --fix  # offer to brew install it",

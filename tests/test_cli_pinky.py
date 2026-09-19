@@ -166,6 +166,18 @@ def test_every_subcommand_explains_itself():
                 )
 
 
+def test_a_subjects_emoji_is_one_zsh_completion_can_print():
+    """The completion menu shows each subject's description through zsh's `${(V)…}`, which spells
+    out as `\\U0001f9e9` any character its libc does not know as printable — macOS's does not know the
+    emoji added after Unicode 10 (🧩, 🩺, 🧰…). Stay below U+1F900."""
+    parser = cli_pinky_impl.build_parser()
+    for path, command in _walk_commands(parser):
+        if len(path) != 1:
+            continue
+        leading = command.description[0]
+        assert ord(leading) < 0x1F900, f"{path[0]}: {leading!r} (U+{ord(leading):04X})"
+
+
 def test_help_lists_exactly_the_subjects_of_the_grid():
     """`pinky --help` presents each subject under one name — no subject reachable two ways."""
     parser = cli_pinky_impl.build_parser()
