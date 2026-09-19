@@ -9,12 +9,11 @@ specific repo, or several of these at once.
 The wizard picks those targets; the enable itself is `claude plugin install --scope project` run
 from each target (`plugin_install.enable_at_project`), never a hand-rolled `enabledPlugins` merge —
 Claude Code's own command writes `<target>/.claude/settings.json` and the registry entry together.
-User scope is the other branch: the plugin the user keeps global stays where
-`install_plugin_files` already enabled it.
+User scope is the other branch: the caller installs there (`plugin_install.install_plugin_files`)
+only when the user picks it.
 
-The wizard only *picks and enables targets*; the user-scope lifecycle (dropping the fetch-time
-transient enable) is the caller's — it captured `is_user_enabled` before the fetch and knows
-whether that is safe, and it must also undo on a wizard `SystemExit`, which this function cannot.
+The wizard only *picks and enables project targets*. It is asked before anything is downloaded, so
+a wizard refusal leaves nothing behind.
 """
 
 from __future__ import annotations
@@ -105,9 +104,8 @@ def run_marketplace_wizard(
     targets at that depth — one or several) -> enable the plugin at each. Returns the roots it
     enabled the plugin at.
 
-    User scope: the plugin is already enabled there by `install_plugin_files` — nothing to do but
-    report it (`[Path.home()]`). Project scope: `plugin_install.enable_at_project` per target;
-    the caller then drops the fetch-time user-scope enable if it was not there before.
+    User scope: nothing to do here but report it (`[Path.home()]`) — the caller installs there.
+    Project scope: `plugin_install.enable_at_project` per target, which also downloads the plugin.
 
     `skip_scope_question`: the caller already asked `user` vs `project` and got `project` (the
     `pinky plugins reconcile --apply` loop, whose own per-plugin prompt covers Q1) — go straight to
@@ -136,7 +134,7 @@ def run_marketplace_wizard(
     if not skip_scope_question:
         scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
         if scope == "u":
-            # déjà activé au scope user par install_plugin_files — rien à réécrire côté plugin.
+            # l'appelant installe au scope user : rien à écrire ici.
             if ships_lsp:
                 plugin_install.ensure_lsp_tool_enabled()
             return [Path.home()]

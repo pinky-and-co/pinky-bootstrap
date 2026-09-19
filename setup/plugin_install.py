@@ -11,9 +11,10 @@ mode. Where the enablement lands is `--scope` × cwd:
 
 So a plugin useful only in some repos (`pc-snow` on data repos, not everywhere) is enabled by
 running `claude plugin install --scope project` from each of those dirs — not by a hand-rolled
-`enabledPlugins` merge. `install_plugin_files` still fetches at user scope first so the caller can
-inspect the plugin (does it ship a status line?); `drop_user_scope` removes that transient user
-entry once the real project targets are enabled.
+`enabledPlugins` merge. Nothing is downloaded before the scope is chosen, and a project choice
+downloads straight at the project: `claude` needs no user-scope step first (measured 2026-09-02
+and 2026-09-19). `install_plugin_files` is the user-scope install, used only when the user picks
+user scope or for an always-on plugin (`KEEP_USER_SCOPE`).
 
 One thing `claude plugin install` does not do that this workspace needs: the main-session
 `statusLine` key is not readable from a plugin's bundled `settings.json` — Claude Code reads only
@@ -41,7 +42,7 @@ _REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
 _CACHE_ROOT = _PLUGINS_DIR / "cache"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
-KEEP_USER_SCOPE = frozenset({"pc-autodiscovery"})
+KEEP_USER_SCOPE = frozenset({"pc-autodiscovery", "pc-statusline"})
 
 
 def _spec(plugin_id: str, marketplace: str | None) -> str:
@@ -62,26 +63,19 @@ def _run_claude(
     )
 
 
-def is_user_enabled(plugin_id: str, marketplace: str | None = None) -> bool:
-    """Is the plugin already `true` in `~/.claude/settings.json` `enabledPlugins` before we touch
-    anything? The caller captures this before `install_plugin_files` so it can tell a
-    fetch-time transient enable (safe to drop) from a legitimate global one (must not touch)."""
-    if not _USER_SETTINGS.is_file():
-        return False
-    enabled = json.loads(_USER_SETTINGS.read_text(encoding="utf-8")).get(
-        "enabledPlugins", {}
-    )
-    return enabled.get(_spec(plugin_id, marketplace)) is True
+def prune_user_dependencies() -> None:
+    """`claude plugin prune` at user scope: drop the auto-installed dependencies nothing needs any
+    more. Uninstalling a plugin leaves the dependencies `claude` brought along — `pc-core` after
+    `pc-git` — and `claude` says so ("Run `claude plugin prune` to remove"). Best-effort."""
+    _run_claude(["plugin", "prune", "--scope", "user", "--yes"], check=False)
 
 
 def install_plugin_files(plugin_id: str, marketplace: str | None = None) -> None:
-    """Shell out to `claude plugin install` — fetch + enable at user scope — then `update`, so a
-    re-run picks up a changed plugin (both are `restart required to apply`, like the rest of D2).
+    """Shell out to `claude plugin install --scope user` — download and enable at user scope — then
+    `update`, so a re-run picks up a changed plugin (both are `restart required to apply`).
 
-    The user-scope enable is transient for any plugin that ends up project-scoped: it exists so
-    the caller can `resolve_install_path` + inspect the fetched files, and `drop_user_scope`
-    removes it afterwards. For a plugin the user keeps at user scope (a status line, a global
-    preference) it stays.
+    Only for the plugin a user keeps at user scope: an always-on one (`KEEP_USER_SCOPE`) or one
+    the user chose to put there. A project target downloads through `enable_at_project` instead.
 
     `check=True` on install: a failure there must stop the flow, never leave the caller wiring
     settings for a plugin whose files never landed. The CLI's own stderr (which
@@ -105,10 +99,9 @@ def enable_at_project(
     """Enable the plugin at exactly `target` — `claude plugin install --scope project` run with
     `cwd=target`, so `enabledPlugins` lands in `target/.claude/settings.json` and nowhere else.
 
-    The plugin's files are already cached from `install_plugin_files`; this call adds a
-    `{scope: project, projectPath: target}` registry entry and the settings write. Records the
-    write in the installer's ledger (`setup.state_file`), same key shape the old hand-rolled
-    merge used.
+    This is also the download: `claude` fetches the files on the first install at any scope and
+    shares them across scopes. Adds a `{scope: project, projectPath: target}` registry entry and the
+    settings write, and records it in the installer's ledger (`setup.state_file`).
     """
     spec = _spec(plugin_id, marketplace)
     subprocess.run(
@@ -128,13 +121,12 @@ def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
     user `enabledPlugins` key and the user registry entry; the cached files stay because any
     project entries reference the same `installPath`.
 
-    Dumb primitive: it always uninstalls. The caller decides whether that is safe — it drops the
-    entry only when it captured `is_user_enabled() is False` before the fetch, so a legitimate
-    pre-existing global enablement is never stripped. `check=True` — a plugin left enabled at
-    user scope *and* at a project target is the parasitic global activation this flow avoids.
+    Dumb primitive: it always uninstalls, then prunes the dependencies that leaves orphaned
+    (`pc-core` after `pc-git`). The caller decides whether that is safe. `check=True`.
     """
     spec = _spec(plugin_id, marketplace)
     _run_claude(["plugin", "uninstall", spec, "--scope", "user", "--yes"])
+    prune_user_dependencies()
 
 
 def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path:

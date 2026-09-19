@@ -7,11 +7,12 @@ pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes] [--force]
 
 One command. It:
 
-1. **Fetches the plugin's files** — shells out to `claude plugin install <plugin-id>@<marketplace>
-   --scope user --yes` (then `claude plugin update`, so a re-run picks up a changed plugin). There
-   is no fetch-only mode, so this also enables the plugin at user scope — **transiently**: for a
-   plugin that ends up project-scoped, step 2 drops that user enable once the real targets are
-   placed. It stays only for a plugin you keep at user scope (a status line).
+1. **Asks where first, then downloads there.** Nothing is downloaded before the scope is chosen.
+   `claude plugin install <plugin-id>@<marketplace> --scope project --yes` run from each chosen
+   target downloads the plugin and enables it at that target; `--scope user` is used only when you
+   pick user scope, or for an always-on plugin (`pc-autodiscovery`, `pc-statusline`). Claude needs
+   no user-scope step first (measured 2026-09-02 and 2026-09-19). A plugin's dependencies land at
+   the same scope as the plugin.
 
    `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
    <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
@@ -21,26 +22,19 @@ One command. It:
    the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
    refused, not removed.
 
-2. **Then, one of two things:**
-   - **A plugin that ships a status line** (`scripts/statusline.py` in its files) → `pinky` writes
-     `statusLine` and `subagentStatusLine` into `~/.claude/settings.json`, pointing at the installed
-     scripts (resolved from `~/.claude/plugins/installed_plugins.json`, never a guessed path). The
-     main-session `statusLine` key has no plugin-manifest slot — only `agent` and
-     `subagentStatusLine` are read from a plugin's bundled `settings.json` — so `pinky` wires it
-     explicitly. User scope: a status line is a cross-session preference (ADR-0001), so the step-1
-     enable is correct and stays. Re-run after `claude plugin update` — the path carries the
-     plugin version.
-   - **Any other plugin** → an interactive wizard asks **user or project**, then (project) a depth
-     (root / a group like `pinky-lib/` / a repo nested under a group) and **one or more targets**
-     at that depth. Each target gets `claude plugin install --scope project` run from its own
-     directory — Claude Code's own command writes `<target>/.claude/settings.json` `enabledPlugins`
-     and a `{scope: project, projectPath: <target>}` registry entry (measured 2026-09-02); `pinky`
-     no longer hand-merges the key. `pinky` then drops the transient user-scope enable from step 1
-     — unless the plugin was already a legitimate global enable before the command ran, in which
-     case it is left alone. A wizard refusal (bad answer, no tty) undoes the step-1 enable the same
-     way.
+2. **The scope wizard** asks **user or project**, then (project) a depth (root / a group like
+   `pinky-lib/` / a repo nested under a group) and **one or more targets** at that depth. Each
+   target gets `claude plugin install --scope project` run from its own directory — Claude Code's
+   own command writes `<target>/.claude/settings.json` `enabledPlugins` and a
+   `{scope: project, projectPath: <target>}` registry entry. A refusal (bad answer, no tty, Ctrl-C)
+   leaves nothing installed.
 
-3. **Rescopes — removes an enable the new targets no longer cover.** Before steps 1–2 run, `pinky`
+   **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
+   `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
+   (resolved from `installed_plugins.json`, never a guessed path). Re-run after `claude plugin
+   update` — the path carries the plugin version.
+
+3. **Rescopes — removes an enable the new targets no longer cover.** Before step 1 runs, `pinky`
    snapshots where this plugin is currently enabled. Once the wizard's targets are known, any
    snapshotted scope that isn't among them is removed too — a real `claude plugin uninstall
    --scope <scope>` per stale scope, so re-running `--plugin` with different targets no longer

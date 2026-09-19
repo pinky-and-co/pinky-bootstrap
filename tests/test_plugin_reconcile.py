@@ -346,17 +346,17 @@ def _plugin_state(
     )
 
 
-def test_keeps_user_scope_covers_status_line_and_always_on(monkeypatch):
-    """`_keeps_user_scope` is true for a status-line plugin and for one in `KEEP_USER_SCOPE` — the
+def testkeeps_user_scope_covers_status_line_and_always_on(monkeypatch):
+    """`keeps_user_scope` is true for a status-line plugin and for one in `KEEP_USER_SCOPE` — the
     pair the `--apply` loop defaults to `user` and never nudges out of user scope."""
     monkeypatch.setattr(plugin_install, "KEEP_USER_SCOPE", frozenset({"pc-always"}))
-    assert plugin_reconcile._keeps_user_scope(
+    assert plugin_reconcile.keeps_user_scope(
         _plugin_state("sl@mp", ships_status_line=True)
     )
-    assert plugin_reconcile._keeps_user_scope(
+    assert plugin_reconcile.keeps_user_scope(
         _plugin_state("pc-always@mp", ships_status_line=False)
     )
-    assert not plugin_reconcile._keeps_user_scope(
+    assert not plugin_reconcile.keeps_user_scope(
         _plugin_state("plain@mp", ships_status_line=False)
     )
 

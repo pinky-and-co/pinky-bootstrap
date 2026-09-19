@@ -28,6 +28,10 @@ class _ClaudeCliSim:
     def __init__(self, fake_home: Path):
         self.fake_home = fake_home
         self.calls: list[tuple[list[str], Path | None]] = []
+        # plugin id -> plugins `claude plugin install` also installs at the same scope
+        self.dependencies: dict[str, list[str]] = {}
+        # dependencies `claude plugin install` brought along, by scope root — what `prune` may drop
+        self.auto_installed: dict[Path, set[str]] = {}
 
     def __call__(self, cmd, **kw):
         cwd = Path(kw["cwd"]) if kw.get("cwd") else None
@@ -35,10 +39,39 @@ class _ClaudeCliSim:
         if cmd[:3] == ["claude", "plugin", "install"]:
             scope = cmd[cmd.index("--scope") + 1]
             self._toggle(self._root(scope, cwd), cmd[3], on=True)
+            root = self._root(scope, cwd)
+            for dependency in self.dependencies.get(cmd[3].split("@", 1)[0], []):
+                # a plugin already installed on its own is not "auto-installed": prune keeps it
+                if not self._enabled(root, dependency):
+                    self.auto_installed.setdefault(root, set()).add(dependency)
+                self._toggle(root, dependency, on=True)
+        elif cmd[:3] == ["claude", "plugin", "prune"]:
+            self._prune(self._root(cmd[cmd.index("--scope") + 1], cwd))
         elif cmd[:3] == ["claude", "plugin", "uninstall"]:
             scope = cmd[cmd.index("--scope") + 1]
             self._toggle(self._root(scope, cwd), cmd[3], on=False)
         return subprocess.CompletedProcess(cmd, 0)
+
+    @staticmethod
+    def _enabled(root: Path, spec: str) -> bool:
+        settings = root / ".claude" / "settings.json"
+        if not settings.is_file():
+            return False
+        return (
+            json.loads(settings.read_text()).get("enabledPlugins", {}).get(spec) is True
+        )
+
+    def _prune(self, root: Path) -> None:
+        """Drop an auto-installed dependency once no enabled plugin at that scope needs it."""
+        settings = root / ".claude" / "settings.json"
+        enabled = json.loads(settings.read_text()).get("enabledPlugins", {})
+        needed = {
+            dep
+            for spec in enabled
+            for dep in self.dependencies.get(spec.split("@", 1)[0], [])
+        }
+        for dependency in self.auto_installed.get(root, set()) - needed:
+            self._toggle(root, dependency, on=False)
 
     def _root(self, scope: str, cwd: Path | None) -> Path:
         return self.fake_home if scope == "user" else cwd
@@ -120,38 +153,16 @@ def _write_enable(settings_dir: Path, spec: str, value: bool) -> None:
     p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def test_project_scope_drops_the_fetch_time_user_enable(env, monkeypatch):
-    _canned_input(monkeypatch, ["p", "2", "0"])
-
-    cli.main(["--plugin", "pc-snow"])
-
-    assert _user_enabled(env.home, "pc-snow") is False
-    assert json.loads(
-        (env.ws / "pinky-core" / ".claude" / "settings.json").read_text()
-    )["enabledPlugins"] == {"pc-snow": True}
-    assert env.sim.calls[-1] == (
-        ["claude", "plugin", "uninstall", "pc-snow", "--scope", "user", "--yes"],
-        None,
-    )
-
-
-def test_project_scope_preserves_a_pre_existing_global_enable(env, monkeypatch):
+def test_project_scope_keeps_a_pre_existing_global_enable_when_the_removal_is_declined(
+    env, monkeypatch
+):
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
-    _canned_input(monkeypatch, ["p", "2", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0", "n"])
 
     cli.main(["--plugin", "pc-snow"])
 
     assert _user_enabled(env.home, "pc-snow") is True
     assert not _uninstalled(env.sim)
-
-
-def test_wizard_refusal_undoes_the_fetch_time_enable(env, monkeypatch):
-    _canned_input(monkeypatch, ["garbage"])
-
-    with pytest.raises(SystemExit):
-        cli.main(["--plugin", "pc-snow"])
-
-    assert _user_enabled(env.home, "pc-snow") is False
 
 
 def test_wizard_refusal_leaves_a_pre_existing_global_enable_alone(env, monkeypatch):
@@ -231,16 +242,28 @@ def test_rescope_leaves_a_deliberate_disabled_opt_out_alone(env, monkeypatch):
     assert _enabled_at(env.ws, "pc-snow") is False
 
 
-def test_rescope_keeps_a_pre_existing_user_global_enable(env, monkeypatch):
-    """The user scope predating the command is not a leftover to sweep — same signal that keeps
-    `drop_user_scope` from firing."""
+def test_a_leftover_user_enable_is_offered_for_removal_and_removed_on_yes(
+    env, monkeypatch
+):
+    """Only `pc-statusline` and `pc-autodiscovery` belong at user scope. Any other plugin found
+    there is a leftover (an interrupted run, a dependency) — it used to be trusted as deliberate
+    because it predated the command, so every later run kept it."""
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
-    _canned_input(monkeypatch, ["p", "2", "0"])
+    _canned_input(monkeypatch, ["p", "2", "0", "y"])
 
     cli.main(["--plugin", "pc-snow"])
 
-    assert _user_enabled(env.home, "pc-snow") is True
-    assert not _uninstalled(env.sim)
+    assert _user_enabled(env.home, "pc-snow") is False
+    assert _enabled_at(env.ws / "pinky-core", "pc-snow") is True
+
+
+def test_a_leftover_user_enable_is_removed_without_asking_under_yes(env, monkeypatch):
+    _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
+    _canned_input(monkeypatch, ["p", "2", "0"])
+
+    cli.main(["--plugin", "pc-snow", "--yes"])
+
+    assert _user_enabled(env.home, "pc-snow") is False
 
 
 def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
@@ -253,3 +276,114 @@ def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
 
     assert not install.exists()
     assert "cache cleared for pc-snow@mp" in capsys.readouterr().out
+
+
+def test_rescope_without_marketplace_finds_the_scopes_recorded_under_the_full_key(
+    env, monkeypatch
+):
+    """`--plugin pc-snow` names no marketplace, but the settings key is `pc-snow@mp`: the old
+    scope must still be found and offered for removal."""
+    _write_enable(env.ws, "pc-snow@mp", True)
+    _canned_input(monkeypatch, ["p", "2", "0", "y"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _enabled_at(env.ws / "pinky-core", "pc-snow@mp") is True
+    assert _enabled_at(env.ws, "pc-snow@mp") is None
+
+
+def test_rescope_without_marketplace_asks_which_one_when_two_carry_the_plugin(
+    env, monkeypatch, capsys
+):
+    _write_enable(env.ws, "pc-snow@mp1", True)
+    _write_enable(env.ws / "pinky-core", "pc-snow@mp2", True)
+    # marketplace choice "1" (mp2), then scope p / depth 2 / target 0, then no to the purge
+    _canned_input(monkeypatch, ["1", "p", "2", "0", "n"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    out = capsys.readouterr().out
+    assert "0) mp1" in out and "1) mp2" in out
+    assert _enabled_at(env.ws / "pinky-core", "pc-snow@mp2") is True
+
+
+def test_a_leftover_user_enable_takes_its_unneeded_dependencies_with_it(
+    env, monkeypatch
+):
+    """`pc-git` left at user scope also left `pc-core` there as its dependency. Removing the
+    leftover must not leave the dependency stranded — `claude plugin prune` is the official way."""
+    env.sim.dependencies = {"pc-snow": ["pc-core"]}
+    env.sim(["claude", "plugin", "install", "pc-snow", "--scope", "user"])
+    assert _user_enabled(env.home, "pc-core") is True
+    _canned_input(monkeypatch, ["p", "2", "0", "y"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _user_enabled(env.home, "pc-snow") is False
+    assert _user_enabled(env.home, "pc-core") is False
+
+
+def _user_installs(sim: _ClaudeCliSim) -> list[list[str]]:
+    return [
+        c
+        for c, _ in sim.calls
+        if c[:3] == ["claude", "plugin", "install"]
+        and c[c.index("--scope") + 1] == "user"
+    ]
+
+
+def test_project_scope_never_installs_at_user_scope(env, monkeypatch):
+    """Nothing is downloaded before the scope is chosen, and a project choice downloads straight
+    at the project: user scope is not a step on the way (measured 2026-09-02 and 2026-09-19)."""
+    _canned_input(monkeypatch, ["p", "2", "0"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _user_installs(env.sim) == []
+    assert _user_enabled(env.home, "pc-snow") is False
+    assert _enabled_at(env.ws / "pinky-core", "pc-snow") is True
+
+
+def test_a_dependency_lands_at_the_chosen_project_never_at_user_scope(env, monkeypatch):
+    env.sim.dependencies = {"pc-snow": ["pc-core"]}
+    _canned_input(monkeypatch, ["p", "2", "0"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _enabled_at(env.ws / "pinky-core", "pc-core") is True
+    assert _user_enabled(env.home, "pc-core") is False
+
+
+def test_a_refused_wizard_installs_nothing(env, monkeypatch):
+    env.sim.dependencies = {"pc-snow": ["pc-core"]}
+    _canned_input(monkeypatch, ["garbage"])
+
+    with pytest.raises(SystemExit):
+        cli.main(["--plugin", "pc-snow"])
+
+    assert [
+        c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]
+    ] == []
+
+
+def test_an_interrupted_wizard_installs_nothing(env, monkeypatch):
+    def interrupt(*_):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("builtins.input", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(["--plugin", "pc-snow"])
+
+    assert [
+        c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]
+    ] == []
+
+
+def test_choosing_user_scope_installs_there(env, monkeypatch):
+    _canned_input(monkeypatch, ["u"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert len(_user_installs(env.sim)) == 1
+    assert _user_enabled(env.home, "pc-snow") is True

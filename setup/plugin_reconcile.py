@@ -236,7 +236,7 @@ def _is_always_on(plugin_id: str) -> bool:
     return plugin_id.split("@", 1)[0] in plugin_install.KEEP_USER_SCOPE
 
 
-def _keeps_user_scope(state: PluginState) -> bool:
+def keeps_user_scope(state: PluginState) -> bool:
     """A plugin that belongs at user scope whatever the wizard would pick: it ships a status line
     (a move breaks the `statusLine` wiring) or it is always-on (`plugin_install.KEEP_USER_SCOPE`)."""
     return state.ships_status_line or _is_always_on(state.plugin_id)
@@ -292,6 +292,30 @@ _ANSWER_ALIASES = {"user": "u", "project": "p", "uninstall": "x", "skip": "s"}
 def _spec_parts(spec: str) -> tuple[str, str | None]:
     plugin_id, _, marketplace = spec.partition("@")
     return plugin_id, (marketplace or None)
+
+
+def resolve_spec(
+    plugin_id: str, marketplace: str | None, audit: dict[str, PluginState]
+) -> str:
+    """The audit key (`<id>@<marketplace>`) a `--plugin` name refers to.
+
+    A given marketplace is taken as is. Without one, the audit's keys carrying the bare id decide:
+    one match is the answer, none leaves the bare id (a first install, nothing recorded yet), and
+    several ask the user which marketplace — never a guess.
+    """
+    if marketplace:
+        return f"{plugin_id}@{marketplace}"
+    candidates = sorted(key for key in audit if _spec_parts(key)[0] == plugin_id)
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else plugin_id
+    for i, key in enumerate(candidates):
+        print(f"  {i}) {_spec_parts(key)[1]}")
+    answer = input(f"Which marketplace carries {plugin_id}? ").strip()
+    try:
+        return candidates[int(answer)]
+    except (ValueError, IndexError):
+        print(f"Invalid choice: {answer!r}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 def label_to_settings(workspace_root: Path) -> dict[str, Path]:
@@ -480,7 +504,7 @@ def apply_reconcile(workspace_root: Path) -> None:
 
         _print_plugin_block(state)
         plugin_id, marketplace = _spec_parts(spec)
-        default = "u" if _keeps_user_scope(state) else "s"
+        default = "u" if keeps_user_scope(state) else "s"
         if state.ships_status_line:
             print(
                 "  ⚠️  moving a status-line plugin breaks the `statusLine` wiring — "
