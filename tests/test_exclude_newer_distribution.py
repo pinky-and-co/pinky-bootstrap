@@ -2,7 +2,7 @@
 
 `[tool.uv] exclude-newer` is a **relative** cooldown span (`"3 days"`, uv >= 0.9.17), not an
 absolute date: uv resolves it at every `uv lock` and records `exclude-newer-span` in `uv.lock`, so
-`pinky distribute` writes the line once and never rewrites it — no window to renew, no `uv.lock`
+`pinky repo distribute` writes the line once and never rewrites it — no window to renew, no `uv.lock`
 desync. The generator also pins `required-version` so an older uv fails loudly instead of silently
 ignoring the relative span.
 

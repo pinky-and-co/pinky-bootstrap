@@ -6,9 +6,9 @@ versioned part — `pinky-bootstrap` is public, and a kanban board or an agent l
 leak. Everything the viewer *shows* is mounted locally at install time as symlinks under
 ``~/.local/share/pinky/live-docs/docs/`` and never touched by git.
 
-`pinky install --live-docs` copies the tooling there, generates the mounts, and on macOS loads a
+`pinky live-docs install` copies the tooling there, generates the mounts, and on macOS loads a
 launchd agent so the site is served after every boot. Off macOS there is no service — the tooling
-is installed and `pinky docs serve` runs it live. Same `setup.state_file` ledger as every other
+is installed and `pinky live-docs serve` runs it live. Same `setup.state_file` ledger as every other
 `pinky install` asset, so `--status` and removal work the same way.
 """
 
@@ -308,7 +308,7 @@ def status(
 
     On macOS the launchd plist is the artefact that decides. Without a plist (off macOS, or a
     serve-only setup) the install dir under the tooling ledger stands in — `install` records that
-    entry on every platform, so `pinky docs status` is meaningful there too.
+    entry on every platform, so `pinky live-docs status` is meaningful there too.
     """
     if plist_path.is_file():
         return _plist_status(install_dir, plist_path)

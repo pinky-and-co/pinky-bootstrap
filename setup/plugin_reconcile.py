@@ -1,6 +1,6 @@
 """setup/plugin_reconcile.py — audit where every known plugin is actually enabled.
 
-`pinky plugins reconcile` needs the real picture before it can ask the user to fix it. Two
+`pinky claude-plugin list` needs the real picture before it can ask the user to fix it. Two
 registries, deliberately not merged:
 
 - **`enabledPlugins`** in every `.claude/settings.json` / `.claude/settings.local.json` — where a
@@ -268,7 +268,7 @@ def _print_plugin_block(state: PluginState) -> None:
 
 
 def print_audit_report(audit: dict[str, PluginState]) -> None:
-    """Print the bare `pinky plugins reconcile` audit — one block per plugin, facts only.
+    """Print the bare `pinky claude-plugin list` audit — one block per plugin, facts only.
 
     Takes the already-computed audit, so "n'écrit rien" holds by construction: this function
     only reaches `print`. Facts only, every plugin, no filtering and no recommendation — where
@@ -327,7 +327,7 @@ def label_to_settings(workspace_root: Path) -> dict[str, Path]:
 def _rescope_labels(state: PluginState, *, include_disabled: bool) -> set[str]:
     """The labels a rescope may act on. `include_disabled=False` leaves `disabled_at` alone: a
     `false` key is a deliberate "parent wins, off here" opt-out, not scope accumulation, so the
-    `pinky install --plugin` path must not silently strip it (it only ever *adds* a scope).
+    `pinky claude-plugin install` path must not silently strip it (it only ever *adds* a scope).
     `apply_reconcile` passes `True` — consolidating a plugin to one scope is meant to clear stale
     disables too."""
     return {*state.enabled_at, *(state.disabled_at if include_disabled else ())}
@@ -482,7 +482,7 @@ def _ensure_user_enabled(spec: str, state: PluginState) -> None:
 
 
 def apply_reconcile(workspace_root: Path) -> None:
-    """Interactive `pinky plugins reconcile --apply`: walk every audited plugin, show its state,
+    """Interactive `pinky claude-plugin reconcile`: walk every audited plugin, show its state,
     ask where it belongs (`user` / `project` wizard / `uninstall` / `skip`), then make the machine
     match — including removing every enable that does not fit the chosen target.
 
@@ -508,7 +508,7 @@ def apply_reconcile(workspace_root: Path) -> None:
         if state.ships_status_line:
             print(
                 "  ⚠️  moving a status-line plugin breaks the `statusLine` wiring — "
-                "keep it at user unless `pinky install --plugin` will re-wire it."
+                "keep it at user unless `pinky claude-plugin install` will re-wire it."
             )
         elif _is_always_on(plugin_id):
             print(

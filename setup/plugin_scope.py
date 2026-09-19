@@ -108,7 +108,7 @@ def run_marketplace_wizard(
     Project scope: `plugin_install.enable_at_project` per target, which also downloads the plugin.
 
     `skip_scope_question`: the caller already asked `user` vs `project` and got `project` (the
-    `pinky plugins reconcile --apply` loop, whose own per-plugin prompt covers Q1) — go straight to
+    `pinky claude-plugin reconcile` loop, whose own per-plugin prompt covers Q1) — go straight to
     the depth+targets picker. Never returns `[Path.home()]` on this path.
 
     `install_path`: the plugin's already-fetched files (caller resolves it — `resolve_install_path`

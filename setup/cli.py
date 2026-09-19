@@ -142,20 +142,20 @@ def main(argv: list[str] | None = None) -> None:
         "--plugins-reconcile",
         action="store_true",
         help="audit where every known plugin is enabled / has files / ships a status line, "
-        "then write nothing (the `pinky plugins reconcile` report)",
+        "then write nothing (the `pinky claude-plugin list` report)",
     )
     parser.add_argument(
         "--plugins-reconcile-apply",
         action="store_true",
         help="interactive: place each plugin (user / project / uninstall / skip) and purge "
-        "every enable that does not match (`pinky plugins reconcile --apply`)",
+        "every enable that does not match (`pinky claude-plugin reconcile`)",
     )
     parser.add_argument(
         "--plugins-who",
         action="store_true",
         help="for every plugin install in the registry, the session transcript that ran the "
         "command (or none: a hook or a script) — the proof of who installed what "
-        "(`pinky plugins who`)",
+        "(`pinky claude-plugin list --who`)",
     )
     parser.add_argument(
         "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  mounts: {', '.join(result.mounts) or '(none found)'}")
         print(f"  service: {result.service}")
         if result.service != "loaded":
-            print(f"  `pinky docs serve` to view (http://{live_docs.SERVE_ADDR})")
+            print(f"  `pinky live-docs serve` to view (http://{live_docs.SERVE_ADDR})")
         return
 
     if args.plugins_who:

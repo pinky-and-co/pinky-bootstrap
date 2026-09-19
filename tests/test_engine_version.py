@@ -66,7 +66,7 @@ def test_check_drift_reports_a_version_lagging_repo(tmp_path, monkeypatch, capsy
     total = setup.check_drift([repo])
 
     out = capsys.readouterr().out
-    assert "pinky-thing: v0.1.0.dev1 → pinky distribute --repo pinky-thing" in out
+    assert "pinky-thing: v0.1.0.dev1 → pinky repo distribute --repo pinky-thing" in out
     assert total == 0, "version lag alone must never turn the gate red"
 
 

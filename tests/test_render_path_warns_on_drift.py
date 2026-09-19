@@ -51,8 +51,8 @@ def test_warns_and_names_the_command_that_fixes_it(tmp_path, monkeypatch, capsys
 
     out = capsys.readouterr().out
     assert "pinky-stale" in out
-    assert "pinky drift" in out
-    assert "pinky distribute --repo" in out
+    assert "pinky repo drift" in out
+    assert "pinky repo distribute --repo" in out
 
 
 def test_says_nothing_when_the_parc_is_clean(tmp_path, monkeypatch, capsys):

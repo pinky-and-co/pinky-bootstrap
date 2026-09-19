@@ -2,7 +2,7 @@
 *Update date : 2026-09-08 22:16*
 
 ```bash
-pinky install --plugin <plugin-id> --marketplace <marketplace> [--yes] [--force]
+pinky claude-plugin install <plugin-id> --marketplace <marketplace> [--yes] [--force]
 ```
 
 One command. It:
@@ -86,7 +86,7 @@ plugin initializes; **not verified today which of these need `/reload-plugins --
 session) vs pick up live**. Until checked case by case, keep reloading for anything beyond editing
 an existing hook/skill script's own logic.
 
-Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky distribute`/`pinky
+Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky repo distribute`/`pinky
 rules` renders into a *consuming* repo are a **copy**, made by that CLI step — unrelated to
 marketplace source type. Editing the plugin's source never updates that copy; only rerunning the
 CLI distribution command does, `directory`-source or not.
@@ -94,7 +94,7 @@ CLI distribution command does, `directory`-source or not.
 ## Why two steps, not one
 
 `enabledPlugins` does **not** trigger an automatic download — a plugin listed there has no effect
-until it's already installed locally (`claude plugin install` first). `pinky install --plugin`
+until it's already installed locally (`claude plugin install` first). `pinky claude-plugin install`
 therefore assumes the plugin is already installed; it only handles *where* it's enabled (and, as
 of step 3, where it's no longer supposed to be).
 
@@ -116,15 +116,15 @@ applies to sessions started in any repo nested under it. Three real targets, one
 - **Does not re-decide `enabledPlugins` scope for a status-line plugin** — those go to user scope
   unconditionally (a cross-session preference), no depth wizard.
 - **Does not refresh a stale `statusLine` path on its own after `claude plugin update`** — the
-  written path carries the plugin version, so re-run `pinky install --plugin <id>` to re-resolve it
+  written path carries the plugin version, so re-run `pinky claude-plugin install <id>` to re-resolve it
   (it reads the live path from `installed_plugins.json` every run).
 - **Does not see a scope inside a git repo nested in another git repo.** The scope scan
   (`plugin_scope._collect`) prunes at the first `.git` it meets and never descends into a repo, so
   a `.claude/settings.json` in a repo-within-a-repo is invisible to both the rescope snapshot and
-  `pinky plugins reconcile`, and stays untouched however you rescope. Group nesting itself is
+  `pinky claude-plugin list`, and stays untouched however you rescope. Group nesting itself is
   unbounded — a group many levels down still counts.
 - **Does not know when a scope is required by another plugin's declared dependency.** Step 3 only
   ever purges the plugin you're installing — rescoping `pc-craft` never touches `pc-privacy`'s
   scopes even when `pc-craft` declares `pc-privacy` in its `.claude-plugin/plugin.json`
-  `dependencies`. `pinky plugins reconcile` surfaces that as `required by: pc-craft` on the
+  `dependencies`. `pinky claude-plugin list` surfaces that as `required by: pc-craft` on the
   dependency's block; this command does not warn you before you remove such a scope yourself.

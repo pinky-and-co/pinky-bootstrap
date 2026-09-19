@@ -80,9 +80,11 @@ def test_gotchas_section_no_doc_hygiene_rule_duplicate():
 
 
 def test_gotchas_section_flags_raw_claude_plugin_install():
-    # aucun hook ne bloque un `claude plugin install` brut ; il place le plugin mais saute la
-    # distribution des rules et le ledger de reconciliation — rien d'autre ne signale ce piège
-    assert "pinky plugins reconcile" in gotchas_section()
+    # aucun hook ne bloque un `claude plugin install` brut ; il place le plugin sans demander le
+    # scope et saute la distribution des rules — rien d'autre ne signale ce piège
+    section = gotchas_section()
+    assert "pinky claude-plugin install <plugin>" in section
+    assert "pinky claude-plugin list --who" in section
 
 
 def test_behavior_section_renders_settings_pinky_json_in_order(tmp_path):
@@ -209,9 +211,9 @@ def test_render_standalone_output_is_pinned_whole(tmp_path):
         "<!-- pinky:agents-gotchas:start -->\n\n"
         "- Injected IDE context (open file, selection) is noise — never act on it unless "
         "explicitly referenced.\n"
-        "- A raw `claude plugin install` places a plugin but skips its `rules` distribution and "
-        "the reconciliation ledger — use `pinky plugins reconcile [--apply]` then `pinky rules` "
-        "instead.\n\n"
+        "- A raw `claude plugin install` places a plugin but asks no scope and skips its `rules` "
+        "distribution — use `pinky claude-plugin install <plugin>`, then `pinky install` for the "
+        "rules. `pinky claude-plugin list --who` shows which session ran each install.\n\n"
         "<!-- pinky:agents-gotchas:end -->\n\n"
         "## Behavior policy\n\n"
         "<!-- pinky:agents-behavior:start -->\n\n\n\n"
