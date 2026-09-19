@@ -202,6 +202,11 @@ def test_pc_autodiscovery_is_declared_keep_user_scope():
     assert "pc-autodiscovery" in plugin_install.KEEP_USER_SCOPE
 
 
+def test_pc_statusline_is_declared_keep_user_scope():
+    """`pc-statusline` and `pc-autodiscovery` are placed at user scope with no scope question."""
+    assert "pc-statusline" in plugin_install.KEEP_USER_SCOPE
+
+
 def test_rescope_removes_a_stale_enable_after_a_confirmed_prompt(env, monkeypatch):
     _write_enable(env.ws, "pc-snow", True)
     _canned_input(monkeypatch, ["p", "2", "0", "y"])
@@ -220,6 +225,17 @@ def test_rescope_asks_first_and_a_no_keeps_the_stale_scope(env, monkeypatch, cap
 
     assert _enabled_at(env.ws, "pc-snow") is True
     assert "left unchanged at: ." in capsys.readouterr().out
+
+
+def test_rescope_prompt_defaults_to_keeping_the_old_scope(env, monkeypatch):
+    """Enter alone at "Also remove … ? [y/N]" keeps the scope the plugin was already enabled at."""
+    _write_enable(env.ws, "pc-snow", True)
+    _canned_input(monkeypatch, ["p", "2", "0", ""])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert _enabled_at(env.ws, "pc-snow") is True
+    assert _enabled_at(env.ws / "pinky-core", "pc-snow") is True
 
 
 def test_rescope_yes_flag_skips_the_prompt(env, monkeypatch):
