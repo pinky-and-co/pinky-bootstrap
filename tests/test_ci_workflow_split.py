@@ -200,3 +200,29 @@ def test_the_walkthrough_distributes_without_a_prompt():
     template = precommit.CI_INSTALL_WALKTHROUGH_TPL_PATH.read_text(encoding="utf-8")
 
     assert "pinky repo distribute --repo pinky-demo-repo --yes" in template
+
+
+def _events(text: str) -> list[str]:
+    """The events under `on:`, in order."""
+    on_block = text.split("\non:\n", 1)[1].split("\njobs:\n", 1)[0]
+    return re.findall(r"^  ([a-z_]+):", on_block, re.M)
+
+
+def test_the_windows_workflows_do_not_run_on_pull_requests(tmp_path):
+    """They are the expensive jobs and prove nothing a Linux run does not: on `main` after the merge,
+    or by hand, not on every push of every PR."""
+    windows = _text(precommit.render_windows_yml(_repo(tmp_path, "pinky-bootstrap")))
+    walkthrough = _text(precommit.render_install_walkthrough_yml(precommit.SCRIPT_DIR))
+
+    assert _events(windows) == ["push", "workflow_dispatch"]
+    assert _events(walkthrough) == ["push", "workflow_dispatch"]
+
+
+def test_the_windows_workflows_run_on_main_only_and_skip_documentation(tmp_path):
+    windows = _text(precommit.render_windows_yml(_repo(tmp_path, "pinky-bootstrap")))
+
+    assert re.search(r"^    branches: \[main\]$", _trigger_block(windows, "push"), re.M)
+    assert re.findall(r'^      - "(.*)"$', _trigger_block(windows, "push"), re.M) == [
+        "**.md",
+        "docs/**",
+    ]

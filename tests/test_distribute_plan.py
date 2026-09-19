@@ -6,6 +6,7 @@ plan pass records, for each file, what is there and what it would become; nothin
 the plan has been shown and confirmed.
 """
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -177,3 +178,32 @@ def test_without_a_terminal_and_without_yes_it_refuses(capsys):
 
     assert exc.value.code == 1
     assert "pass --yes" in capsys.readouterr().err
+
+
+def test_a_distribution_commit_asks_github_to_skip_ci(monkeypatch, tmp_path):
+    """A distribution commit changes generated files the engine's own CI already covers: running
+    each consumer's workflows for it is cost with no signal. `[skip ci]` in the message, on its own
+    line so the subject keeps the commit convention."""
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        # `git diff --cached --quiet` exits 1 when something is staged
+        code = 1 if cmd[:3] == ["git", "diff", "--cached"] else 0
+        return subprocess.CompletedProcess(cmd, code, "", "")
+
+    monkeypatch.setattr(precommit.subprocess, "run", fake_run)
+    repo = _repo(tmp_path)
+    (repo / ".gitleaks.toml").write_text("x", encoding="utf-8")
+
+    assert precommit.commit_distribution(repo) == "committed"
+
+    commit = next(c for c in calls if c[:2] == ["git", "commit"])
+    assert commit == [
+        "git",
+        "commit",
+        "-m",
+        precommit.COMMIT_MESSAGE,
+        "-m",
+        "[skip ci]",
+    ]

@@ -3,14 +3,15 @@
 
 name: Windows
 
+# Le job Windows est le plus cher et ne prouve rien qu'un run Linux ne prouve pas : il tourne sur `main`
+# après le merge (sauf documentation) ou à la main, pas à chaque push de chaque PR.
 on:
   push:
-    branches: [main, develop]
-    paths:
-      - "pyproject.toml"
-      - ".github/**"
-  pull_request:
-    branches: [main, develop]
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch:
 
 jobs:
 

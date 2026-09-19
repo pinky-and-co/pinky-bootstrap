@@ -1127,7 +1127,7 @@ def commit_distribution(repo: Path, dirty_before: list[str] | None = None) -> st
         return "up-to-date (nothing to commit)"
 
     result = subprocess.run(
-        ["git", "commit", "-m", COMMIT_MESSAGE],
+        ["git", "commit", "-m", COMMIT_MESSAGE, "-m", "[skip ci]"],
         cwd=repo,
         env=_hook_env(),
         capture_output=True,
