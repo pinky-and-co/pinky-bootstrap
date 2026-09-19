@@ -7,6 +7,7 @@
 `--check-drift` compares each repo against the source without writing anything.
 """
 
+import difflib
 import filecmp
 import functools
 import hashlib
@@ -17,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
@@ -34,6 +37,7 @@ from .common import (
     inject_readme_sections_local,
     render_index_home,
 )
+from . import style
 from .product_scaffold import scaffold_product
 
 
@@ -657,14 +661,162 @@ def repo_engine_version(repo: Path) -> str | None:
     return _read_docs_identity_key(repo, "engine_version")
 
 
-def distribute_vendor(repo: Path, *, dry_run: bool) -> None:
+@dataclass(frozen=True)
+class PlannedWrite:
+    """One file a distribution would change: what is there (None: nothing yet) and what it becomes."""
+
+    repo: str
+    rel: str
+    old: bytes | None
+    new: bytes
+
+
+def _put(
+    repo: Path,
+    path: Path,
+    data: bytes | str,
+    *,
+    plan: list[PlannedWrite] | None,
+    dry_run: bool,
+    mode: int | None = None,
+) -> bool:
+    """Make `path` hold `data`. Returns whether the file changes.
+
+    A file already holding `data` is left alone. While a plan is being drawn (`plan` is a list) the
+    change is recorded and nothing is written; in a dry run it is only named. Line endings are
+    compared as LF, so a CRLF checkout of an unchanged file is not a change.
+    """
+    new = data.encode("utf-8") if isinstance(data, str) else data
+    old = path.read_bytes() if path.exists() else None
+    rel = path.relative_to(repo).as_posix()
+    if old is not None and old.replace(b"\r\n", b"\n") == new:
+        if mode is not None and plan is None and not dry_run:
+            if (path.stat().st_mode & 0o777) != mode:
+                path.chmod(mode)
+        return False
+    if plan is not None:
+        plan.append(PlannedWrite(repo.name, rel, old, new))
+        return True
+    if dry_run:
+        print(f"  [dry-run] {rel}")
+        return True
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(new)
+    if mode is not None:
+        path.chmod(mode)
+    print(f"  wrote {rel}")
+    return True
+
+
+_MAX_DIFF_LINES = 40
+# Copied verbatim from the engine and never edited by hand: shown as counts, not as a diff.
+_FRAMEWORK_OWNED_PREFIX = "scripts/hooks/"
+
+
+def _line_counts(change: PlannedWrite) -> tuple[int, int]:
+    """Lines added and removed by `change`, by a line diff."""
+    old = (change.old or b"").decode("utf-8", "replace").splitlines()
+    new = change.new.decode("utf-8", "replace").splitlines()
+    added = removed = 0
+    for line in difflib.unified_diff(old, new, n=0, lineterm=""):
+        if line.startswith("+") and not line.startswith("+++"):
+            added += 1
+        elif line.startswith("-") and not line.startswith("---"):
+            removed += 1
+    return added, removed
+
+
+def _diff_lines(change: PlannedWrite, color: bool) -> list[str]:
+    """The unified diff of one file, hunk headers included, cut after `_MAX_DIFF_LINES` lines."""
+    try:
+        old = (change.old or b"").decode("utf-8").splitlines()
+        new = change.new.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return ["    (binary file changed)"]
+    lines = list(difflib.unified_diff(old, new, n=1, lineterm=""))[2:]
+    codes = style.diff_codes() if color else style.DiffCodes("", "")
+    shown: list[str] = []
+    for line in lines[:_MAX_DIFF_LINES]:
+        if line.startswith("@@"):
+            shown.append("    " + style.paint(line, style.DIM, color=color))
+        elif line.startswith("-"):
+            shown.append("    " + style.paint(line, codes.removed, color=color))
+        elif line.startswith("+"):
+            shown.append("    " + style.paint(line, codes.added, color=color))
+        else:
+            shown.append("    " + line)
+    if len(lines) > _MAX_DIFF_LINES:
+        hidden = len(lines) - _MAX_DIFF_LINES
+        shown.append(
+            "    " + style.paint(f"… {hidden} more lines", style.DIM, color=color)
+        )
+    return shown
+
+
+def format_plan(plan: list[PlannedWrite], *, color: bool = False) -> str:
+    """The plan as text: per repo, a line for each new file and a diff for each changed one."""
+    if not plan:
+        return "Every repo is up to date."
+    blocks: list[str] = []
+    for repo_name in dict.fromkeys(change.repo for change in plan):
+        lines = [style.paint(f"→ {repo_name}", style.BOLD, color=color)]
+        for change in (c for c in plan if c.repo == repo_name):
+            if change.old is None:
+                count = len(change.new.decode("utf-8", "replace").splitlines())
+                lines.append(
+                    "  "
+                    + style.paint(
+                        f"+ {change.rel} (new file, {count} lines)",
+                        style.GREEN,
+                        color=color,
+                    )
+                )
+            elif change.rel.startswith(_FRAMEWORK_OWNED_PREFIX):
+                added, removed = _line_counts(change)
+                lines.append(
+                    "  "
+                    + style.paint(f"~ {change.rel}", style.BOLD, color=color)
+                    + " "
+                    + style.paint(
+                        f"(+{added} −{removed} lines)", style.DIM, color=color
+                    )
+                )
+            else:
+                lines.append(
+                    "  " + style.paint(f"~ {change.rel}", style.BOLD, color=color)
+                )
+                lines.extend(_diff_lines(change, color))
+        blocks.append("\n".join(lines))
+    repos = len({change.repo for change in plan})
+    blocks.append(
+        f"{len(plan)} file{'s' if len(plan) != 1 else ''} change in "
+        f"{repos} repo{'s' if repos != 1 else ''}"
+    )
+    return "\n\n".join(blocks)
+
+
+def confirm_distribution(
+    files: int, repos: int, *, yes: bool, interactive: bool, ask: Callable[[str], str]
+) -> bool:
+    """Whether to apply the plan: `--yes` says so, a terminal is asked, anything else refuses."""
+    if yes:
+        return True
+    if not interactive:
+        print("Non-interactive shell — pass --yes to apply.", file=sys.stderr)
+        raise SystemExit(1)
+    answer = ask(f"Apply {files} file change(s) in {repos} repo(s)? [y/N] ")
+    return answer.strip().lower() == "y"
+
+
+def distribute_vendor(
+    repo: Path, *, dry_run: bool, plan: list[PlannedWrite] | None = None
+) -> None:
     """Copy each vendored source file to its targets in `repo`, write the checksum manifest.
 
     Silent no-op for a repo with none of VENDOR_MAP's targets (every repo but
     pinky-agentic-plugins today) — gated by target-directory existence, not a repo-name literal,
     so a future repo gains vendoring by having the right plugin directories, not an added carve-out.
     """
-    tag = "[dry-run] " if dry_run else ""
     manifest: dict[str, str] = {}
     for source_name, targets in VENDOR_MAP.items():
         source = CORE_VENDOR_DIR / source_name
@@ -675,16 +827,16 @@ def distribute_vendor(repo: Path, *, dry_run: bool) -> None:
             if not dst.parent.exists():
                 continue
             manifest[target] = digest
-            print(f"  {tag}vendor  {target}")
-            if not dry_run:
-                dst.write_bytes(content)
+            _put(repo, dst, content, plan=plan, dry_run=dry_run)
     if not manifest:
         return
-    if not dry_run:
-        manifest_path = repo / VENDOR_MANIFEST_NAME
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+    _put(
+        repo,
+        repo / VENDOR_MANIFEST_NAME,
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        plan=plan,
+        dry_run=dry_run,
+    )
 
 
 def distribute(
@@ -692,8 +844,14 @@ def distribute(
     *,
     dry_run: bool,
     identity: SuiteIdentity,
+    plan: list[PlannedWrite] | None = None,
 ) -> None:
     """Distribute hooks + config into one repo.
+
+    With `plan` (a list), nothing is written and nothing but the plan is produced: every file that
+    would change is recorded with what it holds now and what it would become. The caller shows it
+    and only then distributes for real. Side effects that are not a file overwrite (secrets
+    baseline, darglint config, `prek install`) belong to the real pass only.
 
     Copied scripts are scoped to what THIS repo's extras actually reference.
 
@@ -704,43 +862,26 @@ def distribute(
     """
     tag = "[dry-run] " if dry_run else ""
     extras = resolve_extras(repo)
-    print(f"\n→ {repo.name}  (extras: {', '.join(extras) or 'none'})")
+    if plan is None:
+        print(f"\n→ {repo.name}  (extras: {', '.join(extras) or 'none'})")
+
+    def put(path: Path, data: bytes | str, mode: int | None = None) -> bool:
+        return _put(repo, path, data, plan=plan, dry_run=dry_run, mode=mode)
 
     # 1. hooks
     dst_hooks = repo / "scripts" / "hooks"
     for src in _hook_files(repo):
-        dst = dst_hooks / src.name
-        print(f"  {tag}hook  scripts/hooks/{src.name}")
-        if not dry_run:
-            dst_hooks.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            if src.name in ("commit-msg", "generate-docs"):
-                dst.chmod(0o755)
-
-    print(f"  {tag}hook  scripts/hooks/docs_identity.json")
-    if not dry_run:
-        dst_hooks.mkdir(parents=True, exist_ok=True)
-        (dst_hooks / "docs_identity.json").write_text(
-            render_docs_identity(identity), encoding="utf-8"
+        mode = (
+            0o755
+            if src.name in ("commit-msg", "generate-docs")
+            else src.stat().st_mode & 0o777
         )
-
-    print(f"  {tag}hook  scripts/hooks/badges.toml")
-    if not dry_run:
-        dst_hooks.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(CORE_HOOKS_DIR / "badges.toml", dst_hooks / "badges.toml")
-
-    print(f"  {tag}hook  scripts/hooks/ruff.toml")
-    if not dry_run:
-        dst_hooks.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(CORE_PRECOMMIT_DIR / "hooks-ruff.toml", dst_hooks / "ruff.toml")
-
-    print(f"  {tag}gitleaks .gitleaks.toml")
-    if not dry_run:
-        shutil.copy2(CORE_PRECOMMIT_DIR / "gitleaks.toml", repo / ".gitleaks.toml")
-
-    print(f"  {tag}gitattributes .gitattributes")
-    if not dry_run:
-        shutil.copy2(CORE_PRECOMMIT_DIR / "gitattributes", repo / ".gitattributes")
+        put(dst_hooks / src.name, src.read_bytes(), mode)
+    put(dst_hooks / "docs_identity.json", render_docs_identity(identity))
+    put(dst_hooks / "badges.toml", (CORE_HOOKS_DIR / "badges.toml").read_bytes())
+    put(dst_hooks / "ruff.toml", (CORE_PRECOMMIT_DIR / "hooks-ruff.toml").read_bytes())
+    put(repo / ".gitleaks.toml", (CORE_PRECOMMIT_DIR / "gitleaks.toml").read_bytes())
+    put(repo / ".gitattributes", (CORE_PRECOMMIT_DIR / "gitattributes").read_bytes())
 
     python_pin = _python_version_pin(repo)
     if python_pin:
@@ -749,70 +890,49 @@ def distribute(
             pin_path.read_text(encoding="utf-8").strip() if pin_path.exists() else None
         )
         if current != python_pin:
-            print(f"  {tag}python  .python-version ({python_pin})")
-            if not dry_run:
-                pin_path.write_text(f"{python_pin}\n", encoding="utf-8")
+            put(pin_path, f"{python_pin}\n")
 
     settings_pinky_path = repo / ".claude" / "settings.pinky.json"
     if not settings_pinky_path.exists():
-        print(f"  {tag}scaffold .claude/settings.pinky.json (branch_workflow: null)")
-        if not dry_run:
-            settings_pinky_path.parent.mkdir(parents=True, exist_ok=True)
-            settings_pinky_path.write_text(
-                '{"branch_workflow": null}\n', encoding="utf-8"
-            )
+        put(settings_pinky_path, '{"branch_workflow": null}\n')
 
-    distribute_vendor(repo, dry_run=dry_run)
+    distribute_vendor(repo, dry_run=dry_run, plan=plan)
 
-    print(f"  {tag}config  .pre-commit-config.yaml")
-    if not dry_run:
-        (repo / ".pre-commit-config.yaml").write_text(
-            build_precommit_config(repo, extras), encoding="utf-8"
-        )
+    put(repo / ".pre-commit-config.yaml", build_precommit_config(repo, extras))
 
     ci_yml = render_ci_yml(repo)
     if ci_yml is not None:
-        ci_path = repo / ".github" / "workflows" / "ci.yml"
-        current_ci = ci_path.read_text(encoding="utf-8") if ci_path.exists() else None
-        if current_ci != ci_yml:
-            print(f"  {tag}ci      .github/workflows/ci.yml")
-            if not dry_run:
-                ci_path.parent.mkdir(parents=True, exist_ok=True)
-                ci_path.write_text(ci_yml, encoding="utf-8")
+        put(repo / ".github" / "workflows" / "ci.yml", ci_yml)
 
     new_pyproject = render_pyproject_with_cooldown(repo)
     if new_pyproject is not None:
-        print(f"  {tag}uv      pyproject.toml (cooldown + required-version)")
-        if not dry_run:
-            (repo / "pyproject.toml").write_text(new_pyproject, encoding="utf-8")
+        put(repo / "pyproject.toml", new_pyproject)
 
     prek_yml = render_prek_yml(repo)
     if prek_yml is not None:
-        prek_path = repo / ".github" / "workflows" / "prek.yml"
-        current_prek = (
-            prek_path.read_text(encoding="utf-8") if prek_path.exists() else None
-        )
-        if current_prek != prek_yml:
-            print(f"  {tag}ci      .github/workflows/prek.yml")
-            if not dry_run:
-                prek_path.parent.mkdir(parents=True, exist_ok=True)
-                prek_path.write_text(prek_yml, encoding="utf-8")
+        put(repo / ".github" / "workflows" / "prek.yml", prek_yml)
 
     for workflow_name, render in SPECIFIC_WORKFLOWS:
         rendered = render(repo)
-        if rendered is None:
-            continue
-        workflow_path = repo / ".github" / "workflows" / workflow_name
-        current = (
-            workflow_path.read_text(encoding="utf-8")
-            if workflow_path.exists()
-            else None
+        if rendered is not None:
+            put(repo / ".github" / "workflows" / workflow_name, rendered)
+
+    readme_path = repo / "README.md"
+    if readme_path.exists():
+        injected = inject_readme_sections_local(
+            readme_path.read_text(encoding="utf-8"),
+            repo,
+            identity,
+            allow_first_run=True,
         )
-        if current != rendered:
-            print(f"  {tag}ci      .github/workflows/{workflow_name}")
-            if not dry_run:
-                workflow_path.parent.mkdir(parents=True, exist_ok=True)
-                workflow_path.write_text(rendered, encoding="utf-8")
+        if injected is not None:
+            put(readme_path, injected)
+
+    if has_generated_index(repo):
+        put(repo / "docs" / "index.md", render_index_home(repo, identity))
+
+    if plan is not None:
+        return
 
     # 3. secrets baseline — detect-secrets hook needs .secrets.baseline to exist
     if not dry_run:
@@ -827,30 +947,6 @@ def distribute(
     print(f"  {tag}install prek (+ commit-msg)")
     if not dry_run:
         _prek_install(repo)
-
-    readme_path = repo / "README.md"
-    if readme_path.exists():
-        injected = inject_readme_sections_local(
-            readme_path.read_text(encoding="utf-8"),
-            repo,
-            identity,
-            allow_first_run=True,
-        )
-        if injected is not None:
-            print(f"  {tag}readme  README.md (badges/tagline/why-pinky/license)")
-            if not dry_run:
-                readme_path.write_text(injected, encoding="utf-8")
-
-    if has_generated_index(repo):
-        index_path = repo / "docs" / "index.md"
-        generated = render_index_home(repo, identity)
-        current = (
-            index_path.read_text(encoding="utf-8") if index_path.exists() else None
-        )
-        if generated != current:
-            print(f"  {tag}index   docs/index.md (homepage)")
-            if not dry_run:
-                index_path.write_text(generated, encoding="utf-8")
 
 
 # CLI tools found missing during a run (prek, detect-secrets). Non-fatal per-repo — the run
@@ -1341,13 +1437,38 @@ def run_distribution(args) -> None:
     print("Hooks distribution" + (" (dry-run)" if args.dry_run else ""))
     print("=" * 52)
     _MISSING_TOOLS.clear()
+
+    # Nothing is written before the plan has been shown: what would change, file by file.
+    plan: list[PlannedWrite] = []
+    for repo in repos:
+        distribute(
+            repo,
+            dry_run=True,
+            identity=_group_docs_identity(repo, WORKSPACE_ROOT),
+            plan=plan,
+        )
+    print()
+    print(format_plan(plan, color=style.use_color()))
+    if args.dry_run:
+        print("\nDone.  Nothing written (dry-run).")
+        return
+    if plan and not confirm_distribution(
+        len(plan),
+        len({change.repo for change in plan}),
+        yes=getattr(args, "yes", False),
+        interactive=sys.stdin.isatty(),
+        ask=input,
+    ):
+        print("Cancelled.")
+        return
+
     statuses: list[tuple[str, str]] = []
     for repo in repos:
-        committing = args.commit and not args.dry_run
+        committing = args.commit
         dirty_before = dirty_paths(repo) if committing else []
         distribute(
             repo,
-            dry_run=args.dry_run,
+            dry_run=False,
             identity=_group_docs_identity(repo, WORKSPACE_ROOT),
         )
         if committing:

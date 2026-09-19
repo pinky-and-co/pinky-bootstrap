@@ -133,6 +133,8 @@ def cmd_distribute(args: argparse.Namespace) -> None:
         argv.append("--standalone")
     if args.dry_run:
         argv.append("--dry-run")
+    if args.yes:
+        argv.append("--yes")
     setup_main(argv)
 
 
@@ -467,6 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--dry-run", action="store_true", help="print what would change, write nothing"
+    )
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply the plan without asking (required in a non-interactive shell)",
     )
     p.set_defaults(func=cmd_distribute)
 
