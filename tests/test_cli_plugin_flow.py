@@ -355,6 +355,7 @@ def test_a_dependency_lands_at_the_chosen_project_never_at_user_scope(env, monke
 
 
 def test_a_refused_wizard_installs_nothing(env, monkeypatch):
+    """The wizard asks the scope before anything is downloaded, so a refusal leaves nothing."""
     env.sim.dependencies = {"pc-snow": ["pc-core"]}
     _canned_input(monkeypatch, ["garbage"])
 
