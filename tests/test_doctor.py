@@ -223,6 +223,34 @@ def test_check_keys_absent_when_neither_env_nor_keychain(tmp_path):
     assert "MISTRAL_API_KEY" in check.detail
 
 
+def test_check_keys_literal_is_present_from_its_own_value(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings,
+        keys=[
+            {"reader": "literal", "value": "41c2b051", "env": "CLOUDFLARE_ACCOUNT_ID"}
+        ],
+    )
+
+    (check,) = doctor.check_keys(settings, env={}, keychain=lambda service: False)
+
+    assert check.name == "CLOUDFLARE_ACCOUNT_ID"
+    assert check.ok is True
+    assert check.detail == ""
+
+
+def test_check_keys_literal_without_value_is_absent(tmp_path):
+    settings = tmp_path / "settings.pinky.json"
+    _settings_pinky(
+        settings, keys=[{"reader": "literal", "env": "CLOUDFLARE_ACCOUNT_ID"}]
+    )
+
+    (check,) = doctor.check_keys(settings, env={}, keychain=lambda service: False)
+
+    assert check.ok is False
+    assert "literal" in check.detail
+
+
 def test_check_keys_present_via_env_or_keychain(tmp_path):
     settings = tmp_path / "settings.pinky.json"
     _settings_pinky(
