@@ -95,6 +95,42 @@ def test_no_marker_anywhere_falls_back_to_the_install_layout(tmp_path, monkeypat
     assert common.find_workspace_root(isolated) == (tmp_path / "workspace")
 
 
+# ── resolve_workspace_root — the same resolution, plus which origin won (FR-0024-48/49) ──
+
+
+def test_resolve_workspace_root_explicit_wins_over_everything(tmp_path, monkeypatch):
+    monkeypatch.setenv(common.WORKSPACE_ROOT_ENV, str(tmp_path / "from-env"))
+    explicit = tmp_path / "from-flag"
+    explicit.mkdir()
+
+    resolved = common.resolve_workspace_root(tmp_path, explicit=str(explicit))
+
+    assert resolved.root == explicit.resolve()
+    assert resolved.via == "--workspace"
+
+
+def test_resolve_workspace_root_env_wins_over_a_marker(tmp_path, monkeypatch):
+    _mark(tmp_path)
+    env_root = tmp_path / "from-env"
+    env_root.mkdir()
+    monkeypatch.setenv(common.WORKSPACE_ROOT_ENV, str(env_root))
+
+    resolved = common.resolve_workspace_root(tmp_path)
+
+    assert resolved.root == env_root.resolve()
+    assert resolved.via == common.WORKSPACE_ROOT_ENV
+
+
+def test_resolve_workspace_root_falls_back_to_the_nearest_marker(tmp_path, monkeypatch):
+    _no_env(monkeypatch)
+    _mark(tmp_path)
+
+    resolved = common.resolve_workspace_root(tmp_path)
+
+    assert resolved.root == tmp_path.resolve()
+    assert resolved.via == str(tmp_path.resolve() / "pinky.code-workspace")
+
+
 if __name__ == "__main__":
     import pytest
 

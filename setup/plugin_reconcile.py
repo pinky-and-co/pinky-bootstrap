@@ -378,6 +378,13 @@ def _pop_key(settings_file: Path, spec: str) -> bool:
     return True
 
 
+def pop_enable_key(settings_file: Path, spec: str) -> bool:
+    """Public wrapper for `_pop_key` — `setup/plugin_enable.py` removes a bare `@inline` enable
+    (no registry entry, so no `claude plugin uninstall` scope applies) the same way this module's
+    own purge path does, rather than re-implementing the settings-file edit."""
+    return _pop_key(settings_file, spec)
+
+
 def _uninstall_at_scope(spec: str, scope: str, cwd: Path | None) -> None:
     """`claude plugin uninstall <spec> --scope <scope>` — the CLI clears both the `enabledPlugins`
     key and the `installed_plugins.json` entry at that scope, which `_pop_key` alone cannot."""
@@ -386,6 +393,13 @@ def _uninstall_at_scope(spec: str, scope: str, cwd: Path | None) -> None:
         check=True,
         cwd=str(cwd) if cwd else None,
     )
+
+
+def uninstall_at_scope(spec: str, scope: str, cwd: Path | None) -> None:
+    """Public wrapper for `_uninstall_at_scope` — `setup/plugin_enable.py` removes a
+    registry-backed project enable the same way this module's own purge path does, rather than
+    re-issuing the `claude plugin uninstall` call by hand."""
+    _uninstall_at_scope(spec, scope, cwd)
 
 
 def _project_scopes_by_dir(state: PluginState) -> dict[Path, str]:

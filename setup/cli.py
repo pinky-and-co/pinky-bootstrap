@@ -5,11 +5,26 @@ import sys
 from pathlib import Path
 
 from . import agentic_assets, plugin_install
-from .common import WORKSPACE_ROOT
+from .common import WORKSPACE_ROOT, resolve_workspace_root
 from .plugin_scope import run_marketplace_wizard
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
 from .rules import distribute_all_plugin_rules, print_all_plugin_rules_report
+
+
+def _resolve_rules_dir_arg(raw: str | None) -> Path | None:
+    """`--rules-dir`, expanded and resolved like `--workspace` — an explicit path is compared
+    against the filesystem the same way everywhere, and a path that turns out not to exist is
+    flagged rather than silently read as "no override" by `_merged_sources`."""
+    if raw is None:
+        return None
+    resolved = Path(raw).expanduser().resolve()
+    if not resolved.is_dir():
+        print(
+            f"--rules-dir {raw!r} ({resolved}) does not exist — no user rule will be read from it",
+            file=sys.stderr,
+        )
+    return resolved
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -163,6 +178,44 @@ def main(argv: list[str] | None = None) -> None:
         "(`pinky claude-plugin list --who`)",
     )
     parser.add_argument(
+        "--plugin-enable",
+        nargs="+",
+        default=None,
+        metavar="PLUGIN",
+        help="enable one or more plugins — the plugin x target table, prefilled from the "
+        "current state, unless --scope replaces it (`pinky claude-plugin enable`)",
+    )
+    parser.add_argument(
+        "--plugin-disable",
+        nargs="+",
+        default=None,
+        metavar="PLUGIN",
+        help="disable one or more plugins — same table/--scope as --plugin-enable, unchecking a "
+        "cell removes that enable (`pinky claude-plugin disable`)",
+    )
+    parser.add_argument(
+        "--scope",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="with --plugin-enable/--plugin-disable: a target (workspace-relative path, or "
+        "`user`), repeatable — bypasses the table entirely",
+    )
+    parser.add_argument(
+        "--workspace",
+        default=None,
+        metavar="PATH",
+        help="the workspace to act on — highest priority, above PINKY_WORKSPACE_ROOT and the "
+        "nearest *.code-workspace marker",
+    )
+    parser.add_argument(
+        "--rules-dir",
+        default=None,
+        metavar="PATH",
+        help="the user's rules override root, applied over the shipped rules/<plugin>/ (default: "
+        "~/.claude/rules) — with --rules or --plugin-enable/--plugin-disable",
+    )
+    parser.add_argument(
         "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
     )
     parser.add_argument(
@@ -271,6 +324,28 @@ def main(argv: list[str] | None = None) -> None:
         print(plugin_provenance.format_origins(plugin_provenance.registry_origins()))
         return
 
+    if args.plugin_enable or args.plugin_disable:
+        from . import plugin_enable
+
+        action, names = (
+            ("enable", args.plugin_enable)
+            if args.plugin_enable
+            else ("disable", args.plugin_disable)
+        )
+        resolved = resolve_workspace_root(Path.cwd(), args.workspace)
+        print(f"Workspace: {resolved.root} (via {resolved.via})")
+        plugin_enable.run(
+            action,
+            names,
+            resolved.root,
+            marketplace=args.marketplace,
+            scope=args.scope,
+            yes=args.yes,
+            dry_run=args.dry_run,
+            user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
+        )
+        return
+
     if args.plugins_reconcile or args.plugins_reconcile_apply:
         from . import plugin_reconcile
 
@@ -374,7 +449,10 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.rules is not None:
         workspace = Path(args.rules)
-        plan = distribute_all_plugin_rules(workspace, apply=False)
+        user_rules_dir = _resolve_rules_dir_arg(args.rules_dir)
+        plan = distribute_all_plugin_rules(
+            workspace, apply=False, user_rules_dir=user_rules_dir
+        )
         print_all_plugin_rules_report(plan)
         has_changes = any(
             report.has_changes
@@ -390,7 +468,9 @@ def main(argv: list[str] | None = None) -> None:
             if input("\nApply this plan? [y/N] ").strip().lower() != "y":
                 print("Cancelled.")
                 return
-        distribute_all_plugin_rules(workspace, apply=True)
+        distribute_all_plugin_rules(
+            workspace, apply=True, user_rules_dir=user_rules_dir
+        )
         print("\nApplied.")
         return
 

@@ -230,7 +230,8 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
     """Translate `claude-plugin <verb>` to `setup.cli`'s plugin flags.
 
     `install` fetches the plugin then runs the scope wizard (`--plugin`); `list` is the audit
-    report, `who` the provenance report, `reconcile` the interactive placer.
+    report, `who` the provenance report, `reconcile` the interactive placer, `enable`/`disable`
+    the plugin x target table (or `--scope` to skip it).
     """
     if args.verb == "install":
         argv = ["--plugin", args.plugin]
@@ -244,6 +245,21 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         _run_doctor_advisory()
     elif args.verb == "list":
         setup_main(["--plugins-who"] if args.who else ["--plugins-reconcile"])
+    elif args.verb in ("enable", "disable"):
+        argv = [f"--plugin-{args.verb}", *args.plugins]
+        if args.marketplace:
+            argv += ["--marketplace", args.marketplace]
+        for one_scope in args.scope or []:
+            argv += ["--scope", one_scope]
+        if args.workspace:
+            argv += ["--workspace", args.workspace]
+        if args.rules_dir:
+            argv += ["--rules-dir", args.rules_dir]
+        if args.yes:
+            argv.append("--yes")
+        if args.dry_run:
+            argv.append("--dry-run")
+        setup_main(argv)
     else:
         setup_main(["--plugins-reconcile-apply"])
 
@@ -395,6 +411,60 @@ def build_parser() -> argparse.ArgumentParser:
         ["pinky claude-plugin reconcile  # one question per plugin"],
     )
     p.set_defaults(func=cmd_claude_plugin)
+    for verb in ("enable", "disable"):
+        p = _add(
+            verbs,
+            verb,
+            f"{verb} one or more plugins — the plugin x target table, prefilled from the "
+            "current state, or --scope to skip it",
+            [
+                f"pinky claude-plugin {verb} pc-snow  # table, prefilled, one toggle question",
+                f"pinky claude-plugin {verb} pc-snow --scope pinky-lib --yes  # no question at all",
+            ],
+        )
+        _completing(
+            p.add_argument(
+                "plugins", nargs="+", metavar="PLUGIN", help="one or more plugins"
+            ),
+            _complete_plugin,
+        )
+        p.add_argument(
+            "--marketplace",
+            default=None,
+            help="the marketplace every named plugin comes from (asked per plugin when ambiguous)",
+        )
+        p.add_argument(
+            "--scope",
+            action="append",
+            default=None,
+            metavar="PATH",
+            help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
+        )
+        p.add_argument(
+            "--workspace",
+            default=None,
+            metavar="PATH",
+            help="the workspace to act on (default: PINKY_WORKSPACE_ROOT, or the nearest "
+            "*.code-workspace marker)",
+        )
+        p.add_argument(
+            "--rules-dir",
+            default=None,
+            metavar="PATH",
+            help="the user's rules override root (default: ~/.claude/rules)",
+        )
+        p.add_argument(
+            "--yes",
+            "-y",
+            action="store_true",
+            help="apply the plan without asking (required in a non-interactive shell)",
+        )
+        p.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="print the plan and stop, write nothing",
+        )
+        p.set_defaults(func=cmd_claude_plugin)
 
     verbs = _subject(
         sub,
