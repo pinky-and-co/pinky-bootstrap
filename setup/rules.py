@@ -13,7 +13,7 @@ rather than a single fixed workspace path.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,6 +22,11 @@ from .common import AGENTIC_HARNESS_DIR
 RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
 TARGET_REL = ".claude/rules"
 INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+# A user override lives one level below the same "<plugin>/<file>.md" shape as RULES_DIR, under
+# the directory pinky already writes other user-scope customisation to (output-styles, themes —
+# see setup/agentic_assets.py).
+USER_RULES_DIR = Path.home() / ".claude" / "rules"
+EXCLUDE_SUFFIX = ".md.exclude"
 
 
 @dataclass(frozen=True)
@@ -46,6 +51,59 @@ class RulesReport:
         return bool(self.added or self.modified or self.purged)
 
 
+def _distribute_sources(
+    sources: Mapping[str, Path],
+    target_root: Path,
+    *,
+    apply: bool = True,
+    sibling_owned: frozenset[str] = frozenset(),
+) -> RulesReport:
+    """Diff `sources` (filename -> file to copy) against `<target_root>/.claude/rules/`, applying
+    by default — the mechanism `distribute_rules` (one plain directory) and the two-level
+    shipped+user merge (`_merged_sources`) both funnel through, so the diff/purge logic is written
+    once.
+
+    The target is a mirror of `sources`: a file with no matching entry is purged — unless it is in
+    `sibling_owned`, i.e. owned by another plugin that resolves to the same target. Without that
+    exemption, two plugins landing in one `.claude/rules/` purge each other's rules on alternate
+    passes.
+    """
+    target = target_root.expanduser().resolve() / TARGET_REL
+    if apply:
+        target.mkdir(parents=True, exist_ok=True)
+
+    added: list[str] = []
+    modified: list[str] = []
+    unchanged: list[str] = []
+    for name, src in sorted(sources.items()):
+        dst = target / name
+        payload = src.read_text(encoding="utf-8")
+        if dst.exists():
+            # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
+            # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
+            if dst.read_text(encoding="utf-8") == payload:
+                unchanged.append(name)
+                continue
+            modified.append(name)
+        else:
+            added.append(name)
+        if apply:
+            dst.write_text(payload, encoding="utf-8")
+
+    owned = set(sources) | sibling_owned
+    purged: list[str] = []
+    if target.is_dir():
+        for f in sorted(target.glob("*.md")):
+            if f.name not in owned:
+                purged.append(f.name)
+                if apply:
+                    f.unlink()
+
+    return RulesReport(
+        added=added, modified=modified, unchanged=unchanged, purged=purged
+    )
+
+
 def distribute_rules(
     rules_source: Path,
     target_root: Path,
@@ -54,11 +112,6 @@ def distribute_rules(
     sibling_owned: frozenset[str] = frozenset(),
 ) -> RulesReport:
     """Diff ``rules_source/*.md`` against ``<target_root>/.claude/rules/``, applying by default.
-
-    The target is a mirror of ``rules_source``: a file with no matching source is purged —
-    unless it is in ``sibling_owned``, i.e. owned by another plugin that resolves to the same
-    target. Without that exemption, two plugins landing in one ``.claude/rules/`` purge each
-    other's rules on alternate passes.
 
     Args:
         rules_source: Directory of ``.md`` rule files to distribute.
@@ -77,42 +130,34 @@ def distribute_rules(
         raise FileNotFoundError(
             f"no rules to distribute: {rules_source} does not exist"
         )
-
-    target = target_root.expanduser().resolve() / TARGET_REL
-    if apply:
-        target.mkdir(parents=True, exist_ok=True)
-
-    sources = sorted(rules_source.glob("*.md"))
-    added: list[str] = []
-    modified: list[str] = []
-    unchanged: list[str] = []
-    for src in sources:
-        dst = target / src.name
-        payload = src.read_text(encoding="utf-8")
-        if dst.exists():
-            # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
-            # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
-            if dst.read_text(encoding="utf-8") == payload:
-                unchanged.append(src.name)
-                continue
-            modified.append(src.name)
-        else:
-            added.append(src.name)
-        if apply:
-            dst.write_text(payload, encoding="utf-8")
-
-    owned = {src.name for src in sources} | sibling_owned
-    purged: list[str] = []
-    if target.is_dir():
-        for f in sorted(target.glob("*.md")):
-            if f.name not in owned:
-                purged.append(f.name)
-                if apply:
-                    f.unlink()
-
-    return RulesReport(
-        added=added, modified=modified, unchanged=unchanged, purged=purged
+    sources = {src.name: src for src in rules_source.glob("*.md")}
+    return _distribute_sources(
+        sources, target_root, apply=apply, sibling_owned=sibling_owned
     )
+
+
+def resolve_user_rules_dir(explicit: Path | None = None) -> Path:
+    """The user's rules override root — `explicit` (a CLI `--rules-dir`) or `USER_RULES_DIR`."""
+    return explicit if explicit is not None else USER_RULES_DIR
+
+
+def _merged_sources(plugin_dir: Path, user_plugin_dir: Path) -> dict[str, Path]:
+    """One plugin's rule files after the user's overlay: `<user_plugin_dir>/<name>.md` adds a rule
+    or replaces a shipped one of the same name, `<user_plugin_dir>/<name>.md.exclude` (an empty
+    marker, never itself globbed as a rule) drops a shipped rule from distribution.
+    """
+    sources = (
+        {src.name: src for src in plugin_dir.glob("*.md")}
+        if plugin_dir.is_dir()
+        else {}
+    )
+    if not user_plugin_dir.is_dir():
+        return sources
+    for marker in user_plugin_dir.glob(f"*{EXCLUDE_SUFFIX}"):
+        sources.pop(marker.name.removesuffix(".exclude"), None)
+    for src in user_plugin_dir.glob("*.md"):
+        sources[src.name] = src
+    return sources
 
 
 def resolve_targets_for_plugin(plugin_name: str, workspace_root: Path) -> list[Path]:
@@ -165,9 +210,10 @@ class PluginRulesResult(Mapping[Path, RulesReport]):
 
 
 def distribute_all_plugin_rules(
-    workspace_root: Path, *, apply: bool = True
+    workspace_root: Path, *, apply: bool = True, user_rules_dir: Path | None = None
 ) -> dict[str, PluginRulesResult]:
-    """Distribute every ``rules/<plugin>/`` to its resolved targets.
+    """Distribute every ``rules/<plugin>/`` (each merged with its user override, see
+    `_merged_sources`) to its resolved targets.
 
     Keyed by plugin name, then by target path. A plugin never installed on this machine still
     appears in the result with an empty target dict — visible as "nothing to do", not silently
@@ -179,10 +225,12 @@ def distribute_all_plugin_rules(
     Args:
         workspace_root: The directory a ``user``-scope plugin's rules resolve to.
         apply: When False, compute the plan without touching the filesystem.
+        user_rules_dir: The user's override root (default: `resolve_user_rules_dir()`).
 
     Returns:
         Reports keyed by plugin name, then by target path.
     """
+    user_rules_dir = resolve_user_rules_dir(user_rules_dir)
     plugin_dirs = discover_plugin_rule_dirs()
     # Resolve targets up front: the sibling map below groups plugins by target, and two spellings
     # of one directory (trailing slash, symlink, ``~``) must not land in separate buckets — that
@@ -202,18 +250,92 @@ def distribute_all_plugin_rules(
     result: dict[str, PluginRulesResult] = {}
     for plugin_dir in plugin_dirs:
         by_target: dict[Path, RulesReport] = {}
+        my_sources = _merged_sources(plugin_dir, user_rules_dir / plugin_dir.name)
         for target in targets_by_plugin[plugin_dir.name]:
             sibling_owned = frozenset(
-                sibling_src.name
+                name
                 for other in plugins_by_target[target]
                 if other != plugin_dir
-                for sibling_src in other.glob("*.md")
+                for name in _merged_sources(other, user_rules_dir / other.name)
             )
-            by_target[target] = distribute_rules(
-                plugin_dir, target, apply=apply, sibling_owned=sibling_owned
+            by_target[target] = _distribute_sources(
+                my_sources, target, apply=apply, sibling_owned=sibling_owned
             )
         result[plugin_dir.name] = PluginRulesResult(by_target)
     return result
+
+
+def rules_report_for_plugin_at_targets(
+    plugin_name: str,
+    present_targets: Iterable[Path],
+    previously_resolved_targets: Iterable[Path],
+    workspace_root: Path,
+    *,
+    apply: bool = True,
+    user_rules_dir: Path | None = None,
+    active_dirs_by_plugin: Mapping[str, Iterable[Path]] | None = None,
+) -> dict[Path, RulesReport]:
+    """This plugin's rules at exactly the targets an `enable`/`disable` action decided, rather
+    than a fresh `installed_plugins.json` read — the plan shown before `[y/N]` and the write after
+    confirmation must agree, and the registry only reflects the new state once the scope mutation
+    (`claude plugin install/uninstall`) has already run.
+
+    `present_targets`: where the plugin ends up enabled (sources distributed there).
+    `previously_resolved_targets`: where it was enabled before this action (from the pre-mutation
+    audit) — a target dropped from `present_targets` still gets visited here, with no source, so
+    its files are purged. Without this, a target that stops resolving for the plugin altogether
+    would never be visited again by anything and would keep its stale rule files forever (the
+    per-target mirror purge only runs for a target it is actually asked to check).
+
+    `active_dirs_by_plugin`: every OTHER plugin's currently-active directories, keyed by bare
+    plugin name, for the sibling-ownership check below. Pass the settings-label-derived directory
+    set here (`plugin_enable`'s own audit), not the registry: a plugin enabled through a bare
+    `@inline` settings key (no `installed_plugins.json` entry) has no `resolve_targets_for_plugin`
+    hit at all, so falling back to the registry here would purge its rules as collateral of an
+    unrelated plugin's disable. `None` (a caller with no settings audit at hand) falls back to the
+    registry, same as `distribute_all_plugin_rules`.
+
+    A plugin with neither a shipped `rules/<plugin_name>/` directory nor a user override visits no
+    target at all — no directory created, no purge run — so naming a plugin that ships no rules
+    (`enable`/`disable` on any plugin, rules or not) never touches an unrelated `.claude/rules/`.
+    """
+    user_rules_dir = resolve_user_rules_dir(user_rules_dir)
+    plugin_dir = RULES_DIR / plugin_name
+    user_plugin_dir = user_rules_dir / plugin_name
+    if not plugin_dir.is_dir() and not user_plugin_dir.is_dir():
+        return {}
+    my_sources = _merged_sources(plugin_dir, user_plugin_dir)
+    present = {t.expanduser().resolve() for t in present_targets}
+    all_targets = present | {
+        t.expanduser().resolve() for t in previously_resolved_targets
+    }
+
+    def _sibling_active_dirs(name: str) -> set[Path]:
+        if active_dirs_by_plugin is not None:
+            return {p.resolve() for p in active_dirs_by_plugin.get(name, ())}
+        return {
+            t.expanduser().resolve()
+            for t in resolve_targets_for_plugin(name, workspace_root)
+        }
+
+    def sibling_owned_at(target: Path) -> frozenset[str]:
+        return frozenset(
+            name
+            for other_dir in discover_plugin_rule_dirs()
+            if other_dir.name != plugin_name
+            for name in _merged_sources(other_dir, user_rules_dir / other_dir.name)
+            if target in _sibling_active_dirs(other_dir.name)
+        )
+
+    return {
+        target: _distribute_sources(
+            my_sources if target in present else {},
+            target,
+            apply=apply,
+            sibling_owned=sibling_owned_at(target),
+        )
+        for target in sorted(all_targets)
+    }
 
 
 def print_rules_report(report: RulesReport, workspace: Path) -> None:

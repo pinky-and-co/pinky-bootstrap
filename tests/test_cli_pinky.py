@@ -374,7 +374,9 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
     monkeypatch.setattr(
         setup.cli,
         "distribute_all_plugin_rules",
-        lambda workspace, apply: seen.append((workspace, apply)) or {},
+        lambda workspace, apply, user_rules_dir=None: (
+            seen.append((workspace, apply)) or {}
+        ),
     )
     monkeypatch.setattr(setup.cli, "print_all_plugin_rules_report", lambda plan: None)
 

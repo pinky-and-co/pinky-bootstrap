@@ -313,6 +313,111 @@ def test_global_purge_still_removes_a_file_no_plugin_owns(
     assert not (target / "ancient.md").exists()
 
 
+# ── two-level rules: the user's override dir on top of the shipped rules/<plugin>/ ──
+
+
+def test_user_rules_dir_adds_a_rule(tmp_path, monkeypatch, installed_plugins_file):
+    """FR-0024-62: a file added under the user's <plugin>/ dir is distributed alongside the
+    shipped rules, not instead of them."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-toto").mkdir(parents=True)
+    (rules_dir / "pc-toto" / "shipped.md").write_text("shipped\n", encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    user_dir = tmp_path / "user-rules"
+    (user_dir / "pc-toto").mkdir(parents=True)
+    (user_dir / "pc-toto" / "extra.md").write_text("extra\n", encoding="utf-8")
+    installed_plugins_file({"pc-toto@m": [{"scope": "user"}]})
+    ws = tmp_path / "workspace"
+
+    result = rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=user_dir)
+
+    landed = {p.name for p in (ws / ".claude/rules").glob("*.md")}
+    assert landed == {"shipped.md", "extra.md"}
+    assert result["pc-toto"][ws].added == ["extra.md", "shipped.md"]
+
+
+def test_user_rules_dir_file_of_same_name_replaces_shipped_rule(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    """FR-0024-63: a user file with the same name as a shipped rule wins — the distributed
+    content is the user's, byte for byte."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-toto").mkdir(parents=True)
+    (rules_dir / "pc-toto" / "shipped.md").write_text(
+        "shipped version\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    user_dir = tmp_path / "user-rules"
+    (user_dir / "pc-toto").mkdir(parents=True)
+    (user_dir / "pc-toto" / "shipped.md").write_text("user version\n", encoding="utf-8")
+    installed_plugins_file({"pc-toto@m": [{"scope": "user"}]})
+    ws = tmp_path / "workspace"
+
+    rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=user_dir)
+
+    assert (ws / ".claude/rules/shipped.md").read_text(encoding="utf-8") == (
+        "user version\n"
+    )
+
+
+def test_user_rules_dir_exclude_marker_drops_a_shipped_rule(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    """FR-0024-64: `<name>.md.exclude` (never itself globbed as a rule) removes a shipped rule
+    from distribution."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-toto").mkdir(parents=True)
+    (rules_dir / "pc-toto" / "unwanted.md").write_text("nope\n", encoding="utf-8")
+    (rules_dir / "pc-toto" / "kept.md").write_text("yes\n", encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    user_dir = tmp_path / "user-rules"
+    (user_dir / "pc-toto").mkdir(parents=True)
+    (user_dir / "pc-toto" / "unwanted.md.exclude").write_text("", encoding="utf-8")
+    installed_plugins_file({"pc-toto@m": [{"scope": "user"}]})
+    ws = tmp_path / "workspace"
+
+    rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=user_dir)
+
+    landed = {p.name for p in (ws / ".claude/rules").glob("*.md")}
+    assert landed == {"kept.md"}
+    assert "unwanted.md.exclude" not in landed
+
+
+def test_user_rules_dir_default_path_is_under_dot_claude(monkeypatch):
+    """FR-0024-65 (default path): with no `--rules-dir`, the override root is `~/.claude/rules`
+    (`USER_RULES_DIR`, resolved from `Path.home()` at import time like every other pinky
+    user-scope path — see `INSTALLED_PLUGINS_PATH` above)."""
+    monkeypatch.setattr(rules_mod, "USER_RULES_DIR", Path("/fake-home/.claude/rules"))
+    assert rules_mod.resolve_user_rules_dir() == Path("/fake-home/.claude/rules")
+
+
+def test_user_rules_dir_explicit_path_overrides_the_default():
+    """FR-0024-65 (`--rules-dir`): an explicit path wins over the default."""
+    explicit = Path("/somewhere/else")
+    assert rules_mod.resolve_user_rules_dir(explicit) == explicit
+
+
+def test_a_rules_dir_for_an_uninstalled_plugin_still_writes_nothing_with_a_user_override(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    """FR-0024-61 survives the two-level merge: a plugin never installed on this machine still
+    resolves to no target, user override or not."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-toto").mkdir(parents=True)
+    (rules_dir / "pc-toto" / "a.md").write_text("A\n", encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    user_dir = tmp_path / "user-rules"
+    (user_dir / "pc-toto").mkdir(parents=True)
+    (user_dir / "pc-toto" / "b.md").write_text("B\n", encoding="utf-8")
+    installed_plugins_file({})
+
+    result = rules_mod.distribute_all_plugin_rules(
+        tmp_path / "workspace", user_rules_dir=user_dir
+    )
+
+    assert result["pc-toto"] == {}
+
+
 def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
     tmp_path, installed_plugins_file
 ):
