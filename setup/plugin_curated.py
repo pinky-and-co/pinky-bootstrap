@@ -1,11 +1,11 @@
 """setup/plugin_curated.py — the curated plugin list `install`/`enable` offer when no name is
-given: a default shipped with this repo, a user file layered on top (FR-0024-38 to 43).
+given: a default shipped with this repo, a user file layered on top.
 
 Two-level model, same shape as `rules.py`'s `RULES_DIR`/`USER_RULES_DIR`: the default ships in
 this repo, the user file's `[[entries]]` add or replace (same `marketplace`/`plugin` pair) a
 default entry, and its `[[remove]]` drops one. TOML throughout — read via `tomllib` (already used
-by `common.py`/`precommit.py`); the user file is the only one ever written back, by hand (FR-0024-43
-— no TOML writer dependency, decision 2026-09-23).
+by `common.py`/`precommit.py`); the user file is the only one ever written back, by hand
+(no TOML writer dependency, decision 2026-09-23).
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from .common import PACKAGE_DIR
 
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
 USER_CURATED_PATH = Path.home() / ".claude" / "pinky-curated-plugins.toml"
-# A picker row standing in for a whole-marketplace entry this machine has never registered
-# (FR-0024-39) — not a real plugin name, so `expand_entry` never produces one; only
+# A picker row standing in for a whole-marketplace entry this machine has never registered —
+# not a real plugin name, so `expand_entry` never produces one; only
 # `resolve_no_name_selection`'s own row-building and recognition ever touch this marker.
 UNREGISTERED_MARKER = "@"
 
@@ -32,8 +32,8 @@ UNREGISTERED_MARKER = "@"
 @dataclass(frozen=True)
 class CuratedEntry:
     """One line of the curated list — a whole marketplace (`plugin` is `None`) or one
-    `plugin@marketplace` (FR-0024-38). `source` is transmitted to `claude plugin marketplace add`
-    as-is: a GitHub `owner/repo`, a URL, or a workspace-relative directory path (FR-0024-39)."""
+    `plugin@marketplace`. `source` is transmitted to `claude plugin marketplace add`
+    as-is: a GitHub `owner/repo`, a URL, or a workspace-relative directory path."""
 
     marketplace: str
     source: str
@@ -75,7 +75,7 @@ def load_curated_entries(user_path: Path | None = None) -> list[CuratedEntry]:
     """The curated list: `DEFAULT_CURATED_PATH` as shipped, `user_path` (default
     `USER_CURATED_PATH`, or `--list`) layered on top — `[[entries]]` there adds a new entry or
     replaces a default one sharing the same `(marketplace, plugin)` key, `[[remove]]` drops a
-    default entry by that same key (FR-0024-40, 41, 42). Either file missing or unreadable reads
+    default entry by that same key. Either file missing or unreadable reads
     as empty, never an error — a fresh machine still gets the default list."""
     default = _entries_from(_load_toml(DEFAULT_CURATED_PATH))
     user_data = _load_toml(user_path or USER_CURATED_PATH)
@@ -100,12 +100,12 @@ def _known_marketplaces() -> dict:
 def is_registered(entry: CuratedEntry) -> bool:
     """Whether this machine already has `claude plugin marketplace add`ed `entry.marketplace` —
     the split between `expand_entry` reading its catalog locally and the picker showing one
-    unexpanded row instead (FR-0024-36, 39)."""
+    unexpanded row instead."""
     return isinstance(_known_marketplaces().get(entry.marketplace), dict)
 
 
 def expand_entry(entry: CuratedEntry) -> list[str]:
-    """Individual plugin names for one curated entry (FR-0024-36) — the entry's own `plugin` name
+    """Individual plugin names for one curated entry — the entry's own `plugin` name
     if it names one, or every plugin this machine already knows that marketplace publishes, read
     straight from its local `.claude-plugin/marketplace.json` (no network fetch, no write). A
     marketplace this machine has never registered (a fresh machine, `source` not yet added)
@@ -127,7 +127,7 @@ def expand_entry(entry: CuratedEntry) -> list[str]:
 
 
 def resolve_source(source: str, workspace_root: Path) -> str:
-    """`source` for `claude plugin marketplace add` (FR-0024-39) — a relative filesystem path that
+    """`source` for `claude plugin marketplace add` — a relative filesystem path that
     actually exists under `workspace_root` resolves to its absolute form; a GitHub `owner/repo` or
     a URL (nothing on disk at that path) passes through unchanged. The two look identical as bare
     strings, so existence on disk is the only signal that tells them apart."""
@@ -139,8 +139,8 @@ def resolve_source(source: str, workspace_root: Path) -> str:
 
 def add_marketplace(entry: CuratedEntry, workspace_root: Path) -> None:
     """`claude plugin marketplace add <source>` for a whole-marketplace entry this machine has
-    never registered (FR-0024-39). `check=True`: the caller must not treat this as done, or expand
-    it, or offer to remember it (FR-0024-43), if the add itself failed."""
+    never registered. `check=True`: the caller must not treat this as done, or expand
+    it, or offer to remember it, if the add itself failed."""
     subprocess.run(
         [
             "claude",
@@ -162,7 +162,7 @@ def _toml_string(value: str) -> str:
 def render_curated_toml(
     entries: list[CuratedEntry], removes: list[dict] | None = None
 ) -> str:
-    """The exact text `USER_CURATED_PATH` is written as (FR-0024-43) — every entry as
+    """The exact text `USER_CURATED_PATH` is written as: every entry as
     `[[entries]]`, `marketplace`/`source` always present, `plugin` only when set. `removes`: raw
     `[[remove]]` tables read back from the file being rewritten, preserved as-is — `sync_user_file`
     must never drop a removal directive it did not itself add or change."""
@@ -190,8 +190,8 @@ def sync_user_file(
     *,
     yes: bool = False,
 ) -> bool:
-    """FR-0024-43: `new_entries` this run just used (typically freshly `claude plugin marketplace
-    add`ed, FR-0024-39) that are not yet in the user's curated file — show the diff, ask `[y/N]`,
+    """`new_entries` this run just used (typically freshly `claude plugin marketplace
+    add`ed) that are not yet in the user's curated file — show the diff, ask `[y/N]`,
     append and write if confirmed. A no-op, nothing printed, when every one of `new_entries` is
     already there. Returns whether anything was written. Refuses (prints why, writes nothing) when
     the file exists but fails to parse — never silently replaces content it could not read."""
@@ -235,14 +235,14 @@ def resolve_no_name_selection(
     dry_run: bool = False,
     picker: Callable[..., list[bool]] | None = None,
 ) -> list[str]:
-    """`install`/`enable` with no plugin name, end to end (FR-0024-33, 36, 37, 39, 43): the
+    """`install`/`enable` with no plugin name, end to end: the
     curated ∪ installed picker, a registered marketplace expanded to its plugins, an unregistered
     one offered as a single row — check it, confirm, `claude plugin marketplace add` it, expand it
     now that it is registered, and offer to remember it in the user file. Returns only the newly
-    picked names (FR-0024-44's "selected" plugins) — an already-installed one that stays checked
+    picked names — an already-installed one that stays checked
     has nothing new to place, so it never reopens its own target table here; `install <name>` (or
     `enable <name>`) named directly still does. `dry_run`: neither `marketplace add` nor the user
-    file write ever run (NFR-0024-31) — a checked unregistered row is reported, not added."""
+    file write ever run — a checked unregistered row is reported, not added."""
     from . import (
         plugin_enable,
     )  # local: plugin_enable never imports this module, no cycle
@@ -252,7 +252,7 @@ def resolve_no_name_selection(
     curated_names: set[str] = set()
     # Grouped by marketplace, not by entry: two entries (a `plugin=` one and a whole-marketplace
     # one, or two different `plugin=` ones) can share one not-yet-registered marketplace, and
-    # `marketplace add` must run once for the group, not once per entry (FR-0024-39).
+    # `marketplace add` must run once for the group, not once per entry.
     marker_to_entries: dict[str, list[CuratedEntry]] = {}
     for entry in entries:
         if is_registered(entry):

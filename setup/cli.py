@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         metavar="PLUGIN_ID",
         help="download and enable these plugins through the plugin x target table (empty: the "
-        "curated ∪ installed checkbox list, FR-0024-33) via `claude plugin install --scope "
+        "curated ∪ installed checkbox list) via `claude plugin install --scope "
         "project` at each chosen target",
     )
     parser.add_argument(
@@ -184,8 +184,8 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         metavar="PLUGIN",
         help="enable these plugins — the plugin x target table, prefilled from the current "
-        "state, unless --scope replaces it (empty: the curated ∪ installed checkbox list, "
-        "FR-0024-33 — `pinky claude-plugin enable`)",
+        "state, unless --scope replaces it (empty: the curated ∪ installed checkbox list "
+        "— `pinky claude-plugin enable`)",
     )
     parser.add_argument(
         "--plugin-disable",
@@ -193,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         metavar="PLUGIN",
         help="disable these plugins — same table/--scope as --plugin-enable, unchecking a cell "
-        "removes that enable (empty: every currently installed plugin, FR-0024-34 — `pinky "
+        "removes that enable (empty: every currently installed plugin — `pinky "
         "claude-plugin disable`)",
     )
     parser.add_argument(
@@ -345,11 +345,11 @@ def main(argv: list[str] | None = None) -> None:
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
         print(f"Workspace: {resolved.root} (via {resolved.via})")
         # Only `disable` with no name gets the compact (checked-only) table — everything it names
-        # is headed for removal, so an unchecked row is noise (FR-0024-34).
+        # is headed for removal, so an unchecked row is noise.
         only_checked = not names and action == "disable"
         if not names:
             if action == "enable":
-                # FR-0024-33/36/37/39/43: no name → the curated ∪ installed checkbox list, an
+                # No name → the curated ∪ installed checkbox list, an
                 # unregistered marketplace's row added (and remembered) on confirmation.
                 installed_names = {
                     spec.split("@", 1)[0]
@@ -366,7 +366,7 @@ def main(argv: list[str] | None = None) -> None:
                     print("nothing selected")
                     return
             else:
-                # FR-0024-34: no name → every currently installed plugin, no question asked.
+                # No name → every currently installed plugin, no question asked.
                 names = sorted(
                     {
                         spec.split("@", 1)[0]
@@ -407,7 +407,7 @@ def main(argv: list[str] | None = None) -> None:
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
         print(f"Workspace: {resolved.root} (via {resolved.via})")
 
-        # 0. No name at all: the curated ∪ installed checkbox list (FR-0024-33, 36, 37, 39, 43) —
+        # 0. No name at all: the curated ∪ installed checkbox list —
         #    the installed set doubles as the curated list's own "already have this" signal.
         names = list(args.plugin)
         if not names:
@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> None:
         # 1. Dev cache-bust, per plugin: `claude plugin install`/`update` only ever fills an
         #    absent cache dir, so a plugin pinned at 0.1.0 can go on serving a stale build after
         #    an edit, no signal. `--force` deletes it first — a no-op on a first install (nothing
-        #    cached yet). Deletes, so it never runs under `--dry-run` (NFR-0024-31).
+        #    cached yet). Deletes, so it never runs under `--dry-run`.
         if args.force and not args.dry_run:
             for name in names:
                 if plugin_install.force_refetch(name, args.marketplace):
@@ -437,7 +437,7 @@ def main(argv: list[str] | None = None) -> None:
                     print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # 2. An always-on plugin (autodiscovery, statusline) is user scope by design — the only
         #    case where `pinky` writes there. No table to show, so `--dry-run` has nothing to
-        #    preview — it just says so and writes nothing (NFR-0024-31). Kept out of the shared
+        #    preview — it just says so and writes nothing. Kept out of the shared
         #    table below: it never goes through a scope question at all.
         keep_scope = [n for n in names if n in plugin_install.KEEP_USER_SCOPE]
         regular = [n for n in names if n not in plugin_install.KEEP_USER_SCOPE]
@@ -456,9 +456,9 @@ def main(argv: list[str] | None = None) -> None:
             print(f"{name} kept at user scope (always-on) → ~/.claude/settings.json")
         if not regular:
             return
-        # 3. Everything else, through one shared plugin × target table as `enable` (FR-0024-31) —
+        # 3. Everything else, through one shared plugin × target table as `enable` —
         #    one question and one plan for the whole batch, not one per plugin. A prior enable
-        #    anywhere (including a leftover at user scope) shows up pre-checked there (FR-0024-45),
+        #    anywhere (including a leftover at user scope) shows up pre-checked there,
         #    so unchecking it is how it gets removed; nothing left to do here.
         enable_result = plugin_enable.run(
             "enable",

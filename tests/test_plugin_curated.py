@@ -1,5 +1,5 @@
-"""`setup/plugin_curated.py` — the curated plugin list, its default/user overlay (FR-0024-38 to
-43), and the individual-plugin expansion of a whole-marketplace entry (FR-0024-36)."""
+"""`setup/plugin_curated.py` — the curated plugin list, its default/user overlay,
+and the individual-plugin expansion of a whole-marketplace entry."""
 
 import json
 import subprocess
@@ -73,7 +73,7 @@ def test_a_missing_user_file_is_not_an_error(tmp_path):
 
 
 def test_a_specific_plugin_entry_and_a_whole_marketplace_entry_coexist(tmp_path):
-    """FR-0024-38: an entry names either a whole marketplace or one `plugin@marketplace` — the
+    """An entry names either a whole marketplace or one `plugin@marketplace` — the
     two share a marketplace but are distinct rows, keyed on `(marketplace, plugin)`."""
     user_file = tmp_path / "curated.toml"
     user_file.write_text(
@@ -89,7 +89,7 @@ def test_a_specific_plugin_entry_and_a_whole_marketplace_entry_coexist(tmp_path)
     assert {e.plugin for e in official} == {None, "some-plugin"}
 
 
-# ── expand_entry — a whole marketplace flattens to the plugins it publishes (FR-0024-36) ──
+# ── expand_entry — a whole marketplace flattens to the plugins it publishes ──
 
 
 def test_expand_entry_returns_the_named_plugin_as_is():
@@ -143,7 +143,7 @@ def test_is_registered_true_only_for_a_known_marketplace(tmp_path, monkeypatch):
     assert plugin_curated.is_registered(CuratedEntry("never-added", "o/r")) is False
 
 
-# ── resolve_source / add_marketplace — FR-0024-39 ───────────────────────────────────────
+# ── resolve_source / add_marketplace ───────────────────────────────────────
 
 
 def test_resolve_source_leaves_a_github_spec_unchanged(tmp_path):
@@ -176,7 +176,7 @@ def test_add_marketplace_runs_claude_plugin_marketplace_add(tmp_path, monkeypatc
     assert calls == [["claude", "plugin", "marketplace", "add", "owner/repo"]]
 
 
-# ── sync_user_file — FR-0024-43 ─────────────────────────────────────────────────────────
+# ── sync_user_file ─────────────────────────────────────────────────────────
 
 
 def test_sync_user_file_appends_a_new_entry_on_yes(tmp_path, monkeypatch):
@@ -268,7 +268,7 @@ def test_sync_user_file_refuses_to_overwrite_a_broken_file(
     assert "not valid TOML" in capsys.readouterr().err
 
 
-# ── render_curated_toml — the exact text FR-0024-43 writes back ───────────────────────────
+# ── render_curated_toml — the exact text it writes back ───────────────────────────
 
 
 def test_render_curated_toml_round_trips_through_the_real_parser():
@@ -298,7 +298,7 @@ def test_render_curated_toml_of_an_empty_list_is_an_empty_string():
     assert plugin_curated.render_curated_toml([]) == ""
 
 
-# ── resolve_no_name_selection — the whole "no name" flow (FR-0024-33, 36, 37, 39, 43) ──────
+# ── resolve_no_name_selection — the whole "no name" flow ──────
 
 
 @pytest.fixture
@@ -374,7 +374,7 @@ def test_resolve_no_name_selection_adds_expands_and_offers_to_remember_an_unregi
 
     monkeypatch.setattr(plugin_curated.subprocess, "run", fake_run)
     user_file = tmp_path / "user.toml"
-    # picker: keep the one (checked, FR-0024-37) row; confirm the marketplace add; confirm saving
+    # picker: keep the one (checked) row; confirm the marketplace add; confirm saving
     # it to the user file.
     _canned(monkeypatch, ["y", "y"])
 
@@ -486,7 +486,7 @@ def test_resolve_no_name_selection_groups_two_entries_under_one_unregistered_mar
 def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
     curated_env, monkeypatch
 ):
-    """NFR-0024-31: `--dry-run` on the no-name path must not `marketplace add` or write the user
+    """`--dry-run` on the no-name path must not `marketplace add` or write the user
     file, even with the unregistered row checked and `--yes`."""
     tmp_path, home = curated_env
     plugin_curated.DEFAULT_CURATED_PATH.write_text(
@@ -516,7 +516,7 @@ def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
 def test_resolve_no_name_selection_excludes_an_already_installed_plugin(
     curated_env, monkeypatch
 ):
-    """FR-0024-44: the table covers what was *newly* selected — an already-installed plugin left
+    """The table covers what was *newly* selected — an already-installed plugin left
     checked has nothing to place, so it is not returned here (`install <name>` named directly
     still opens its own table)."""
     tmp_path, home = curated_env

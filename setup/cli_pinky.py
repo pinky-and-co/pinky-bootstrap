@@ -380,7 +380,7 @@ def build_parser() -> argparse.ArgumentParser:
             nargs="*",
             metavar="PLUGIN",
             help="one or more plugins, without their marketplace (omit: the curated ∪ installed "
-            "checkbox list, FR-0024-33)",
+            "checkbox list)",
         ),
         _complete_plugin,
     )
@@ -482,7 +482,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "plugins",
                 nargs="*",
                 metavar="PLUGIN",
-                help=f"one or more plugins (omit: {no_name}, FR-0024-33/34)",
+                help=f"one or more plugins (omit: {no_name})",
             ),
             _complete_plugin,
         )
@@ -796,7 +796,7 @@ def main(argv: list[str] | None = None) -> None:
     """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command.
 
     A `KeyboardInterrupt` raised anywhere under `args.func` (the scope wizard's `input()`,
-    typically) exits 130 with a one-line message instead of a raw Python traceback (NFR-0024-37).
+    typically) exits 130 with a one-line message instead of a raw Python traceback.
     """
     parser = build_parser()
     argcomplete.autocomplete(parser)

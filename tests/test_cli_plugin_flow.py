@@ -241,7 +241,7 @@ def test_pc_statusline_is_declared_keep_user_scope():
 
 
 def test_dry_run_with_force_writes_and_deletes_nothing(env, monkeypatch):
-    """NFR-0024-31: `--dry-run` writes nothing — not even the `--force` cache-bust, which is
+    """`--dry-run` writes nothing — not even the `--force` cache-bust, which is
     destructive on its own regardless of what the table decides."""
     plugin_dir = plugin_install.resolve_install_path("pc-snow")
     assert plugin_dir.exists()
@@ -312,7 +312,7 @@ def _user_installs(sim: _ClaudeCliSim) -> list[list[str]]:
 def test_project_scope_never_installs_at_user_scope(env, monkeypatch):
     """Nothing is downloaded before the table is confirmed, and a project target downloads
     straight there: user scope is not a step on the way (measured 2026-09-02 and 2026-09-19,
-    still true once `install` delegates to the same `enable` flow, FR-0024-31)."""
+    still true once `install` delegates to the same `enable` flow)."""
     _stub_picker(monkeypatch, _pick_and_target("pinky-core"))
     _canned_input(monkeypatch, ["y"])
 
@@ -336,7 +336,7 @@ def test_a_dependency_lands_at_the_chosen_project_never_at_user_scope(env, monke
 
 def test_a_cancelled_wizard_installs_nothing(env, monkeypatch):
     """Ctrl-C on the checkbox screen propagates as `KeyboardInterrupt` (turned into exit 130 by
-    `cli_pinky`, NFR-0024-37) before anything is downloaded, and leaves a pre-existing global
+    `cli_pinky`) before anything is downloaded, and leaves a pre-existing global
     enable untouched."""
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
     env.sim.dependencies = {"pc-snow": ["pc-core"]}
@@ -417,7 +417,7 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
         "load_curated_entries",
         lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
-    # picker: keep pc-snow checked (FR-0024-37 prechecks it, nothing installed yet); then "user"
+    # picker: keep pc-snow checked (nothing installed yet, so it is prechecked); then "user"
     # checked in the target table; confirm.
     _stub_picker(monkeypatch, _pick_and_target("user"))
     _canned_input(monkeypatch, ["y"])
@@ -430,7 +430,7 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
 def test_install_with_no_name_skips_the_table_for_an_already_installed_pick(
     env, monkeypatch
 ):
-    """FR-0024-44: the table covers what was *newly* selected. Keeping an already-installed
+    """The table covers what was *newly* selected. Keeping an already-installed
     plugin checked in the "no name" picker must not reopen its own plugin x every-known-target
     table — that was the original 528-row bug, reachable again through this path if unfiltered."""
     _write_enable(env.ws, "pc-snow", True)
@@ -471,7 +471,7 @@ def test_enable_with_no_name_and_nothing_new_selected_says_so_and_exits_cleanly(
 def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_installs(
     env, monkeypatch
 ):
-    """FR-0024-37/39/43: a curated marketplace nothing has ever `marketplace add`ed still shows
+    """A curated marketplace nothing has ever `marketplace add`ed still shows
     up (as one row), gets added on confirmation, expands, and gets remembered in the user file."""
     monkeypatch.setattr(
         plugin_curated,
@@ -488,7 +488,7 @@ def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_insta
 
     monkeypatch.setattr(plugin_curated, "add_marketplace", fake_add)
     user_file = env.ws.parent / "user-curated.toml"
-    # picker: keep the one row checked (FR-0024-37); confirm the marketplace add; confirm saving
+    # picker: keep the one row checked; confirm the marketplace add; confirm saving
     # it to the user file; "user" checked in the target table; confirm.
     _stub_picker(monkeypatch, _pick_and_target("user"))
     _canned_input(monkeypatch, ["y", "y", "y"])
@@ -522,7 +522,7 @@ def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
 def test_disable_with_no_name_acts_on_every_installed_plugin_without_asking_which(
     env, monkeypatch
 ):
-    """FR-0024-34: no name → every installed plugin's current enables, via the compact
+    """No name → every installed plugin's current enables, via the compact
     (checked-only) table — one row here, not the full plugin x every-known-target grid."""
     _write_enable(env.ws, "pc-snow", True)
     _stub_picker(

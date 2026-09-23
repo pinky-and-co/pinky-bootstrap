@@ -1,6 +1,6 @@
-# The curated plugin list `pinky claude-plugin install`/`enable` offer when no name is given
-# (FR-0024-33, 36 to 39). Every entry names a whole marketplace — no `plugin` key, so every
-# plugin it publishes shows up individually in the checkbox list (FR-0024-36).
+# The curated plugin list `pinky claude-plugin install`/`enable` offer when no name is given.
+# Every entry names a whole marketplace — no `plugin` key, so every
+# plugin it publishes shows up individually in the checkbox list.
 #
 # A machine with access to org-restricted marketplaces (e.g. pinky-agentic-plugins-private) adds
 # them in its own user file layered on top of this one — see docs/how-to/install-plugin.md.

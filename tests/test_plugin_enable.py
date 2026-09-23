@@ -117,7 +117,7 @@ def _canned(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", lambda *_: next(it))
 
 
-# ── build_rows / build_tree_items — the table, prefilled (FR-0024-44, 45) ──────────────
+# ── build_rows / build_tree_items — the table, prefilled ──────────────
 
 
 def test_build_tree_items_indents_a_nested_path_by_segment():
@@ -215,7 +215,7 @@ def test_table_is_prefilled_from_a_project_enable_already_known_to_settings(env)
 
 
 def test_a_local_settings_enable_is_never_a_row(env):
-    """IMP-0024-30: `pc-autodiscovery`'s session state never appears in the table."""
+    """`pc-autodiscovery`'s session state never appears in the table."""
     _write_enabled(
         env.ws / "pinky-lib" / ".claude" / "settings.local.json", {"pc-snow": True}
     )
@@ -244,7 +244,7 @@ def test_filter_checked_keeps_only_checked_rows_and_reindexes():
     ]
 
 
-# ── pick_plugins — the "no name" checkbox list (FR-0024-33, 36, 37) ────────────────────
+# ── pick_plugins — the "no name" checkbox list ────────────────────
 
 
 def test_build_plugin_pick_rows_prechecks_only_installed_names():
@@ -257,7 +257,7 @@ def test_build_plugin_pick_rows_prechecks_only_installed_names():
 
 
 def test_build_plugin_pick_rows_checks_everything_with_no_installed_plugin():
-    """FR-0024-37: `installed_plugins.json` absent or empty → the curated list is entirely
+    """`installed_plugins.json` absent or empty → the curated list is entirely
     checked, not just the (nonexistent) installed subset."""
     rows = plugin_enable.build_plugin_pick_rows(
         curated_names=["pc-a", "pc-b"], installed_names=[]
@@ -324,7 +324,7 @@ def test_pick_plugins_refuses_with_nothing_to_pick_from(monkeypatch):
         plugin_enable.pick_plugins(curated_names=[], installed_names=[])
 
 
-# ── desired_from_scope_flags — --scope bypasses the table (FR-0024-46) ─────────────────
+# ── desired_from_scope_flags — --scope bypasses the table ─────────────────
 
 
 def test_scope_flag_enable_adds_to_what_is_already_enabled():
@@ -358,7 +358,7 @@ def test_scope_flag_run_asks_no_question_at_all(env, monkeypatch):
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is True
 
 
-# ── inherited labels — children pc-autodiscovery enables, never auto-removed (FR-0024-51) ──
+# ── inherited labels — children pc-autodiscovery enables, never auto-removed ──
 
 
 def test_inherited_labels_lists_children_of_a_checked_ancestor(env):
@@ -494,7 +494,7 @@ def test_disable_at_scope_removes_the_project_enable_and_registry_entry(env):
 
 
 def test_disable_table_prefilled_and_unchecking_removes_the_enable(env, monkeypatch):
-    """FR-0024-53: the disable table starts from the current scopes; toggling a checked row off
+    """The disable table starts from the current scopes; toggling a checked row off
     removes exactly that enable."""
     plugin_enable.run(
         "enable",
@@ -600,7 +600,7 @@ def test_run_reports_a_declined_plan_as_not_wireable(env, monkeypatch):
     assert result.wire is False
 
 
-# ── rules follow the plugin to its scope (FR-0024-52, 60, 61) ──────────────────────────
+# ── rules follow the plugin to its scope ──────────────────────────
 
 
 @pytest.fixture
@@ -718,7 +718,7 @@ def test_batch_enable_of_two_new_plugins_keeps_both_plugins_rules(
 
 
 def test_a_plugin_not_installed_writes_no_rule_file(tmp_path, monkeypatch):
-    """FR-0024-61, unaffected by enable/disable ever running for this plugin."""
+    """Unaffected by enable/disable ever running for this plugin."""
     rules_dir = tmp_path / "rules"
     (rules_dir / "pc-toto").mkdir(parents=True)
     (rules_dir / "pc-toto" / "rule_1.md").write_text("x\n", encoding="utf-8")
@@ -730,7 +730,7 @@ def test_a_plugin_not_installed_writes_no_rule_file(tmp_path, monkeypatch):
     assert plan["pc-toto"] == {}
 
 
-# ── the plan-then-[y/N] convention (NFR-0024-30, 31, 32) ───────────────────────────────
+# ── the plan-then-[y/N] convention ───────────────────────────────
 
 
 def _check_dot(items, title, **kwargs):
