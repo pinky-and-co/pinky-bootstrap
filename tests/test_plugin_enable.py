@@ -844,3 +844,52 @@ def test_a_missing_rules_dir_is_still_returned_but_warns(tmp_path, capsys):
 
     assert resolved == missing.resolve()
     assert "does not exist" in capsys.readouterr().err
+
+
+# ── render_rules_plan: named files per target, unchanged targets summarized ─────
+
+
+def _rules_reports(ws: Path) -> dict[Path, rules.RulesReport]:
+    return {
+        ws: rules.RulesReport(modified=["kanban-proactivity.md"], purged=["old.md"]),
+        ws / "bootstrap": rules.RulesReport(added=["a.md", "b.md"]),
+        ws / "ops": rules.RulesReport(unchanged=["a.md"]),
+        ws / "pinky-lib": rules.RulesReport(),
+    }
+
+
+def test_render_rules_plan_names_each_file_and_summarizes_unchanged_targets(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(_rules_reports(ws), workspace_root=ws)
+
+    assert text == (
+        "  rules → pinky (workspace): updated kanban-proactivity.md · removed old.md\n"
+        "  rules → bootstrap: added a.md, b.md\n"
+        "  ✓ rules up to date (2 targets)"
+    )
+
+
+def test_render_rules_plan_verbose_lists_each_unchanged_target(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(
+        _rules_reports(ws), workspace_root=ws, verbose=True
+    )
+
+    assert text == (
+        "  rules → pinky (workspace): updated kanban-proactivity.md · removed old.md\n"
+        "  rules → bootstrap: added a.md, b.md\n"
+        "  rules → ops: ✓ up to date\n"
+        "  rules → pinky-lib: ✓ up to date"
+    )
+
+
+def test_render_rules_plan_singular_summary(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(
+        {ws: rules.RulesReport(unchanged=["a.md"])}, workspace_root=ws
+    )
+
+    assert text == "  ✓ rules up to date (1 target)"

@@ -473,34 +473,67 @@ def _apply_rules_diff(
     )
 
 
+def _target_label(target: Path, workspace_root: Path | None) -> str:
+    """`target` as the user thinks of it: `<root> (workspace)` for the root itself, a path relative
+    to it otherwise; the absolute path when there is no root to relate it to."""
+    if workspace_root is None:
+        return str(target)
+    workspace_root = workspace_root.resolve()
+    if target == workspace_root:
+        return f"{workspace_root.name} (workspace)"
+    return (
+        str(target.relative_to(workspace_root))
+        if target.is_relative_to(workspace_root)
+        else str(target)
+    )
+
+
+def _rules_change_text(report: rules.RulesReport, *, color: bool) -> str:
+    """`added a.md, b.md · updated c.md · removed d.md` — the file names, never bare counts."""
+    parts = []
+    if report.added:
+        parts.append(
+            style.paint(f"added {', '.join(report.added)}", style.GREEN, color=color)
+        )
+    if report.modified:
+        parts.append(f"updated {', '.join(report.modified)}")
+    if report.purged:
+        parts.append(
+            style.paint(
+                f"removed {', '.join(report.purged)}", style.RED_BOLD, color=color
+            )
+        )
+    return " · ".join(parts)
+
+
 def render_rules_plan(
     reports: dict[Path, rules.RulesReport],
     *,
+    workspace_root: Path | None = None,
     verbose: bool = False,
     color: bool = False,
 ) -> str:
-    """One line per target with a non-empty rules diff, in evidence first; every unchanged target
-    rolled into one "✓ N up to date" line instead of staying silent about them — `--verbose` lists
-    each instead (same "changed first, unchanged summarized" convention as `setup/doctor.py`).
-    """
+    """One line per target whose rules change, naming each file; every unchanged target rolled into
+    one "✓ rules up to date (N targets)" line — `--verbose` lists each instead (same "changed
+    first, unchanged summarized" convention as `setup/doctor.py`)."""
     lines = []
     unchanged = 0
     for target, report in sorted(reports.items()):
+        label = _target_label(target, workspace_root)
         if report.has_changes:
             lines.append(
-                f"  rules @ {target}: "
-                f"+{len(report.added)} ~{len(report.modified)} -{len(report.purged)}"
+                f"  rules → {label}: {_rules_change_text(report, color=color)}"
             )
         else:
             unchanged += 1
             if verbose:
                 lines.append(
-                    f"  rules @ {target}: {style.paint('✓ up to date', style.DIM, color=color)}"
+                    f"  rules → {label}: {style.paint('✓ up to date', style.DIM, color=color)}"
                 )
     if unchanged and not verbose:
         noun = "target" if unchanged == 1 else "targets"
         lines.append(
-            f"  {style.paint(f'✓ {unchanged} rules {noun} up to date', style.DIM, color=color)}"
+            f"  {style.paint(f'✓ rules up to date ({unchanged} {noun})', style.DIM, color=color)}"
         )
     return "\n".join(lines)
 
@@ -696,7 +729,9 @@ def run(
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
         print(render_scope_plan(spec, diff, color=color))
-        rules_text = render_rules_plan(rules_preview, verbose=verbose, color=color)
+        rules_text = render_rules_plan(
+            rules_preview, workspace_root=workspace_root, verbose=verbose, color=color
+        )
         if rules_text:
             print(rules_text)
         if diff.has_changes or any(r.has_changes for r in rules_preview.values()):
