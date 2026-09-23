@@ -108,6 +108,11 @@ def env(tmp_path, monkeypatch):
         "_REGISTRY",
         home / ".claude" / "plugins" / "installed_plugins.json",
     )
+    # `plugin_catalog.CLAUDE_DIR` is bound once at import time (`Path.home()` there), so patching
+    # `Path.home` above does not redirect it — `plugin_curated.is_registered`/`expand_entry` would
+    # otherwise read this machine's real `~/.claude/plugins/known_marketplaces.json`.
+    (home / ".claude" / "plugins").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(plugin_curated.plugin_catalog, "CLAUDE_DIR", home / ".claude")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 
     monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
@@ -361,6 +366,9 @@ def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
 
 
 def test_install_with_no_name_opens_the_picker(env, monkeypatch):
+    (env.home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+        json.dumps({"mp": {"installLocation": "/wherever"}}), encoding="utf-8"
+    )
     monkeypatch.setattr(
         plugin_curated,
         "load_curated_entries",
@@ -447,6 +455,9 @@ def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_insta
 
 
 def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
+    (env.home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+        json.dumps({"mp": {"installLocation": "/wherever"}}), encoding="utf-8"
+    )
     monkeypatch.setattr(
         plugin_curated,
         "load_curated_entries",

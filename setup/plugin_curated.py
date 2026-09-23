@@ -47,6 +47,17 @@ def _load_toml(path: Path) -> dict:
         return {}
 
 
+def _load_toml_strict(path: Path) -> dict:
+    """Like `_load_toml`, but a syntactically broken (not merely absent) file raises —
+    `sync_user_file` must never treat "I couldn't parse this" the same as "there was nothing
+    here" and silently overwrite the user's own content with just the new entries."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return tomllib.loads(text)
+
+
 def _entries_from(data: dict) -> list[CuratedEntry]:
     return [
         CuratedEntry(
@@ -148,9 +159,13 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def render_curated_toml(entries: list[CuratedEntry]) -> str:
+def render_curated_toml(
+    entries: list[CuratedEntry], removes: list[dict] | None = None
+) -> str:
     """The exact text `USER_CURATED_PATH` is written as (FR-0024-43) — every entry as
-    `[[entries]]`, `marketplace`/`source` always present, `plugin` only when set."""
+    `[[entries]]`, `marketplace`/`source` always present, `plugin` only when set. `removes`: raw
+    `[[remove]]` tables read back from the file being rewritten, preserved as-is — `sync_user_file`
+    must never drop a removal directive it did not itself add or change."""
     blocks = []
     for e in entries:
         lines = [
@@ -160,6 +175,11 @@ def render_curated_toml(entries: list[CuratedEntry]) -> str:
         ]
         if e.plugin is not None:
             lines.append(f"plugin = {_toml_string(e.plugin)}")
+        blocks.append("\n".join(lines))
+    for r in removes or []:
+        lines = ["[[remove]]", f"marketplace = {_toml_string(r['marketplace'])}"]
+        if r.get("plugin"):
+            lines.append(f"plugin = {_toml_string(r['plugin'])}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
@@ -173,9 +193,19 @@ def sync_user_file(
     """FR-0024-43: `new_entries` this run just used (typically freshly `claude plugin marketplace
     add`ed, FR-0024-39) that are not yet in the user's curated file — show the diff, ask `[y/N]`,
     append and write if confirmed. A no-op, nothing printed, when every one of `new_entries` is
-    already there. Returns whether anything was written."""
+    already there. Returns whether anything was written. Refuses (prints why, writes nothing) when
+    the file exists but fails to parse — never silently replaces content it could not read."""
     path = user_path or USER_CURATED_PATH
-    current = _entries_from(_load_toml(path))
+    try:
+        user_data = _load_toml_strict(path)
+    except tomllib.TOMLDecodeError as exc:
+        print(
+            f"{path} is not valid TOML — refusing to overwrite it: {exc}",
+            file=sys.stderr,
+        )
+        return False
+    current = _entries_from(user_data)
+    removes = user_data.get("remove", [])
     current_keys = {_entry_key(e.marketplace, e.plugin) for e in current}
     to_add = [
         e
@@ -191,7 +221,7 @@ def sync_user_file(
         print("left unsaved.")
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_curated_toml(current + to_add), encoding="utf-8")
+    path.write_text(render_curated_toml(current + to_add, removes), encoding="utf-8")
     print(f"saved → {path}")
     return True
 
@@ -219,22 +249,25 @@ def resolve_no_name_selection(
     installed = set(installed_names)
     entries = load_curated_entries(user_path)
     curated_names: set[str] = set()
-    marker_to_entry: dict[str, CuratedEntry] = {}
+    # Grouped by marketplace, not by entry: two entries (a `plugin=` one and a whole-marketplace
+    # one, or two different `plugin=` ones) can share one not-yet-registered marketplace, and
+    # `marketplace add` must run once for the group, not once per entry (FR-0024-39).
+    marker_to_entries: dict[str, list[CuratedEntry]] = {}
     for entry in entries:
-        if entry.plugin is not None or is_registered(entry):
+        if is_registered(entry):
             curated_names.update(expand_entry(entry))
         else:
             marker = f"{UNREGISTERED_MARKER}{entry.marketplace}"
-            marker_to_entry[marker] = entry
+            marker_to_entries.setdefault(marker, []).append(entry)
             curated_names.add(marker)
 
     picked = plugin_enable.pick_plugins(sorted(curated_names), sorted(installed))
-    markers = [n for n in picked if n in marker_to_entry]
-    names = [n for n in picked if n not in marker_to_entry and n not in installed]
+    markers = [n for n in picked if n in marker_to_entries]
+    names = [n for n in picked if n not in marker_to_entries and n not in installed]
     if not markers:
         return names
 
-    unregistered = [marker_to_entry[m] for m in markers]
+    unregistered = [marker_to_entries[m][0] for m in markers]
     if dry_run:
         print(
             "would add marketplace(s): "
@@ -252,16 +285,18 @@ def resolve_no_name_selection(
         return names
 
     added = []
-    for entry in unregistered:
+    for marker, first_entry in zip(markers, unregistered, strict=True):
         try:
-            add_marketplace(entry, workspace_root)
+            add_marketplace(first_entry, workspace_root)
         except subprocess.CalledProcessError as exc:
             print(
-                f"failed to add marketplace {entry.marketplace}: {exc}", file=sys.stderr
+                f"failed to add marketplace {first_entry.marketplace}: {exc}",
+                file=sys.stderr,
             )
             continue
-        added.append(entry)
-        names.extend(expand_entry(entry))
+        for entry in marker_to_entries[marker]:
+            added.append(entry)
+            names.extend(expand_entry(entry))
     if added:
         sync_user_file(added, user_path, yes=yes)
     return names

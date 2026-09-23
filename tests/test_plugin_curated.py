@@ -231,6 +231,43 @@ def test_sync_user_file_is_a_noop_when_nothing_new(tmp_path):
     assert written is False
 
 
+def test_sync_user_file_preserves_an_existing_remove_block(tmp_path, monkeypatch):
+    user_file = tmp_path / "curated.toml"
+    user_file.write_text(
+        '[[remove]]\nmarketplace = "claude-code-lsps"\n', encoding="utf-8"
+    )
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("fresh", "owner/fresh-plugins")], user_path=user_file
+    )
+
+    assert written is True
+    assert tomllib.loads(user_file.read_text()) == {
+        "entries": [{"marketplace": "fresh", "source": "owner/fresh-plugins"}],
+        "remove": [{"marketplace": "claude-code-lsps"}],
+    }
+
+
+def test_sync_user_file_refuses_to_overwrite_a_broken_file(
+    tmp_path, monkeypatch, capsys
+):
+    user_file = tmp_path / "curated.toml"
+    original = "this is not [ valid toml"
+    user_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(
+        "builtins.input", lambda *_: pytest.fail("must not even ask to overwrite")
+    )
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file
+    )
+
+    assert written is False
+    assert user_file.read_text() == original
+    assert "not valid TOML" in capsys.readouterr().err
+
+
 # ── render_curated_toml — the exact text FR-0024-43 writes back ───────────────────────────
 
 
@@ -366,6 +403,71 @@ def test_resolve_no_name_selection_declining_the_add_drops_that_entry(
     assert names == []
 
 
+def test_resolve_no_name_selection_treats_a_plugin_keyed_entry_as_unregistered_too(
+    curated_env, monkeypatch
+):
+    """A `plugin=`-keyed entry is just as unregistered as a whole-marketplace one when its
+    marketplace was never `claude plugin marketplace add`ed — it must go through the same
+    add-then-expand flow, never straight into the picker as an installable name (advisor review:
+    the original `entry.plugin is not None or is_registered(entry)` short-circuited past the
+    registration check for this exact case)."""
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\nplugin = "pc-x"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        plugin_curated.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("must not add a declined marketplace"),
+    )
+    _canned(monkeypatch, ["", "n"])  # keep the row checked, then decline the add
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+    )
+
+    assert names == []
+
+
+def test_resolve_no_name_selection_groups_two_entries_under_one_unregistered_marketplace(
+    curated_env, monkeypatch
+):
+    """Two entries sharing one not-yet-registered marketplace (a `plugin=`-keyed one and a
+    whole-marketplace one) must `marketplace add` it exactly once, not once per entry."""
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\nplugin = "pc-x"\n\n'
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\n',
+        encoding="utf-8",
+    )
+    add_calls = []
+
+    def fake_run(cmd, **kw):
+        add_calls.append(cmd)
+        (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+            json.dumps({"fresh": {"installLocation": str(tmp_path / "checkout")}}),
+            encoding="utf-8",
+        )
+        (tmp_path / "checkout" / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "checkout" / ".claude-plugin" / "marketplace.json").write_text(
+            json.dumps({"plugins": [{"name": "pc-y"}]}), encoding="utf-8"
+        )
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(plugin_curated.subprocess, "run", fake_run)
+    _canned(
+        monkeypatch, ["", "y", "n"]
+    )  # keep both rows checked; confirm add; decline saving
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+    )
+
+    assert len(add_calls) == 1
+    assert set(names) == {"pc-x", "pc-y"}
+
+
 def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
     curated_env, monkeypatch
 ):
@@ -403,6 +505,9 @@ def test_resolve_no_name_selection_excludes_an_already_installed_plugin(
         '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\nplugin = "pc-a"\n\n'
         '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\nplugin = "pc-b"\n',
         encoding="utf-8",
+    )
+    (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+        json.dumps({"mp": {"installLocation": "/wherever"}}), encoding="utf-8"
     )
     _canned(monkeypatch, [""])  # keep as shown: pc-a pre-checked (installed), pc-b not
 
