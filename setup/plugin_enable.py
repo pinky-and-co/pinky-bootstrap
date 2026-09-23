@@ -20,7 +20,7 @@ screen itself (`questionary` — arrows, space, enter; see its own module docstr
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -258,7 +258,7 @@ def pick_plugins(
         print("No curated or installed plugin to pick from.", file=sys.stderr)
         raise SystemExit(1)
     items = [tui.ChecklistItem(row.name, row.checked, key=row.index) for row in rows]
-    result = picker(items, title="pick plugin(s) — space to toggle, enter to confirm")
+    result = picker(items, title="pick plugin(s)")
     return [row.name for row, flag in zip(rows, result, strict=True) if flag]
 
 
@@ -274,26 +274,27 @@ def _desired_from_scope_flags(
     raise ValueError(f"unknown action: {action!r}")
 
 
-def _redundant_labels(
+def _inherited_labels(
     desired: set[str], label_map: dict[str, Path], workspace_root: Path
 ) -> list[str]:
     """Which of `desired`'s directory labels sit strictly under another desired label's directory
-    — flagged, never auto-removed (FR-0024-51). `user` is never a directory ancestor of anything
-    and is excluded from the comparison."""
+    — the child enables pc-autodiscovery creates so a session opened there gets the plugin; shown,
+    never auto-removed (FR-0024-51). `user` is never a directory ancestor of anything and is
+    excluded from the comparison."""
     dirs = {
         label: target_dir_for_label(label, label_map, workspace_root)
         for label in desired
         if label != USER_LABEL
     }
-    redundant = []
+    inherited = []
     for label, target in dirs.items():
         if any(
             other_dir != target and target.is_relative_to(other_dir)
             for other_label, other_dir in dirs.items()
             if other_label != label
         ):
-            redundant.append(label)
-    return sorted(redundant)
+            inherited.append(label)
+    return sorted(inherited)
 
 
 @dataclass(frozen=True)
@@ -303,7 +304,7 @@ class ScopeDiff:
     added: list[str]
     removed: list[str]
     unchanged: list[str]
-    redundant: list[str]
+    inherited: list[str]
 
     @property
     def has_changes(self) -> bool:
@@ -320,25 +321,29 @@ def _compute_diff(
         added=sorted(desired - current),
         removed=sorted(current - desired),
         unchanged=sorted(current & desired),
-        redundant=_redundant_labels(desired, label_map, workspace_root),
+        inherited=_inherited_labels(desired, label_map, workspace_root),
     )
 
 
-def render_scope_plan(plugin_id: str, diff: ScopeDiff, *, color: bool = False) -> str:
-    """The plan's exact text for one plugin — added / removed / unchanged / redundant, or
-    "nothing to do" when there is nothing to add, remove, or flag (NFR-0024-30, NFR-0024-32).
+def render_scope_plan(
+    plugin_id: str, diff: ScopeDiff, *, color: bool = False, autodiscovery: bool = False
+) -> str:
+    """The plan's exact text for one plugin — added / removed / unchanged / inherited, or
+    "nothing to do" when there is nothing to add, remove, or show (NFR-0024-30, NFR-0024-32).
 
-    A redundant scope is surfaced even when `has_changes` is false (FR-0024-51: "signalé, jamais
-    silencieux") — an already-redundant enable does not become invisible just because this run
-    toggles nothing.
+    Inherited children are shown only with `autodiscovery` on: Claude Code reads `enabledPlugins`
+    in the opened directory alone, so a child enable is inherited only through pc-autodiscovery —
+    without it, that child enable is what makes the plugin active there. Shown even when
+    `has_changes` is false (FR-0024-51: "signalé, jamais silencieux").
 
     `color` paints the same distinctions `setup/doctor.py` does (added = green, removed = red,
-    unchanged/redundant = dim) via `setup/style.py` — off by default so a caller that never passes
+    unchanged/inherited = dim) via `setup/style.py` — off by default so a caller that never passes
     it (every existing plain-text caller/test) sees byte-identical output, since `style.paint`
     no-ops when `color=False`.
     """
     lines = [f"{plugin_id}:"]
-    if not diff.has_changes and not diff.redundant:
+    inherited = diff.inherited if autodiscovery else []
+    if not diff.has_changes and not inherited:
         lines.append(f"  {style.paint('nothing to do', style.DIM, color=color)}")
         return "\n".join(lines)
     if diff.added:
@@ -365,16 +370,31 @@ def render_scope_plan(plugin_id: str, diff: ScopeDiff, *, color: bool = False) -
             f"  {style.paint('unchanged', style.DIM, color=color)}: "
             + ", ".join(diff.unchanged)
         )
-    if diff.redundant:
+    if inherited:
         lines.append(
-            style.paint(
-                "  redundant (already covered by an ancestor scope): ",
-                style.DIM,
-                color=color,
-            )
-            + ", ".join(diff.redundant)
+            style.paint("  inherited via pc-autodiscovery: ", style.DIM, color=color)
+            + ", ".join(inherited)
         )
     return "\n".join(lines)
+
+
+AUTODISCOVERY_ID = "pc-autodiscovery"
+
+
+def autodiscovery_active(audit: Mapping[str, PluginState]) -> bool:
+    """Whether pc-autodiscovery is enabled anywhere — the only thing that makes a folder's enable
+    reach the folders below it."""
+    return any(
+        spec.partition("@")[0] == AUTODISCOVERY_ID and _current_enabled_labels(state)
+        for spec, state in audit.items()
+    )
+
+
+def picker_title(action: str, *, autodiscovery: bool) -> str:
+    """The checklist question — says what checking a folder means when children inherit it."""
+    if autodiscovery:
+        return f"{action} — a checked folder also covers every folder below it (pc-autodiscovery)"
+    return action
 
 
 def _enable_label(
@@ -672,6 +692,7 @@ def run(
     # Every OTHER plugin's active dirs, by bare id — a named plugin's own entry is overwritten
     # with its post-action dirs as its diff is computed, below.
     active_dirs_by_plugin = _active_dirs_by_bare_id(audit, label_map, workspace_root)
+    autodiscovery = autodiscovery_active(audit)
 
     if scope:
         scope_labels = _resolve_scope_flags(scope, workspace_root, label_map)
@@ -688,7 +709,7 @@ def run(
         if rows and sys.stdin.isatty():
             items = build_tree_items(rows, root_name=workspace_root.name)
             result = picker(
-                items, title=f"{action} — space to toggle, enter to confirm"
+                items, title=picker_title(action, autodiscovery=autodiscovery)
             )
             rows = apply_checklist_result(rows, items, result)
         elif not rows:
@@ -728,7 +749,7 @@ def run(
             user_rules_dir=user_rules_dir,
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
-        print(render_scope_plan(spec, diff, color=color))
+        print(render_scope_plan(spec, diff, color=color, autodiscovery=autodiscovery))
         rules_text = render_rules_plan(
             rules_preview, workspace_root=workspace_root, verbose=verbose, color=color
         )

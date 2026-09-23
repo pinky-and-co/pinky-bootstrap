@@ -9,6 +9,7 @@ install/uninstall` (settings key + registry entry), same discipline as `test_plu
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import cli, plugin_enable, plugin_reconcile, rules, state_file
+from setup.plugin_reconcile import _ScopeLabels
 
 
 class _ClaudeCliSim:
@@ -356,61 +358,88 @@ def test_scope_flag_run_asks_no_question_at_all(env, monkeypatch):
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is True
 
 
-# ── redundant_labels — flagged, never auto-removed (FR-0024-51) ────────────────────────
+# ── inherited labels — children pc-autodiscovery enables, never auto-removed (FR-0024-51) ──
 
 
-def test_redundant_labels_flags_children_of_a_checked_ancestor(env):
+def test_inherited_labels_lists_children_of_a_checked_ancestor(env):
     label_map = plugin_reconcile.label_to_settings(env.ws)
     desired = {".", "pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"}
 
-    redundant = plugin_enable._redundant_labels(desired, label_map, env.ws)
+    inherited = plugin_enable._inherited_labels(desired, label_map, env.ws)
 
-    assert redundant == ["pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"]
+    assert inherited == ["pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"]
 
 
-def test_render_scope_plan_exact_text_with_redundancy():
-    diff = plugin_enable.ScopeDiff(
-        added=["."],
+def _diff_with_inherited(added):
+    return plugin_enable.ScopeDiff(
+        added=added,
         removed=[],
-        unchanged=["pinky-lib/pinky-core"],
-        redundant=["pinky-lib/pinky-core"],
+        unchanged=[".", "pinky-lib/pinky-core"]
+        if not added
+        else ["pinky-lib/pinky-core"],
+        inherited=["pinky-lib/pinky-core"],
     )
-    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+
+
+def test_render_scope_plan_names_inherited_children_with_autodiscovery():
+    diff = _diff_with_inherited(["."])
+    assert plugin_enable.render_scope_plan("pc-snow", diff, autodiscovery=True) == (
         "pc-snow:\n"
         "  add: .\n"
         "  unchanged: pinky-lib/pinky-core\n"
-        "  redundant (already covered by an ancestor scope): pinky-lib/pinky-core"
+        "  inherited via pc-autodiscovery: pinky-lib/pinky-core"
+    )
+
+
+def test_render_scope_plan_says_nothing_of_inheritance_without_autodiscovery():
+    """Claude Code reads `enabledPlugins` in the opened directory only — without pc-autodiscovery a
+    child enable is what makes the plugin active there, so nothing is inherited to report."""
+    diff = _diff_with_inherited(["."])
+    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+        "pc-snow:\n  add: .\n  unchanged: pinky-lib/pinky-core"
     )
 
 
 def test_render_scope_plan_says_nothing_to_do_on_an_empty_diff():
-    diff = plugin_enable.ScopeDiff(added=[], removed=[], unchanged=["."], redundant=[])
+    diff = plugin_enable.ScopeDiff(added=[], removed=[], unchanged=["."], inherited=[])
     assert (
         plugin_enable.render_scope_plan("pc-snow", diff) == "pc-snow:\n  nothing to do"
     )
 
 
-def test_render_scope_plan_surfaces_a_redundancy_even_with_nothing_toggled():
-    """Fix 3: an already-redundant scope must not be hidden behind "nothing to do" just because
-    this run adds or removes nothing (FR-0024-51: "signalé, jamais silencieux")."""
-    diff = plugin_enable.ScopeDiff(
-        added=[],
-        removed=[],
-        unchanged=[".", "pinky-lib/pinky-core"],
-        redundant=["pinky-lib/pinky-core"],
-    )
-    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+def test_render_scope_plan_surfaces_inheritance_even_with_nothing_toggled():
+    diff = _diff_with_inherited([])
+    assert plugin_enable.render_scope_plan("pc-snow", diff, autodiscovery=True) == (
         "pc-snow:\n"
         "  unchanged: ., pinky-lib/pinky-core\n"
-        "  redundant (already covered by an ancestor scope): pinky-lib/pinky-core"
+        "  inherited via pc-autodiscovery: pinky-lib/pinky-core"
     )
+
+
+def test_picker_title_explains_inheritance_with_autodiscovery():
+    assert plugin_enable.picker_title("enable", autodiscovery=True) == (
+        "enable — a checked folder also covers every folder below it (pc-autodiscovery)"
+    )
+
+
+def test_picker_title_is_the_bare_action_without_autodiscovery():
+    assert plugin_enable.picker_title("enable", autodiscovery=False) == "enable"
+
+
+def test_autodiscovery_active_reads_the_audit():
+    on = replace(
+        plugin_enable._empty_state("pc-autodiscovery@m", "m"),
+        enabled_at=_ScopeLabels(("user",)),
+    )
+    assert plugin_enable.autodiscovery_active({"pc-autodiscovery@m": on}) is True
+    assert plugin_enable.autodiscovery_active({}) is False
 
 
 def test_render_scope_plan_notes_the_prune_side_effect_of_removing_user_scope():
     """Fix 1: `drop_user_scope` also prunes now-unneeded dependencies — the plan says so, since
     that write is not otherwise shown before `[y/N]`."""
     diff = plugin_enable.ScopeDiff(
-        added=[], removed=["user"], unchanged=[], redundant=[]
+        added=[], removed=["user"], unchanged=[], inherited=[]
     )
     assert plugin_enable.render_scope_plan("pc-snow", diff) == (
         "pc-snow:\n"
