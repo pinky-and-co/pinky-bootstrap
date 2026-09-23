@@ -227,7 +227,9 @@ def test_pick_plugins_refuses_without_a_tty(monkeypatch):
         plugin_enable.pick_plugins(curated_names=["pc-a"], installed_names=[])
 
 
-def test_pick_plugins_refuses_with_nothing_to_pick_from():
+def test_pick_plugins_refuses_with_nothing_to_pick_from(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
     with pytest.raises(SystemExit):
         plugin_enable.pick_plugins(curated_names=[], installed_names=[])
 

@@ -181,12 +181,15 @@ def pick_plugins(
     """`install`/`enable`'s "no name" entry point (FR-0024-33): an interactive checkbox over
     curated ∪ installed plugin names, returning the checked ones. Errors rather than guessing when
     there is nothing to pick from or no tty to ask — same discipline as `run`'s own table."""
+    if not sys.stdin.isatty():
+        # NFR-0024-35: a non-interactive shell always needs the plugin(s) named explicitly —
+        # checked ahead of "anything to pick from" so this message never depends on what happens
+        # to be curated/installed on the machine running it.
+        print("Non-interactive shell — name the plugin(s) explicitly.", file=sys.stderr)
+        raise SystemExit(1)
     rows = build_plugin_pick_rows(curated_names, installed_names)
     if not rows:
         print("No curated or installed plugin to pick from.", file=sys.stderr)
-        raise SystemExit(1)
-    if not sys.stdin.isatty():
-        print("Non-interactive shell — name the plugin(s) explicitly.", file=sys.stderr)
         raise SystemExit(1)
     print(render_plugin_pick_table(rows))
     answer = input(
