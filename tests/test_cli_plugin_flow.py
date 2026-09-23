@@ -20,6 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import cli, plugin_install, plugin_reconcile, state_file
+from setup.common import WorkspaceOrigin
 
 
 class _ClaudeCliSim:
@@ -118,6 +119,9 @@ def env(tmp_path, monkeypatch):
     ws = tmp_path / "workspace"
     (ws / "pinky-core" / ".git").mkdir(parents=True)
     monkeypatch.setattr(cli, "WORKSPACE_ROOT", ws)
+    monkeypatch.setattr(
+        cli, "resolve_workspace_root", lambda *a, **k: WorkspaceOrigin(ws, "test")
+    )
     return SimpleNamespace(sim=sim, home=home, ws=ws)
 
 
@@ -151,6 +155,21 @@ def _write_enable(settings_dir: Path, spec: str, value: bool) -> None:
     data = json.loads(p.read_text()) if p.is_file() else {}
     data.setdefault("enabledPlugins", {})[spec] = value
     p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+# ── cli.py dispatch: the Workspace line, `--workspace` honored ──
+
+
+def test_install_prints_the_workspace_line_first(env, monkeypatch, capsys):
+    from setup.common import resolve_workspace_root as real_resolve_workspace_root
+
+    monkeypatch.setattr(cli, "resolve_workspace_root", real_resolve_workspace_root)
+    _canned_input(monkeypatch, ["u"])
+
+    cli.main(["--plugin", "pc-snow", "--workspace", str(env.ws)])
+
+    first_line = capsys.readouterr().out.splitlines()[0]
+    assert first_line == f"Workspace: {env.ws.resolve()} (via --workspace)"
 
 
 def test_project_scope_keeps_a_pre_existing_global_enable_when_the_removal_is_declined(

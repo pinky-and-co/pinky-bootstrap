@@ -360,11 +360,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.plugin is not None:
         from . import plugin_reconcile
 
+        resolved = resolve_workspace_root(Path.cwd(), args.workspace)
+        print(f"Workspace: {resolved.root} (via {resolved.via})")
+
         # Snapshot BEFORE touching anything — same discipline as apply_reconcile's own loop (audit
         # once, act, purge against the pre-action snapshot). `spec` mirrors plugin_install._spec's
         # format exactly; it stays private there, this is cheap enough not to warrant exporting it.
-        label_map = plugin_reconcile.label_to_settings(WORKSPACE_ROOT)
-        audit = plugin_reconcile.audit_plugins(WORKSPACE_ROOT)
+        label_map = plugin_reconcile.label_to_settings(resolved.root)
+        audit = plugin_reconcile.audit_plugins(resolved.root)
         spec = plugin_reconcile.resolve_spec(args.plugin, args.marketplace, audit)
         prior_state = audit.get(spec)
         args.marketplace = args.marketplace or spec.partition("@")[2] or None
@@ -392,7 +395,7 @@ def main(argv: list[str] | None = None) -> None:
         # 2. Scope first: nothing is downloaded before the user picked where it goes. A project
         #    target downloads and enables the plugin right there (`claude plugin install --scope
         #    project`); user scope is written only when the user chooses it.
-        roots = run_marketplace_wizard(WORKSPACE_ROOT, args.plugin, args.marketplace)
+        roots = run_marketplace_wizard(resolved.root, args.plugin, args.marketplace)
         if roots == [Path.home()]:
             plugin_install.install_plugin_files(args.plugin, args.marketplace)
         # 3. The files are cached now, wherever they went: wire what needs them.
