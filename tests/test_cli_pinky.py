@@ -75,6 +75,22 @@ def test_no_command_is_an_error_not_a_silent_default(capsys):
     assert exc.value.code != 0
 
 
+def test_ctrl_c_exits_cleanly_with_no_traceback(monkeypatch, capsys):
+    """NFR-0024-37: a `KeyboardInterrupt` anywhere under a command (the scope wizard's `input()`,
+    typically) exits 130 with a one-line message — never a raw Python traceback."""
+
+    def _raise(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli_pinky_impl, "setup_main", _raise)
+
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["claude-plugin", "install", "pc-x"])
+
+    assert exc.value.code == 130
+    assert "Interrupted" in capsys.readouterr().err
+
+
 def _captured_argv(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(cli_pinky_impl, "setup_main", lambda argv: calls.append(argv))
@@ -282,10 +298,85 @@ def test_claude_plugin_install_threads_yes_and_force(monkeypatch):
     assert calls == [["--plugin", "pc-x", "--yes", "--force"]]
 
 
-def test_claude_plugin_install_needs_a_plugin(capsys):
-    with pytest.raises(SystemExit) as exc:
+def test_claude_plugin_install_with_no_name_and_no_tty_names_the_missing_option(capsys):
+    """FR-0024-33/NFR-0024-35: no name opens the curated/installed checkbox list, which needs a
+    tty — outside one, it fails naming what's missing instead of guessing."""
+    with pytest.raises(SystemExit):
         cli_pinky.main(["claude-plugin", "install"])
+    assert "name the plugin(s) explicitly" in capsys.readouterr().err
+
+
+def test_claude_plugin_install_threads_workspace_scope_dry_run_rules_dir(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(
+        [
+            "claude-plugin",
+            "install",
+            "pc-x",
+            "--workspace",
+            "/tmp/ws",
+            "--scope",
+            "pinky-lib",
+            "--dry-run",
+            "--rules-dir",
+            "/tmp/rules",
+        ]
+    )
+    assert calls == [
+        [
+            "--plugin",
+            "pc-x",
+            "--scope",
+            "pinky-lib",
+            "--workspace",
+            "/tmp/ws",
+            "--rules-dir",
+            "/tmp/rules",
+            "--dry-run",
+        ]
+    ]
+
+
+def test_claude_plugin_install_threads_list(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "install", "--list", "/tmp/curated.toml"])
+    assert calls == [["--plugin", "--list", "/tmp/curated.toml"]]
+
+
+def test_claude_plugin_enable_threads_list(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "enable", "--list", "/tmp/curated.toml"])
+    assert calls == [["--plugin-enable", "--list", "/tmp/curated.toml"]]
+
+
+def test_claude_plugin_disable_has_no_list_flag(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["claude-plugin", "disable", "--list", "/tmp/curated.toml"])
     assert exc.value.code == 2
+
+
+def test_claude_plugin_install_with_no_name_forwards_bare_plugin_flag(monkeypatch):
+    """FR-0024-33: `install` with no name still reaches `--plugin` — `[]` vs the flag never being
+    passed at all is the signal `cli.py` reads to open the picker."""
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "install"])
+    assert calls == [["--plugin"]]
+
+
+def test_claude_plugin_enable_with_no_name_forwards_bare_plugin_enable_flag(
+    monkeypatch,
+):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "enable"])
+    assert calls == [["--plugin-enable"]]
+
+
+def test_claude_plugin_disable_with_no_name_forwards_bare_plugin_disable_flag(
+    monkeypatch,
+):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "disable"])
+    assert calls == [["--plugin-disable"]]
 
 
 def test_claude_config_preset_install_dispatch(monkeypatch):
@@ -378,7 +469,9 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
             seen.append((workspace, apply)) or {}
         ),
     )
-    monkeypatch.setattr(setup.cli, "print_all_plugin_rules_report", lambda plan: None)
+    monkeypatch.setattr(
+        setup.cli, "print_all_plugin_rules_report", lambda plan, **kwargs: None
+    )
 
     setup.cli.main(["--rules", "/from-explicit-argv"])
 

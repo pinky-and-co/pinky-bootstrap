@@ -10,19 +10,30 @@ A settings label ending in " (local)" is `pc-autodiscovery`'s per-session state
 (IMP-0024-30). The same discipline applies to a registry entry whose `scope` is `local`: it is
 `plugin_install`'s own bookkeeping (a language server, an autodiscovery-managed install), not
 something `enable`/`disable` places or removes.
+
+The plugin x target table and the "which plugin(s)" picker are both a checkbox list over
+`tui.ChecklistItem` — `build_tree_items`/`apply_checklist_result` (this module) do the
+tree-shaping/back-mapping either one needs, `tui.run_checklist` runs the interactive checkbox
+screen itself (`questionary` — arrows, space, enter; see its own module docstring).
 """
 
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_install, plugin_reconcile, rules, state_file
+from . import plugin_install, plugin_reconcile, rules, state_file, style, tui
 from .plugin_reconcile import PluginState, _ScopeLabels
 
 USER_LABEL = "user"
+
+# `...` rather than a precise positional/keyword signature: every call site passes
+# `title=` as a keyword, which a strict `Callable[[Sequence[ChecklistItem]], ...]` cannot
+# express — the exact contract (items in, title=, optional color=, final checked flags or
+# None back) is documented on `tui.run_checklist` itself, the default every caller gets.
+Picker = Callable[..., "list[bool]"]
 
 
 def _is_local_label(label: str) -> bool:
@@ -104,35 +115,87 @@ def build_rows(
     return rows
 
 
-def render_scope_table(rows: Sequence[ScopeRow]) -> str:
-    """The table's exact text — one numbered, checkbox-prefixed line per row, so it can be typed
-    back as toggle indices."""
-    return "\n".join(
-        f"{row.index:>3}) [{'x' if row.checked else ' '}] {row.plugin_id} @ {row.label}"
-        for row in rows
-    )
-
-
-def _parse_toggle_indices(answer: str, count: int) -> set[int]:
-    """Space- or comma-separated row indices to flip — empty input flips nothing (keep the table
-    as shown)."""
-    tokens = answer.replace(",", " ").split()
-    picked: set[int] = set()
-    for tok in tokens:
-        idx = int(
-            tok
-        )  # ValueError propagates — an invalid index must stop the flow, not guess
-        if not 0 <= idx < count:
-            raise ValueError(f"index {idx} out of range 0-{count - 1}")
-        picked.add(idx)
-    return picked
-
-
-def _apply_toggles(rows: Sequence[ScopeRow], toggled: set[int]) -> list[ScopeRow]:
-    """`rows` with every index in `toggled` flipped — the table after the user's answer."""
+def filter_checked(rows: Sequence[ScopeRow]) -> list[ScopeRow]:
+    """Only the checked rows, reindexed 0..N-1 — `disable` with no name (FR-0024-34) shows this
+    compact table instead of the full plugin × every-known-target cross product: an unchecked row
+    has nothing to remove, so it is noise when the whole point of the run is removal."""
     return [
-        ScopeRow(row.index, row.plugin_id, row.label, not row.checked)
-        if row.index in toggled
+        ScopeRow(i, row.plugin_id, row.label, row.checked)
+        for i, row in enumerate(row for row in rows if row.checked)
+    ]
+
+
+def build_tree_items(
+    rows: Sequence[ScopeRow], *, root_name: str | None = None
+) -> list[tui.ChecklistItem]:
+    """`rows` reshaped into a checklist tree: one (non-selectable) header per plugin only when the
+    batch names more than one, `user` on its own line, then every path label
+    (`bootstrap/pinky-agentic-plugins`) indented one level per path segment instead of repeated in
+    full on every line — the "arbre" the card asks for. A path segment with no row of its own (a
+    parent directory that is not itself a target) still gets a line, as a non-selectable grouping
+    node, so the hierarchy stays visible.
+
+    The workspace root's label `.` reads `<root_name> (workspace)` when `root_name` is given.
+
+    Pure — no `tui`/terminal import needed — `apply_checklist_result` is its inverse.
+    """
+    plugin_ids = list(dict.fromkeys(row.plugin_id for row in rows))
+    multi = len(plugin_ids) > 1
+    items: list[tui.ChecklistItem] = []
+    for plugin_id in plugin_ids:
+        group = [row for row in rows if row.plugin_id == plugin_id]
+        by_label = {row.label: row for row in group}
+        base_depth = 0
+        if multi:
+            items.append(tui.ChecklistItem(plugin_id, selectable=False))
+            base_depth = 1
+        if USER_LABEL in by_label:
+            user_row = by_label[USER_LABEL]
+            items.append(
+                tui.ChecklistItem(
+                    USER_LABEL, user_row.checked, base_depth, key=user_row.index
+                )
+            )
+        seen_prefixes: set[str] = set()
+        for label in sorted(lbl for lbl in by_label if lbl != USER_LABEL):
+            parts = label.split("/")
+            for depth_i in range(len(parts)):
+                prefix = "/".join(parts[: depth_i + 1])
+                if prefix in seen_prefixes:
+                    continue
+                seen_prefixes.add(prefix)
+                matching_row = by_label.get(prefix)
+                text = parts[depth_i]
+                if prefix == "." and root_name:
+                    text = f"{root_name} (workspace)"
+                items.append(
+                    tui.ChecklistItem(
+                        text,
+                        matching_row.checked if matching_row else False,
+                        base_depth + depth_i,
+                        selectable=matching_row is not None,
+                        key=matching_row.index if matching_row else None,
+                    )
+                )
+    return items
+
+
+def apply_checklist_result(
+    rows: Sequence[ScopeRow],
+    items: Sequence[tui.ChecklistItem],
+    checked: Sequence[bool],
+) -> list[ScopeRow]:
+    """`rows` with each finished checklist screen's `checked` flag applied by `key` (a row's own
+    `.index`, from `build_tree_items`) — a tree item with no key (a synthetic grouping node)
+    carries nothing back, so it never invents a toggle for a row that never existed."""
+    by_index = {
+        item.key: flag
+        for item, flag in zip(items, checked, strict=True)
+        if item.key is not None
+    }
+    return [
+        ScopeRow(row.index, row.plugin_id, row.label, by_index[row.index])
+        if row.index in by_index
         else row
         for row in rows
     ]
@@ -141,6 +204,62 @@ def _apply_toggles(rows: Sequence[ScopeRow], toggled: set[int]) -> list[ScopeRow
 def _desired_labels(rows: Sequence[ScopeRow], plugin_id: str) -> set[str]:
     """The checked labels for one plugin, after the table (or its toggle) settled."""
     return {row.label for row in rows if row.plugin_id == plugin_id and row.checked}
+
+
+@dataclass(frozen=True)
+class PluginPickRow:
+    """One row of the "which plugin(s)" checkbox list (FR-0024-33) — which plugin, distinct from
+    `ScopeRow` (which plugin × which target)."""
+
+    index: int
+    name: str
+    checked: bool
+
+
+def build_plugin_pick_rows(
+    curated_names: Iterable[str], installed_names: Iterable[str]
+) -> list[PluginPickRow]:
+    """Every curated name plus every installed name, deduped and sorted, installed ones
+    pre-checked (FR-0024-36). No installed plugin at all → every row checked instead (FR-0024-37)
+    — a fresh machine bootstraps with the full curated set by default."""
+    installed = set(installed_names)
+    names = sorted(set(curated_names) | installed)
+    fully_checked = not installed
+    return [
+        PluginPickRow(i, name, checked=fully_checked or name in installed)
+        for i, name in enumerate(names)
+    ]
+
+
+def pick_plugins(
+    curated_names: Iterable[str],
+    installed_names: Iterable[str],
+    *,
+    picker: Picker | None = None,
+) -> list[str]:
+    """`install`/`enable`'s "no name" entry point (FR-0024-33): an interactive checkbox over
+    curated ∪ installed plugin names, returning the checked ones. Errors rather than guessing when
+    there is nothing to pick from or no tty to ask — same discipline as `run`'s own table.
+
+    `picker` defaults to `tui.run_checklist` (the real interactive screen, needs a real terminal),
+    resolved at call time — a caller with no `picker` of its own (`cli.py`'s dispatch, `plugin_curated`)
+    still runs through whatever `tui.run_checklist` is *at call time*, the seam a test patches
+    instead of threading a new keyword argument through every layer above this one.
+    """
+    picker = picker or tui.run_checklist
+    if not sys.stdin.isatty():
+        # NFR-0024-35: a non-interactive shell always needs the plugin(s) named explicitly —
+        # checked ahead of "anything to pick from" so this message never depends on what happens
+        # to be curated/installed on the machine running it.
+        print("Non-interactive shell — name the plugin(s) explicitly.", file=sys.stderr)
+        raise SystemExit(1)
+    rows = build_plugin_pick_rows(curated_names, installed_names)
+    if not rows:
+        print("No curated or installed plugin to pick from.", file=sys.stderr)
+        raise SystemExit(1)
+    items = [tui.ChecklistItem(row.name, row.checked, key=row.index) for row in rows]
+    result = picker(items, title="pick plugin(s)")
+    return [row.name for row, flag in zip(rows, result, strict=True) if flag]
 
 
 def _desired_from_scope_flags(
@@ -155,26 +274,27 @@ def _desired_from_scope_flags(
     raise ValueError(f"unknown action: {action!r}")
 
 
-def _redundant_labels(
+def _inherited_labels(
     desired: set[str], label_map: dict[str, Path], workspace_root: Path
 ) -> list[str]:
     """Which of `desired`'s directory labels sit strictly under another desired label's directory
-    — flagged, never auto-removed (FR-0024-51). `user` is never a directory ancestor of anything
-    and is excluded from the comparison."""
+    — the child enables pc-autodiscovery creates so a session opened there gets the plugin; shown,
+    never auto-removed (FR-0024-51). `user` is never a directory ancestor of anything and is
+    excluded from the comparison."""
     dirs = {
         label: target_dir_for_label(label, label_map, workspace_root)
         for label in desired
         if label != USER_LABEL
     }
-    redundant = []
+    inherited = []
     for label, target in dirs.items():
         if any(
             other_dir != target and target.is_relative_to(other_dir)
             for other_label, other_dir in dirs.items()
             if other_label != label
         ):
-            redundant.append(label)
-    return sorted(redundant)
+            inherited.append(label)
+    return sorted(inherited)
 
 
 @dataclass(frozen=True)
@@ -184,7 +304,7 @@ class ScopeDiff:
     added: list[str]
     removed: list[str]
     unchanged: list[str]
-    redundant: list[str]
+    inherited: list[str]
 
     @property
     def has_changes(self) -> bool:
@@ -201,39 +321,80 @@ def _compute_diff(
         added=sorted(desired - current),
         removed=sorted(current - desired),
         unchanged=sorted(current & desired),
-        redundant=_redundant_labels(desired, label_map, workspace_root),
+        inherited=_inherited_labels(desired, label_map, workspace_root),
     )
 
 
-def render_scope_plan(plugin_id: str, diff: ScopeDiff) -> str:
-    """The plan's exact text for one plugin — added / removed / unchanged / redundant, or
-    "nothing to do" when there is nothing to add, remove, or flag (NFR-0024-30, NFR-0024-32).
+def render_scope_plan(
+    plugin_id: str, diff: ScopeDiff, *, color: bool = False, autodiscovery: bool = False
+) -> str:
+    """The plan's exact text for one plugin — added / removed / unchanged / inherited, or
+    "nothing to do" when there is nothing to add, remove, or show (NFR-0024-30, NFR-0024-32).
 
-    A redundant scope is surfaced even when `has_changes` is false (FR-0024-51: "signalé, jamais
-    silencieux") — an already-redundant enable does not become invisible just because this run
-    toggles nothing.
+    Inherited children are shown only with `autodiscovery` on: Claude Code reads `enabledPlugins`
+    in the opened directory alone, so a child enable is inherited only through pc-autodiscovery —
+    without it, that child enable is what makes the plugin active there. Shown even when
+    `has_changes` is false (FR-0024-51: "signalé, jamais silencieux").
+
+    `color` paints the same distinctions `setup/doctor.py` does (added = green, removed = red,
+    unchanged/inherited = dim) via `setup/style.py` — off by default so a caller that never passes
+    it (every existing plain-text caller/test) sees byte-identical output, since `style.paint`
+    no-ops when `color=False`.
     """
     lines = [f"{plugin_id}:"]
-    if not diff.has_changes and not diff.redundant:
-        lines.append("  nothing to do")
+    inherited = diff.inherited if autodiscovery else []
+    if not diff.has_changes and not inherited:
+        lines.append(f"  {style.paint('nothing to do', style.DIM, color=color)}")
         return "\n".join(lines)
     if diff.added:
-        lines.append("  add: " + ", ".join(diff.added))
+        lines.append(
+            f"  {style.paint('add', style.GREEN, color=color)}: "
+            + ", ".join(diff.added)
+        )
     if diff.removed:
-        lines.append("  remove: " + ", ".join(diff.removed))
+        lines.append(
+            f"  {style.paint('remove', style.RED_BOLD, color=color)}: "
+            + ", ".join(diff.removed)
+        )
         if USER_LABEL in diff.removed:
             lines.append(
-                "  note: removing the user scope may also prune now-unneeded "
-                "dependencies (`claude plugin prune`)"
+                style.paint(
+                    "  note: removing the user scope may also prune now-unneeded "
+                    "dependencies (`claude plugin prune`)",
+                    style.DIM,
+                    color=color,
+                )
             )
     if diff.unchanged:
-        lines.append("  unchanged: " + ", ".join(diff.unchanged))
-    if diff.redundant:
         lines.append(
-            "  redundant (already covered by an ancestor scope): "
-            + ", ".join(diff.redundant)
+            f"  {style.paint('unchanged', style.DIM, color=color)}: "
+            + ", ".join(diff.unchanged)
+        )
+    if inherited:
+        lines.append(
+            style.paint("  inherited via pc-autodiscovery: ", style.DIM, color=color)
+            + ", ".join(inherited)
         )
     return "\n".join(lines)
+
+
+AUTODISCOVERY_ID = "pc-autodiscovery"
+
+
+def autodiscovery_active(audit: Mapping[str, PluginState]) -> bool:
+    """Whether pc-autodiscovery is enabled anywhere — the only thing that makes a folder's enable
+    reach the folders below it."""
+    return any(
+        spec.partition("@")[0] == AUTODISCOVERY_ID and _current_enabled_labels(state)
+        for spec, state in audit.items()
+    )
+
+
+def picker_title(action: str, *, autodiscovery: bool) -> str:
+    """The checklist question — says what checking a folder means when children inherit it."""
+    if autodiscovery:
+        return f"{action} — a checked folder also covers every folder below it (pc-autodiscovery)"
+    return action
 
 
 def _enable_label(
@@ -332,16 +493,68 @@ def _apply_rules_diff(
     )
 
 
-def render_rules_plan(reports: dict[Path, rules.RulesReport]) -> str:
-    """One line per target with a non-empty rules diff — silent when every target is unchanged,
-    same "say nothing extra" discipline as the scope plan."""
+def _target_label(target: Path, workspace_root: Path | None) -> str:
+    """`target` as the user thinks of it: `<root> (workspace)` for the root itself, a path relative
+    to it otherwise; the absolute path when there is no root to relate it to."""
+    if workspace_root is None:
+        return str(target)
+    workspace_root = workspace_root.resolve()
+    if target == workspace_root:
+        return f"{workspace_root.name} (workspace)"
+    return (
+        str(target.relative_to(workspace_root))
+        if target.is_relative_to(workspace_root)
+        else str(target)
+    )
+
+
+def _rules_change_text(report: rules.RulesReport, *, color: bool) -> str:
+    """`added a.md, b.md · updated c.md · removed d.md` — the file names, never bare counts."""
+    parts = []
+    if report.added:
+        parts.append(
+            style.paint(f"added {', '.join(report.added)}", style.GREEN, color=color)
+        )
+    if report.modified:
+        parts.append(f"updated {', '.join(report.modified)}")
+    if report.purged:
+        parts.append(
+            style.paint(
+                f"removed {', '.join(report.purged)}", style.RED_BOLD, color=color
+            )
+        )
+    return " · ".join(parts)
+
+
+def render_rules_plan(
+    reports: dict[Path, rules.RulesReport],
+    *,
+    workspace_root: Path | None = None,
+    verbose: bool = False,
+    color: bool = False,
+) -> str:
+    """One line per target whose rules change, naming each file; every unchanged target rolled into
+    one "✓ rules up to date (N targets)" line — `--verbose` lists each instead (same "changed
+    first, unchanged summarized" convention as `setup/doctor.py`)."""
     lines = []
+    unchanged = 0
     for target, report in sorted(reports.items()):
+        label = _target_label(target, workspace_root)
         if report.has_changes:
             lines.append(
-                f"  rules @ {target}: "
-                f"+{len(report.added)} ~{len(report.modified)} -{len(report.purged)}"
+                f"  rules → {label}: {_rules_change_text(report, color=color)}"
             )
+        else:
+            unchanged += 1
+            if verbose:
+                lines.append(
+                    f"  rules → {label}: {style.paint('✓ up to date', style.DIM, color=color)}"
+                )
+    if unchanged and not verbose:
+        noun = "target" if unchanged == 1 else "targets"
+        lines.append(
+            f"  {style.paint(f'✓ rules up to date ({unchanged} {noun})', style.DIM, color=color)}"
+        )
     return "\n".join(lines)
 
 
@@ -353,7 +566,8 @@ def confirm(*, yes: bool, prompt: str = "Apply this plan? [y/N] ") -> bool:
     if not sys.stdin.isatty():
         print("Non-interactive shell — pass --yes to apply.", file=sys.stderr)
         raise SystemExit(1)
-    return input(prompt).strip().lower() == "y"
+    color = style.use_color()
+    return input(style.paint(prompt, style.BOLD, color=color)).strip().lower() == "y"
 
 
 def _resolve_scope_flags(
@@ -410,6 +624,25 @@ def _empty_state(spec: str, marketplace: str | None) -> PluginState:
     )
 
 
+@dataclass(frozen=True)
+class RunResult:
+    """`run`'s outcome — `applied` is non-empty only for `outcome == "applied"`.
+
+    `wire` is `True` for `"applied"` and `"nothing"` — either way the plugin is confirmed on disk,
+    exactly where it should be, so a caller like `install` can safely re-resolve its install path
+    (a status line, an LSP server) even on a no-op re-run (e.g. after `claude plugin update`).
+    `False` for `"declined"` and `"dry_run"`: nothing was confirmed, so nothing was necessarily
+    ever fetched — `resolve_install_path` may raise on a plugin no run has ever placed anywhere.
+    """
+
+    outcome: str
+    applied: list[str]
+
+    @property
+    def wire(self) -> bool:
+        return self.outcome in ("applied", "nothing")
+
+
 def run(
     action: str,
     plugin_names: Sequence[str],
@@ -420,13 +653,27 @@ def run(
     yes: bool = False,
     dry_run: bool = False,
     user_rules_dir: Path | None = None,
-) -> None:
+    only_checked: bool = False,
+    verbose: bool = False,
+    picker: Picker | None = None,
+) -> RunResult:
     """`pinky claude-plugin enable`/`disable`: one plan across every named plugin, one `[y/N]`.
 
     `scope` bypasses the interactive table (FR-0024-46): `_desired_from_scope_flags` decides the
     target set directly, no question asked beyond the shared `[y/N]` (skipped too under `--yes`).
-    Without it, the table is printed and one toggle-index question adjusts it (FR-0024-44).
+    Without it, an interactive checklist screen (arrows, space, enter — `tui.run_checklist`) shows the
+    plugin × target tree, prefilled from the current state (FR-0024-44); a cancel (`q`/Esc) reads
+    as a decline.
+
+    `only_checked` (with `scope` unset): the compact table (`filter_checked`) instead of the full
+    plugin × every-known-target cross product — `disable` with no name (FR-0024-34), where an
+    unchecked row is noise.
+
+    `picker` defaults to `tui.run_checklist`, resolved at call time — see `pick_plugins`'s own
+    docstring for why (a test patches `tui.run_checklist` itself rather than a `picker=` kwarg
+    threaded through `cli.py`'s argparse dispatch).
     """
+    picker = picker or tui.run_checklist
     if action not in ("enable", "disable"):
         raise ValueError(f"unknown action: {action!r}")
     if not plugin_names:
@@ -435,6 +682,7 @@ def run(
         )
         raise SystemExit(1)
 
+    color = style.use_color()
     audit = plugin_reconcile.audit_plugins(workspace_root)
     label_map = plugin_reconcile.label_to_settings(workspace_root)
     specs = [
@@ -444,6 +692,7 @@ def run(
     # Every OTHER plugin's active dirs, by bare id — a named plugin's own entry is overwritten
     # with its post-action dirs as its diff is computed, below.
     active_dirs_by_plugin = _active_dirs_by_bare_id(audit, label_map, workspace_root)
+    autodiscovery = autodiscovery_active(audit)
 
     if scope:
         scope_labels = _resolve_scope_flags(scope, workspace_root, label_map)
@@ -455,18 +704,19 @@ def run(
         }
     else:
         rows = build_rows(list(zip(specs, states, strict=True)), label_map)
+        if only_checked:
+            rows = filter_checked(rows)
         if rows and sys.stdin.isatty():
-            print(render_scope_table(rows))
-            answer = input(
-                "Toggle indices to flip (space-separated), Enter to keep as shown: "
-            ).strip()
-            if answer:
-                try:
-                    toggled = _parse_toggle_indices(answer, len(rows))
-                except ValueError as exc:
-                    print(f"Invalid choice: {exc}", file=sys.stderr)
-                    raise SystemExit(1) from None
-                rows = _apply_toggles(rows, toggled)
+            items = build_tree_items(rows, root_name=workspace_root.name)
+            result = picker(
+                items, title=picker_title(action, autodiscovery=autodiscovery)
+            )
+            rows = apply_checklist_result(rows, items, result)
+        elif not rows:
+            # only_checked with nothing currently enabled anywhere: an empty table means there is
+            # nothing to disable, not a missing tty — the two must not share one message.
+            print("nothing to do")
+            return RunResult("nothing", [])
         else:
             # No tty to ask the table, and no --scope to skip it: `--yes` only ever skips the
             # `[y/N]` confirmation, never substitutes for "which targets" — accepting it here
@@ -499,8 +749,10 @@ def run(
             user_rules_dir=user_rules_dir,
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
-        print(render_scope_plan(spec, diff))
-        rules_text = render_rules_plan(rules_preview)
+        print(render_scope_plan(spec, diff, color=color, autodiscovery=autodiscovery))
+        rules_text = render_rules_plan(
+            rules_preview, workspace_root=workspace_root, verbose=verbose, color=color
+        )
         if rules_text:
             print(rules_text)
         if diff.has_changes or any(r.has_changes for r in rules_preview.values()):
@@ -509,12 +761,12 @@ def run(
 
     if not any_changes:
         print("nothing to do")
-        return
+        return RunResult("nothing", [])
     if dry_run:
-        return
+        return RunResult("dry_run", [])
     if not confirm(yes=yes):
         print("cancelled.")
-        return
+        return RunResult("declined", [])
 
     for spec, plugin_id, plugin_marketplace, state, diff in plans:
         _apply_scope_diff(
@@ -529,4 +781,7 @@ def run(
             user_rules_dir=user_rules_dir,
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
-    print("applied.")
+    print(style.paint("applied.", style.GREEN, color=color))
+    return RunResult(
+        "applied", [spec for spec, _, _, _, diff in plans if diff.has_changes]
+    )

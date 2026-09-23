@@ -22,10 +22,12 @@ requires-python = ">=3.12"
 authors = [{ name = "Pinky & Co" }]
 # No `license = {file = "LICENSE"}` yet — no LICENSE file exists. Tracked, non-blocking, by card
 # `choisir-license-pinky-workspace` (Apache-2.0 recommended, ADR-0065 decision 8).
-# No third-party runtime dependency: every mode (--repo/--all/--check-drift, --agents-md) is
-# stdlib-only.
+# Two third-party runtime dependencies: `argcomplete` (shell completion) and `questionary`
+# (interactive checkbox picker, `setup/tui.py` — ADR-0008, brings `prompt_toolkit`). Every other
+# mode (--repo/--all/--check-drift, --agents-md) stays stdlib-only.
 dependencies = [
     "argcomplete>=3.7.2",
+    "questionary>=2.0.1",
 ]
 
 [project.scripts]

@@ -234,13 +234,23 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
     the plugin x target table (or `--scope` to skip it).
     """
     if args.verb == "install":
-        argv = ["--plugin", args.plugin]
+        argv = ["--plugin", *args.plugin]
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
+        for one_scope in args.scope or []:
+            argv += ["--scope", one_scope]
+        if args.list:
+            argv += ["--list", args.list]
+        if args.workspace:
+            argv += ["--workspace", args.workspace]
+        if args.rules_dir:
+            argv += ["--rules-dir", args.rules_dir]
         if args.yes:
             argv.append("--yes")
         if args.force:
             argv.append("--force")
+        if args.dry_run:
+            argv.append("--dry-run")
         setup_main(argv)
         _run_doctor_advisory()
     elif args.verb == "list":
@@ -251,6 +261,8 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
             argv += ["--marketplace", args.marketplace]
         for one_scope in args.scope or []:
             argv += ["--scope", one_scope]
+        if getattr(args, "list", None):  # only the `enable` subparser has --list
+            argv += ["--list", args.list]
         if args.workspace:
             argv += ["--workspace", args.workspace]
         if args.rules_dir:
@@ -355,15 +367,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = _add(
         verbs,
         "install",
-        "download a plugin and enable it through the scope wizard (user/project, depth, targets)",
+        "download one or more plugins and enable them through the plugin x target table",
         [
             "pinky claude-plugin install pc-kanban  # ask the scope, then download there",
             "pinky claude-plugin install pc-x --marketplace pinky-agentic-plugins --force",
+            "pinky claude-plugin install  # no name: the curated + installed checkbox list",
         ],
     )
     _completing(
         p.add_argument(
-            "plugin", metavar="PLUGIN", help="the plugin, without its marketplace"
+            "plugin",
+            nargs="*",
+            metavar="PLUGIN",
+            help="one or more plugins, without their marketplace (omit: the curated ∪ installed "
+            "checkbox list, FR-0024-33)",
         ),
         _complete_plugin,
     )
@@ -386,6 +403,38 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="delete the plugin's cache dir before fetching, so a plugin pinned at 0.1.0 "
         "re-pulls the working tree (dev cache-bust)",
+    )
+    p.add_argument(
+        "--scope",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
+    )
+    p.add_argument(
+        "--list",
+        default=None,
+        metavar="PATH",
+        help="with no plugin name: the user's curated-list override (default: "
+        "~/.claude/pinky-curated-plugins.toml)",
+    )
+    p.add_argument(
+        "--workspace",
+        default=None,
+        metavar="PATH",
+        help="the workspace to act on (default: PINKY_WORKSPACE_ROOT, or the nearest "
+        "*.code-workspace marker)",
+    )
+    p.add_argument(
+        "--rules-dir",
+        default=None,
+        metavar="PATH",
+        help="the user's rules override root (default: ~/.claude/rules)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan and stop, write nothing",
     )
     p.set_defaults(func=cmd_claude_plugin)
     p = _add(
@@ -412,19 +461,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_claude_plugin)
     for verb in ("enable", "disable"):
+        no_name = (
+            "the curated + installed checkbox list"
+            if verb == "enable"
+            else "every currently installed plugin"
+        )
         p = _add(
             verbs,
             verb,
-            f"{verb} one or more plugins — the plugin x target table, prefilled from the "
-            "current state, or --scope to skip it",
+            f"{verb} plugins — the plugin x target table, prefilled from the current state, or "
+            "--scope to skip it",
             [
                 f"pinky claude-plugin {verb} pc-snow  # table, prefilled, one toggle question",
                 f"pinky claude-plugin {verb} pc-snow --scope pinky-lib --yes  # no question at all",
+                f"pinky claude-plugin {verb}  # no name: {no_name}",
             ],
         )
         _completing(
             p.add_argument(
-                "plugins", nargs="+", metavar="PLUGIN", help="one or more plugins"
+                "plugins",
+                nargs="*",
+                metavar="PLUGIN",
+                help=f"one or more plugins (omit: {no_name}, FR-0024-33/34)",
             ),
             _complete_plugin,
         )
@@ -440,6 +498,14 @@ def build_parser() -> argparse.ArgumentParser:
             metavar="PATH",
             help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
         )
+        if verb == "enable":
+            p.add_argument(
+                "--list",
+                default=None,
+                metavar="PATH",
+                help="with no plugin name: the user's curated-list override (default: "
+                "~/.claude/pinky-curated-plugins.toml)",
+            )
         p.add_argument(
             "--workspace",
             default=None,
@@ -727,11 +793,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command."""
+    """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command.
+
+    A `KeyboardInterrupt` raised anywhere under `args.func` (the scope wizard's `input()`,
+    typically) exits 130 with a one-line message instead of a raw Python traceback (NFR-0024-37).
+    """
     parser = build_parser()
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         sys.exit(1)
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        sys.exit(130)

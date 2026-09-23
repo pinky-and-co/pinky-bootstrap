@@ -9,6 +9,7 @@ install/uninstall` (settings key + registry entry), same discipline as `test_plu
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -16,6 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import cli, plugin_enable, plugin_reconcile, rules, state_file
+from setup.plugin_reconcile import _ScopeLabels
 
 
 class _ClaudeCliSim:
@@ -115,17 +117,86 @@ def _canned(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", lambda *_: next(it))
 
 
-# ── build_rows / render_scope_table — the table, prefilled (FR-0024-44, 45) ────────────
+# ── build_rows / build_tree_items — the table, prefilled (FR-0024-44, 45) ──────────────
 
 
-def test_render_scope_table_exact_text():
+def test_build_tree_items_indents_a_nested_path_by_segment():
+    """The card's own complaint: `bootstrap/pinky-agentic-plugins` must not repeat
+    `bootstrap/pinky-agentic-plugins` in full — each path segment is its own (indented) line."""
     rows = [
         plugin_enable.ScopeRow(0, "pc-snow", "user", False),
-        plugin_enable.ScopeRow(1, "pc-snow", ".", True),
+        plugin_enable.ScopeRow(1, "pc-snow", "bootstrap", True),
+        plugin_enable.ScopeRow(2, "pc-snow", "bootstrap/pinky-agentic-plugins", False),
     ]
-    assert plugin_enable.render_scope_table(rows) == (
-        "  0) [ ] pc-snow @ user\n  1) [x] pc-snow @ ."
+
+    items = plugin_enable.build_tree_items(rows)
+
+    assert [(it.text, it.depth, it.key, it.checked) for it in items] == [
+        ("user", 0, 0, False),
+        ("bootstrap", 0, 1, True),
+        ("pinky-agentic-plugins", 1, 2, False),
+    ]
+
+
+def test_build_tree_items_names_the_workspace_root():
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", ".", True),
+        plugin_enable.ScopeRow(1, "pc-snow", "bootstrap", False),
+    ]
+
+    items = plugin_enable.build_tree_items(rows, root_name="pinky")
+
+    assert [(it.text, it.depth, it.key) for it in items] == [
+        ("pinky (workspace)", 0, 0),
+        ("bootstrap", 0, 1),
+    ]
+
+
+def test_build_tree_items_shows_a_non_selectable_grouping_node_with_no_row_of_its_own():
+    """A path with no row at its own prefix (only a grandchild target exists) still gets a line,
+    for the hierarchy to read — just not a checkable one."""
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", "pinky-lib/pinky-core", True),
+    ]
+
+    items = plugin_enable.build_tree_items(rows)
+
+    assert [(it.text, it.depth, it.selectable, it.key) for it in items] == [
+        ("pinky-lib", 0, False, None),
+        ("pinky-core", 1, True, 0),
+    ]
+
+
+def test_build_tree_items_headers_each_plugin_only_when_the_batch_names_more_than_one():
+    single = plugin_enable.build_tree_items(
+        [plugin_enable.ScopeRow(0, "pc-snow", "user", False)]
     )
+    assert all(it.selectable for it in single)
+
+    batch = plugin_enable.build_tree_items(
+        [
+            plugin_enable.ScopeRow(0, "pc-a", "user", False),
+            plugin_enable.ScopeRow(1, "pc-b", "user", False),
+        ]
+    )
+    assert [(it.text, it.selectable) for it in batch] == [
+        ("pc-a", False),
+        ("user", True),
+        ("pc-b", False),
+        ("user", True),
+    ]
+
+
+def test_apply_checklist_result_maps_back_by_row_index_only():
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", "user", False),
+        plugin_enable.ScopeRow(1, "pc-snow", "pinky-lib", True),
+    ]
+    items = plugin_enable.build_tree_items(rows)
+
+    updated = plugin_enable.apply_checklist_result(rows, items, [True, False])
+
+    assert plugin_enable._desired_labels(updated, "pc-snow") == {"user"}
 
 
 def test_table_is_prefilled_from_a_project_enable_already_known_to_settings(env):
@@ -157,13 +228,100 @@ def test_a_local_settings_enable_is_never_a_row(env):
     assert all(not row.checked for row in rows)
 
 
-def test_toggling_a_row_flips_only_that_index():
+def test_filter_checked_keeps_only_checked_rows_and_reindexes():
     rows = [
-        plugin_enable.ScopeRow(0, "pc-snow", "user", False),
-        plugin_enable.ScopeRow(1, "pc-snow", ".", True),
+        plugin_enable.ScopeRow(0, "pc-a", "user", True),
+        plugin_enable.ScopeRow(1, "pc-a", ".", False),
+        plugin_enable.ScopeRow(2, "pc-b", "user", False),
+        plugin_enable.ScopeRow(3, "pc-b", ".", True),
     ]
-    flipped = plugin_enable._apply_toggles(rows, {0})
-    assert plugin_enable._desired_labels(flipped, "pc-snow") == {".", "user"}
+
+    filtered = plugin_enable.filter_checked(rows)
+
+    assert filtered == [
+        plugin_enable.ScopeRow(0, "pc-a", "user", True),
+        plugin_enable.ScopeRow(1, "pc-b", ".", True),
+    ]
+
+
+# ── pick_plugins — the "no name" checkbox list (FR-0024-33, 36, 37) ────────────────────
+
+
+def test_build_plugin_pick_rows_prechecks_only_installed_names():
+    rows = plugin_enable.build_plugin_pick_rows(
+        curated_names=["pc-a", "pc-b", "pc-c"], installed_names=["pc-b"]
+    )
+
+    by_name = {row.name: row.checked for row in rows}
+    assert by_name == {"pc-a": False, "pc-b": True, "pc-c": False}
+
+
+def test_build_plugin_pick_rows_checks_everything_with_no_installed_plugin():
+    """FR-0024-37: `installed_plugins.json` absent or empty → the curated list is entirely
+    checked, not just the (nonexistent) installed subset."""
+    rows = plugin_enable.build_plugin_pick_rows(
+        curated_names=["pc-a", "pc-b"], installed_names=[]
+    )
+
+    assert all(row.checked for row in rows)
+
+
+def _check_all(items, title, **kwargs):
+    """A fake `picker`: every row confirmed checked, regardless of how it was prefilled — stands
+    in for an interactive session where the user ticked everything before hitting enter."""
+    return [True for _ in items]
+
+
+def _keep_as_shown(items, title, **kwargs):
+    """A fake `picker`: confirms every row exactly as prefilled — the "enter, no toggle" case."""
+    return [item.checked for item in items]
+
+
+def test_pick_plugins_returns_the_checked_names_after_a_toggle(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    picked = plugin_enable.pick_plugins(
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"], picker=_check_all
+    )
+
+    assert set(picked) == {"pc-a", "pc-b"}
+
+
+def test_pick_plugins_keeps_the_default_selection_on_enter(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    picked = plugin_enable.pick_plugins(
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"], picker=_keep_as_shown
+    )
+
+    assert picked == ["pc-b"]
+
+
+def _interrupted(items, title, **kwargs):
+    raise KeyboardInterrupt
+
+
+def test_pick_plugins_lets_ctrl_c_through(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    with pytest.raises(KeyboardInterrupt):
+        plugin_enable.pick_plugins(
+            curated_names=["pc-a"], installed_names=[], picker=_interrupted
+        )
+
+
+def test_pick_plugins_refuses_without_a_tty(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    with pytest.raises(SystemExit):
+        plugin_enable.pick_plugins(curated_names=["pc-a"], installed_names=[])
+
+
+def test_pick_plugins_refuses_with_nothing_to_pick_from(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    with pytest.raises(SystemExit):
+        plugin_enable.pick_plugins(curated_names=[], installed_names=[])
 
 
 # ── desired_from_scope_flags — --scope bypasses the table (FR-0024-46) ─────────────────
@@ -200,61 +358,88 @@ def test_scope_flag_run_asks_no_question_at_all(env, monkeypatch):
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is True
 
 
-# ── redundant_labels — flagged, never auto-removed (FR-0024-51) ────────────────────────
+# ── inherited labels — children pc-autodiscovery enables, never auto-removed (FR-0024-51) ──
 
 
-def test_redundant_labels_flags_children_of_a_checked_ancestor(env):
+def test_inherited_labels_lists_children_of_a_checked_ancestor(env):
     label_map = plugin_reconcile.label_to_settings(env.ws)
     desired = {".", "pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"}
 
-    redundant = plugin_enable._redundant_labels(desired, label_map, env.ws)
+    inherited = plugin_enable._inherited_labels(desired, label_map, env.ws)
 
-    assert redundant == ["pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"]
+    assert inherited == ["pinky-lib/pinky-core", "pinky-lib/pinky-snowpark"]
 
 
-def test_render_scope_plan_exact_text_with_redundancy():
-    diff = plugin_enable.ScopeDiff(
-        added=["."],
+def _diff_with_inherited(added):
+    return plugin_enable.ScopeDiff(
+        added=added,
         removed=[],
-        unchanged=["pinky-lib/pinky-core"],
-        redundant=["pinky-lib/pinky-core"],
+        unchanged=[".", "pinky-lib/pinky-core"]
+        if not added
+        else ["pinky-lib/pinky-core"],
+        inherited=["pinky-lib/pinky-core"],
     )
-    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+
+
+def test_render_scope_plan_names_inherited_children_with_autodiscovery():
+    diff = _diff_with_inherited(["."])
+    assert plugin_enable.render_scope_plan("pc-snow", diff, autodiscovery=True) == (
         "pc-snow:\n"
         "  add: .\n"
         "  unchanged: pinky-lib/pinky-core\n"
-        "  redundant (already covered by an ancestor scope): pinky-lib/pinky-core"
+        "  inherited via pc-autodiscovery: pinky-lib/pinky-core"
+    )
+
+
+def test_render_scope_plan_says_nothing_of_inheritance_without_autodiscovery():
+    """Claude Code reads `enabledPlugins` in the opened directory only — without pc-autodiscovery a
+    child enable is what makes the plugin active there, so nothing is inherited to report."""
+    diff = _diff_with_inherited(["."])
+    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+        "pc-snow:\n  add: .\n  unchanged: pinky-lib/pinky-core"
     )
 
 
 def test_render_scope_plan_says_nothing_to_do_on_an_empty_diff():
-    diff = plugin_enable.ScopeDiff(added=[], removed=[], unchanged=["."], redundant=[])
+    diff = plugin_enable.ScopeDiff(added=[], removed=[], unchanged=["."], inherited=[])
     assert (
         plugin_enable.render_scope_plan("pc-snow", diff) == "pc-snow:\n  nothing to do"
     )
 
 
-def test_render_scope_plan_surfaces_a_redundancy_even_with_nothing_toggled():
-    """Fix 3: an already-redundant scope must not be hidden behind "nothing to do" just because
-    this run adds or removes nothing (FR-0024-51: "signalé, jamais silencieux")."""
-    diff = plugin_enable.ScopeDiff(
-        added=[],
-        removed=[],
-        unchanged=[".", "pinky-lib/pinky-core"],
-        redundant=["pinky-lib/pinky-core"],
-    )
-    assert plugin_enable.render_scope_plan("pc-snow", diff) == (
+def test_render_scope_plan_surfaces_inheritance_even_with_nothing_toggled():
+    diff = _diff_with_inherited([])
+    assert plugin_enable.render_scope_plan("pc-snow", diff, autodiscovery=True) == (
         "pc-snow:\n"
         "  unchanged: ., pinky-lib/pinky-core\n"
-        "  redundant (already covered by an ancestor scope): pinky-lib/pinky-core"
+        "  inherited via pc-autodiscovery: pinky-lib/pinky-core"
     )
+
+
+def test_picker_title_explains_inheritance_with_autodiscovery():
+    assert plugin_enable.picker_title("enable", autodiscovery=True) == (
+        "enable — a checked folder also covers every folder below it (pc-autodiscovery)"
+    )
+
+
+def test_picker_title_is_the_bare_action_without_autodiscovery():
+    assert plugin_enable.picker_title("enable", autodiscovery=False) == "enable"
+
+
+def test_autodiscovery_active_reads_the_audit():
+    on = replace(
+        plugin_enable._empty_state("pc-autodiscovery@m", "m"),
+        enabled_at=_ScopeLabels(("user",)),
+    )
+    assert plugin_enable.autodiscovery_active({"pc-autodiscovery@m": on}) is True
+    assert plugin_enable.autodiscovery_active({}) is False
 
 
 def test_render_scope_plan_notes_the_prune_side_effect_of_removing_user_scope():
     """Fix 1: `drop_user_scope` also prunes now-unneeded dependencies — the plan says so, since
     that write is not otherwise shown before `[y/N]`."""
     diff = plugin_enable.ScopeDiff(
-        added=[], removed=["user"], unchanged=[], redundant=[]
+        added=[], removed=["user"], unchanged=[], inherited=[]
     )
     assert plugin_enable.render_scope_plan("pc-snow", diff) == (
         "pc-snow:\n"
@@ -319,17 +504,100 @@ def test_disable_table_prefilled_and_unchecking_removes_the_enable(env, monkeypa
         yes=True,
         user_rules_dir=env.home / "no-user-rules",
     )
-    audit = plugin_reconcile.audit_plugins(env.ws)
-    label_map = plugin_reconcile.label_to_settings(env.ws)
-    rows = plugin_enable.build_rows([("pc-snow", audit["pc-snow"])], label_map)
-    pinky_lib_index = next(r.index for r in rows if r.label == "pinky-lib")
-    _canned(monkeypatch, [str(pinky_lib_index), "y"])
+
+    def uncheck_pinky_lib(items, title, **kwargs):
+        return [it.checked and it.text != "pinky-lib" for it in items]
+
+    _canned(monkeypatch, ["y"])
 
     plugin_enable.run(
-        "disable", ["pc-snow"], env.ws, user_rules_dir=env.home / "no-user-rules"
+        "disable",
+        ["pc-snow"],
+        env.ws,
+        user_rules_dir=env.home / "no-user-rules",
+        picker=uncheck_pinky_lib,
     )
 
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is None
+
+
+# ── return value: outcome + which specs were actually applied ──────────────────────────
+
+
+def test_run_returns_the_applied_spec_on_success(env):
+    result = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert result.outcome == "applied"
+    assert result.applied == ["pc-snow"]
+    assert result.wire is True
+
+
+def test_run_reports_nothing_to_do_but_still_wireable(env):
+    """A second identical run changes nothing, but the plugin IS on disk and enabled exactly as
+    desired — a caller like `install` re-wiring a statusLine path after `claude plugin update`
+    must still be able to tell this apart from a declined or dry-run plan (neither of which ever
+    wrote anything, so nothing to re-wire)."""
+    plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    result = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert result.outcome == "nothing"
+    assert result.applied == []
+    assert result.wire is True
+
+
+def test_run_reports_dry_run_as_not_wireable(env):
+    result = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        dry_run=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert result.outcome == "dry_run"
+    assert result.applied == []
+    assert result.wire is False
+    assert not (env.ws / "pinky-lib" / ".claude" / "settings.json").exists()
+
+
+def test_run_reports_a_declined_plan_as_not_wireable(env, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    _canned(monkeypatch, ["n"])
+
+    result = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert result.outcome == "declined"
+    assert result.applied == []
+    assert result.wire is False
 
 
 # ── rules follow the plugin to its scope (FR-0024-52, 60, 61) ──────────────────────────
@@ -465,11 +733,19 @@ def test_a_plugin_not_installed_writes_no_rule_file(tmp_path, monkeypatch):
 # ── the plan-then-[y/N] convention (NFR-0024-30, 31, 32) ───────────────────────────────
 
 
+def _check_dot(items, title, **kwargs):
+    return [it.checked or it.text.endswith(" (workspace)") for it in items]
+
+
 def test_a_declined_confirmation_writes_nothing(env, monkeypatch, capsys):
-    _canned(monkeypatch, ["1", "n"])  # toggle "." on, then refuse
+    _canned(monkeypatch, ["n"])  # refuse
 
     plugin_enable.run(
-        "enable", ["pc-snow"], env.ws, user_rules_dir=env.home / "no-user-rules"
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        user_rules_dir=env.home / "no-user-rules",
+        picker=_check_dot,
     )
 
     assert env.sim.calls == []
@@ -597,3 +873,52 @@ def test_a_missing_rules_dir_is_still_returned_but_warns(tmp_path, capsys):
 
     assert resolved == missing.resolve()
     assert "does not exist" in capsys.readouterr().err
+
+
+# ── render_rules_plan: named files per target, unchanged targets summarized ─────
+
+
+def _rules_reports(ws: Path) -> dict[Path, rules.RulesReport]:
+    return {
+        ws: rules.RulesReport(modified=["kanban-proactivity.md"], purged=["old.md"]),
+        ws / "bootstrap": rules.RulesReport(added=["a.md", "b.md"]),
+        ws / "ops": rules.RulesReport(unchanged=["a.md"]),
+        ws / "pinky-lib": rules.RulesReport(),
+    }
+
+
+def test_render_rules_plan_names_each_file_and_summarizes_unchanged_targets(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(_rules_reports(ws), workspace_root=ws)
+
+    assert text == (
+        "  rules → pinky (workspace): updated kanban-proactivity.md · removed old.md\n"
+        "  rules → bootstrap: added a.md, b.md\n"
+        "  ✓ rules up to date (2 targets)"
+    )
+
+
+def test_render_rules_plan_verbose_lists_each_unchanged_target(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(
+        _rules_reports(ws), workspace_root=ws, verbose=True
+    )
+
+    assert text == (
+        "  rules → pinky (workspace): updated kanban-proactivity.md · removed old.md\n"
+        "  rules → bootstrap: added a.md, b.md\n"
+        "  rules → ops: ✓ up to date\n"
+        "  rules → pinky-lib: ✓ up to date"
+    )
+
+
+def test_render_rules_plan_singular_summary(tmp_path):
+    ws = tmp_path / "pinky"
+
+    text = plugin_enable.render_rules_plan(
+        {ws: rules.RulesReport(unchanged=["a.md"])}, workspace_root=ws
+    )
+
+    assert text == "  ✓ rules up to date (1 target)"

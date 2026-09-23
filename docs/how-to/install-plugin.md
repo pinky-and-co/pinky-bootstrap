@@ -1,52 +1,71 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-08 22:16*
+*Update date : 2026-09-23 11:24*
 
 ```bash
-pinky claude-plugin install <plugin-id> --marketplace <marketplace> [--yes] [--force]
+pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
 ```
 
-One command. It:
+`install <plugin-id>` downloads the plugin then runs it straight through the same plugin × target
+table as `pinky claude-plugin enable` (FR-0024-31) — a plugin already enabled somewhere shows those
+targets pre-checked, and the plan is the same one `enable` prints. Several plugin ids in one call
+share a single table and a single confirmation.
 
-1. **Asks where first, then downloads there.** Nothing is downloaded before the scope is chosen.
-   `claude plugin install <plugin-id>@<marketplace> --scope project --yes` run from each chosen
-   target downloads the plugin and enables it at that target; `--scope user` is used only when you
-   pick user scope, or for an always-on plugin (`pc-autodiscovery`, `pc-statusline`). Claude needs
-   no user-scope step first (measured 2026-09-02 and 2026-09-19). A plugin's dependencies land at
-   the same scope as the plugin.
+**No plugin id at all** opens a checkbox list instead — every plugin the curated list names
+(`setup/data/curated_plugins.toml`, a `~/.claude/pinky-curated-plugins.toml` user file layered on
+top, or `--list <path>`) plus every plugin already installed, the installed ones pre-checked. With
+nothing installed yet, the whole curated list starts checked (a fresh machine bootstraps with all
+of it by default). A whole-marketplace curated entry expands to the individual plugins it publishes
+by reading that marketplace's own catalog when this machine already has it registered; **one it has
+never registered shows up as a single row for the marketplace itself** — checking it and confirming
+runs `claude plugin marketplace add <source>` (a relative `source` resolved against the workspace
+first), expands it now that it is registered, and offers to remember it in the user curated file so
+the next run already has it. `pinky claude-plugin enable` (no name) opens the same list;
+`pinky claude-plugin disable` (no name) skips the list and acts on every currently installed
+plugin directly, through the compact table — only the rows already enabled somewhere, not the
+full plugin × every-known-target grid (which would otherwise run into the hundreds of rows on a
+workspace with several groups/repos).
 
-   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
-   <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
-   cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual release) keeps
-   serving the stale build after you edit its working tree — `--force` is the automated form of
-   the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete only happens when
-   the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
-   refused, not removed.
+1. **`Workspace: <path> (via <origin>)`** is always the first line — `--workspace` takes priority
+   over `PINKY_WORKSPACE_ROOT`, which takes priority over the nearest `*.code-workspace` marker
+   above the current directory.
 
-2. **The scope wizard** asks **user or project**, then (project) a depth (root / a group like
-   `pinky-lib/` / a repo nested under a group) and **one or more targets** at that depth. Each
-   target gets `claude plugin install --scope project` run from its own directory — Claude Code's
-   own command writes `<target>/.claude/settings.json` `enabledPlugins` and a
-   `{scope: project, projectPath: <target>}` registry entry. A refusal (bad answer, no tty, Ctrl-C)
-   leaves nothing installed.
+2. **The table**, one row per known target (`user` first, then the workspace root, then every
+   group/repo below it), checkbox-prefilled from where the plugin is *already* enabled
+   (`installed_plugins.json` + every `settings.json`). Toggle indices to flip a row, Enter to keep
+   it as shown — checking `user` enables it there, unchecking a previously-checked row removes that
+   enable. `--scope <path>` (repeatable, workspace-relative or `user`) replaces the table entirely
+   and answers no question. Nothing is downloaded or written before the plan below is confirmed.
+
+3. **The plan, then `[y/N]`.** Added/removed/unchanged targets, plus the rules that follow the
+   plugin to the same scopes (FR-0024-52). `--yes` skips the confirmation; `--dry-run` prints the
+   plan and writes nothing. Applying it runs `claude plugin install <plugin-id>@<marketplace>
+   --scope project --yes` from each newly-checked target (Claude Code's own command, which writes
+   `<target>/.claude/settings.json` and the registry entry together) or `--scope user` for a
+   newly-checked `user` row — nothing is fetched at user scope on a project-only run (measured
+   2026-09-02 and 2026-09-19). A row explicitly set to `false` (a deliberate "parent wins, off
+   here" opt-out) never shows up as something to re-check on its own; the table only ever reflects
+   what you toggle.
 
    **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
    `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
-   (resolved from `installed_plugins.json`, never a guessed path). Re-run after `claude plugin
-   update` — the path carries the plugin version.
+   (resolved from `installed_plugins.json`, never a guessed path) — whenever the plugin is
+   confirmed on disk exactly where it should be, whether this run applied a change or the table
+   showed nothing left to do. `--dry-run` and a declined plan never confirm anything, so neither
+   writes it. Re-run after `claude plugin update` — the path carries the plugin version.
 
-3. **Rescopes — removes an enable the new targets no longer cover.** Before step 1 runs, `pinky`
-   snapshots where this plugin is currently enabled. Once the wizard's targets are known, any
-   snapshotted scope that isn't among them is removed too — a real `claude plugin uninstall
-   --scope <scope>` per stale scope, so re-running `--plugin` with different targets no longer
-   leaves the old ones silently enabled forever. It only fires when there is something to remove,
-   and it asks first:
-   ```
-   Also remove <plugin-id> from: <stale-scope-1>, <stale-scope-2>? [y/N]
-   ```
-   `--yes` skips the prompt and confirms. In a non-interactive shell without `--yes`, nothing is
-   removed — `pinky` prints what's left in place instead of guessing. A scope where the plugin is
-   explicitly set to `false` (a deliberate "parent wins, off here" opt-out) is **not** touched:
-   an install only ever adds a scope, it does not undo an opt-out.
+   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
+   <version>/`) before the fetch, ahead of the table. `claude plugin install`/`update` only ever
+   *fills* an absent cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual
+   release) keeps serving the stale build after you edit its working tree — `--force` is the
+   automated form of the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete
+   only happens when the resolved path is under `~/.claude/plugins/cache/`; a registry entry
+   pointing elsewhere is refused, not removed.
+
+A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback
+(NFR-0024-37) — nothing is written before the plan is confirmed, so an interrupt before that point
+leaves nothing behind. The one gap: interrupting the *apply* loop itself after picking several
+targets can leave the earlier ones already enabled and the later ones not (no rollback across
+targets — accepted, see the chantier 0024 story's Open questions).
 
 ## During plugin development — local marketplace instead of GitHub
 
@@ -58,8 +77,8 @@ register it as a **`directory`-source marketplace** pointing at your local clone
 claude plugin marketplace add /absolute/path/to/bootstrap/<plugin-repo>
 ```
 
-Then `claude plugin install <local-marketplace-name>@<plugin-id>` as usual (step 1 above), and the
-scope wizard (step 2) doesn't change. Rebasculer sur `github` avant de livrer pour de vrai —
+Then `pinky claude-plugin install <plugin-id> --marketplace <local-marketplace-name>` as usual, and
+the table (step 2 above) doesn't change. Rebasculer sur `github` avant de livrer pour de vrai —
 `directory` est une commodité par machine, jamais commitée.
 
 ### Why `directory` skips the reload for a hook edit — and what still needs one
@@ -95,8 +114,8 @@ CLI distribution command does, `directory`-source or not.
 
 `enabledPlugins` does **not** trigger an automatic download — a plugin listed there has no effect
 until it's already installed locally (`claude plugin install` first). `pinky claude-plugin install`
-therefore assumes the plugin is already installed; it only handles *where* it's enabled (and, as
-of step 3, where it's no longer supposed to be).
+downloads and places it in the same run, through the table: checking a row adds a scope,
+unchecking a previously-checked one removes it.
 
 ## Where a plugin can be scoped, concretely
 
@@ -114,17 +133,18 @@ applies to sessions started in any repo nested under it. Three real targets, one
 ## What this does not do
 
 - **Does not re-decide `enabledPlugins` scope for a status-line plugin** — those go to user scope
-  unconditionally (a cross-session preference), no depth wizard.
+  unconditionally (a cross-session preference), no table shown.
 - **Does not refresh a stale `statusLine` path on its own after `claude plugin update`** — the
   written path carries the plugin version, so re-run `pinky claude-plugin install <id>` to re-resolve it
   (it reads the live path from `installed_plugins.json` every run).
 - **Does not see a scope inside a git repo nested in another git repo.** The scope scan
-  (`plugin_scope._collect`) prunes at the first `.git` it meets and never descends into a repo, so
-  a `.claude/settings.json` in a repo-within-a-repo is invisible to both the rescope snapshot and
-  `pinky claude-plugin list`, and stays untouched however you rescope. Group nesting itself is
-  unbounded — a group many levels down still counts.
-- **Does not know when a scope is required by another plugin's declared dependency.** Step 3 only
-  ever purges the plugin you're installing — rescoping `pc-craft` never touches `pc-privacy`'s
-  scopes even when `pc-craft` declares `pc-privacy` in its `.claude-plugin/plugin.json`
-  `dependencies`. `pinky claude-plugin list` surfaces that as `required by: pc-craft` on the
-  dependency's block; this command does not warn you before you remove such a scope yourself.
+  (`plugin_scope._collect`, feeding the table's rows) prunes at the first `.git` it meets and never
+  descends into a repo, so a `.claude/settings.json` in a repo-within-a-repo is invisible to both
+  the table and `pinky claude-plugin list`, and stays untouched however you toggle it. Group
+  nesting itself is unbounded — a group many levels down still counts.
+- **Does not know when a scope is required by another plugin's declared dependency.** Unchecking a
+  row only ever removes the plugin you're installing — rescoping `pc-craft` never touches
+  `pc-privacy`'s scopes even when `pc-craft` declares `pc-privacy` in its
+  `.claude-plugin/plugin.json` `dependencies`. `pinky claude-plugin list` surfaces that as
+  `required by: pc-craft` on the dependency's block; this command does not warn you before you
+  remove such a scope yourself.

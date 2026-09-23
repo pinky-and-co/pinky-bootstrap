@@ -17,6 +17,7 @@ from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import style
 from .common import AGENTIC_HARNESS_DIR
 
 RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
@@ -367,19 +368,28 @@ def rules_report_for_plugin_at_targets(
     }
 
 
-def print_rules_report(report: RulesReport, workspace: Path) -> None:
-    """Print a distribution plan or report — additions, modifications, deletions, unchanged count.
+def print_rules_report(
+    report: RulesReport, workspace: Path, *, color: bool = False
+) -> None:
+    """Print a distribution plan or report — additions, modifications, deletions, unchanged count,
+    what changed in evidence first (`setup/doctor.py`'s own convention, via `setup/style.py`).
 
     Args:
         report: Result of :func:`distribute_rules`.
         workspace: Root the rules target (or targeted).
+        color: Paint added/modified/purged/unchanged the way `setup/doctor.py` does — off by
+            default (`style.paint` no-ops then), so a caller that never passes it sees
+            byte-identical output.
     """
     print(f"rules → {workspace / TARGET_REL}")
     if not report.has_changes:
-        print(f"  nothing to do — {len(report.unchanged)} unchanged")
+        tick = style.paint("✓", style.GREEN, color=color)
+        print(f"  {tick} nothing to do — {len(report.unchanged)} unchanged")
         return
     if report.added:
-        print(f"\n➕ added ({len(report.added)})")
+        print(
+            style.paint(f"\n➕ added ({len(report.added)})", style.GREEN, color=color)
+        )
         for name in report.added:
             print(f"    {name}")
     if report.modified:
@@ -387,19 +397,52 @@ def print_rules_report(report: RulesReport, workspace: Path) -> None:
         for name in report.modified:
             print(f"    {name}")
     if report.purged:
-        print(f"\n🗑️ removed ({len(report.purged)}) — no source left")
+        print(
+            style.paint(
+                f"\n🗑️ removed ({len(report.purged)}) — no source left",
+                style.RED_BOLD,
+                color=color,
+            )
+        )
         for name in report.purged:
             print(f"    {name}")
-    print(f"\n  unchanged: {len(report.unchanged)}")
+    print(
+        f"\n  {style.paint(f'unchanged: {len(report.unchanged)}', style.DIM, color=color)}"
+    )
 
 
-def print_all_plugin_rules_report(result: dict[str, PluginRulesResult]) -> None:
+def print_all_plugin_rules_report(
+    result: dict[str, PluginRulesResult], *, verbose: bool = False, color: bool = False
+) -> None:
     """Print a distribution plan or report for every plugin/target pair from
-    :func:`distribute_all_plugin_rules`."""
+    :func:`distribute_all_plugin_rules` — a per-target block only for one with an actual change,
+    every unchanged (plugin, target) pair rolled into one summary line instead of repeating a
+    `=== plugin ===`/"nothing to do" block for each (the measured complaint: 33 lines of that on a
+    handful of real targets). `--verbose` lists the unchanged ones individually.
+    """
+    unchanged: list[str] = []
     for plugin_name, by_target in result.items():
         if not by_target:
-            print(f"\n=== {plugin_name} — not installed on this machine, skipped ===")
+            print(
+                style.paint(
+                    f"\n=== {plugin_name} — not installed on this machine, skipped ===",
+                    style.DIM,
+                    color=color,
+                )
+            )
             continue
         for target, report in by_target.items():
-            print(f"\n=== {plugin_name} ===")
-            print_rules_report(report, target)
+            if report.has_changes:
+                print(f"\n=== {style.paint(plugin_name, style.BOLD, color=color)} ===")
+                print_rules_report(report, target, color=color)
+            else:
+                unchanged.append(f"{plugin_name} @ {target}")
+    if not unchanged:
+        return
+    noun = "target" if len(unchanged) == 1 else "targets"
+    tick = style.paint("✓", style.GREEN, color=color)
+    summary = style.paint(f"{len(unchanged)} {noun} up to date", style.DIM, color=color)
+    print(f"\n{tick} {summary}")
+    if verbose:
+        for line in unchanged:
+            print(f"    {line}")
