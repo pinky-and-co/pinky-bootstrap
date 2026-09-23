@@ -20,7 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import cli, plugin_curated, plugin_install, plugin_reconcile, state_file
+from setup import cli, plugin_curated, plugin_install, plugin_reconcile, state_file, tui
 from setup.common import WorkspaceOrigin
 from setup.plugin_curated import CuratedEntry
 
@@ -144,6 +144,33 @@ def _canned_input(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", lambda *_: next(it))
 
 
+def _stub_picker(monkeypatch, fake):
+    """Replaces the interactive checkbox screen (`tui.run_checklist`) with `fake(items, title, **kw)` — every
+    `[y/N]` confirmation after it still goes through the real `input()`, via `_canned_input`."""
+    monkeypatch.setattr(tui, "run_checklist", fake)
+
+
+def _keep_as_shown(items, title, **kwargs):
+    return [item.checked for item in items]
+
+
+def _uncheck_all(items, title, **kwargs):
+    return [False for _ in items]
+
+
+def _pick_and_target(target_text):
+    """A fake covering both checkbox screens the "no name" flow can open in one run: the plugin-name
+    picker (title starts with "pick plugin") is kept exactly as shown, the plugin x target table
+    gets `target_text` checked on top of whatever was already checked."""
+
+    def fake(items, title, **kwargs):
+        if title.startswith("pick plugin"):
+            return [item.checked for item in items]
+        return [item.checked or item.text == target_text for item in items]
+
+    return fake
+
+
 def _uninstalled(sim: _ClaudeCliSim) -> bool:
     return any(c[:3] == ["claude", "plugin", "uninstall"] for c, _ in sim.calls)
 
@@ -171,7 +198,8 @@ def test_install_prints_the_workspace_line_first(env, monkeypatch, capsys):
     from setup.common import resolve_workspace_root as real_resolve_workspace_root
 
     monkeypatch.setattr(cli, "resolve_workspace_root", real_resolve_workspace_root)
-    _canned_input(monkeypatch, ["0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow", "--workspace", str(env.ws)])
 
@@ -180,7 +208,8 @@ def test_install_prints_the_workspace_line_first(env, monkeypatch, capsys):
 
 
 def test_user_scope_keeps_the_enable_and_writes_no_project_settings(env, monkeypatch):
-    _canned_input(monkeypatch, ["0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -218,7 +247,7 @@ def test_dry_run_with_force_writes_and_deletes_nothing(env, monkeypatch):
     assert plugin_dir.exists()
     settings = env.home / ".claude" / "settings.json"
     before = settings.read_text() if settings.exists() else None
-    _canned_input(monkeypatch, [""])  # keep the table as shown
+    _stub_picker(monkeypatch, _keep_as_shown)
 
     cli.main(["--plugin", "pc-snow", "--force", "--dry-run"])
 
@@ -233,7 +262,8 @@ def test_dry_run_with_force_writes_and_deletes_nothing(env, monkeypatch):
 def test_a_declined_plan_writes_nothing(env, monkeypatch):
     settings = env.home / ".claude" / "settings.json"
     before = settings.read_text() if settings.exists() else None
-    _canned_input(monkeypatch, ["0", "n"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["n"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -249,7 +279,8 @@ def test_rescope_leaves_a_deliberate_disabled_opt_out_alone(env, monkeypatch):
     the person checks (row 2, pinky-core), it never surfaces a disabled row (row 1, the
     workspace root) as something to re-enable."""
     _write_enable(env.ws, "pc-snow", False)
-    _canned_input(monkeypatch, ["2", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("pinky-core"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -260,7 +291,8 @@ def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
 
     install = plugin_install.resolve_install_path("pc-snow")
     assert install.exists()
-    _canned_input(monkeypatch, ["0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow", "--marketplace", "mp", "--force"])
 
@@ -281,7 +313,8 @@ def test_project_scope_never_installs_at_user_scope(env, monkeypatch):
     """Nothing is downloaded before the table is confirmed, and a project target downloads
     straight there: user scope is not a step on the way (measured 2026-09-02 and 2026-09-19,
     still true once `install` delegates to the same `enable` flow, FR-0024-31)."""
-    _canned_input(monkeypatch, ["2", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("pinky-core"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -292,7 +325,8 @@ def test_project_scope_never_installs_at_user_scope(env, monkeypatch):
 
 def test_a_dependency_lands_at_the_chosen_project_never_at_user_scope(env, monkeypatch):
     env.sim.dependencies = {"pc-snow": ["pc-core"]}
-    _canned_input(monkeypatch, ["2", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("pinky-core"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -300,14 +334,19 @@ def test_a_dependency_lands_at_the_chosen_project_never_at_user_scope(env, monke
     assert _user_enabled(env.home, "pc-core") is False
 
 
-def test_a_refused_wizard_installs_nothing(env, monkeypatch):
-    """An invalid table answer aborts before anything is downloaded, and leaves a pre-existing
-    global enable untouched."""
+def test_a_cancelled_wizard_installs_nothing(env, monkeypatch):
+    """Ctrl-C on the checkbox screen propagates as `KeyboardInterrupt` (turned into exit 130 by
+    `cli_pinky`, NFR-0024-37) before anything is downloaded, and leaves a pre-existing global
+    enable untouched."""
     _ClaudeCliSim._toggle(env.home, "pc-snow", on=True)
     env.sim.dependencies = {"pc-snow": ["pc-core"]}
-    _canned_input(monkeypatch, ["garbage"])
 
-    with pytest.raises(SystemExit):
+    def interrupted(items, title, **kwargs):
+        raise KeyboardInterrupt
+
+    _stub_picker(monkeypatch, interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
         cli.main(["--plugin", "pc-snow"])
 
     assert [
@@ -317,10 +356,10 @@ def test_a_refused_wizard_installs_nothing(env, monkeypatch):
 
 
 def test_an_interrupted_wizard_installs_nothing(env, monkeypatch):
-    def interrupt(*_):
+    def interrupt(items, title, **kw):
         raise KeyboardInterrupt
 
-    monkeypatch.setattr("builtins.input", interrupt)
+    _stub_picker(monkeypatch, interrupt)
 
     with pytest.raises(KeyboardInterrupt):
         cli.main(["--plugin", "pc-snow"])
@@ -331,7 +370,8 @@ def test_an_interrupted_wizard_installs_nothing(env, monkeypatch):
 
 
 def test_choosing_user_scope_installs_there(env, monkeypatch):
-    _canned_input(monkeypatch, ["0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin", "pc-snow"])
 
@@ -348,11 +388,14 @@ def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
     plugin_dir = tmp_path / "cache" / "mp" / "pc-snow" / "0.1.0"
     (plugin_dir / "scripts").mkdir(parents=True)
     (plugin_dir / "scripts" / "statusline.py").write_text("", encoding="utf-8")
-    _canned_input(monkeypatch, ["0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
     cli.main(["--plugin", "pc-snow"])
     (env.home / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
 
-    _canned_input(monkeypatch, [""])  # keep the table as shown → "nothing to do"
+    _stub_picker(
+        monkeypatch, _keep_as_shown
+    )  # keep the table as shown → "nothing to do"
     cli.main(["--plugin", "pc-snow"])
 
     settings = json.loads((env.home / ".claude" / "settings.json").read_text())
@@ -374,9 +417,10 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
         "load_curated_entries",
         lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
-    # picker: keep pc-snow checked (FR-0024-37 prechecks it, nothing installed yet); then row 0
-    # (user) in the target table; confirm.
-    _canned_input(monkeypatch, ["", "0", "y"])
+    # picker: keep pc-snow checked (FR-0024-37 prechecks it, nothing installed yet); then "user"
+    # checked in the target table; confirm.
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin"])
 
@@ -395,9 +439,12 @@ def test_install_with_no_name_skips_the_table_for_an_already_installed_pick(
         "load_curated_entries",
         lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
-    _canned_input(
-        monkeypatch, [""]
-    )  # picker only — no further prompt should ever be asked
+    _stub_picker(
+        monkeypatch, _keep_as_shown
+    )  # picker only — no further prompt ever asked
+    monkeypatch.setattr(
+        "builtins.input", lambda *_: pytest.fail("no confirmation should ever be asked")
+    )
 
     cli.main(["--plugin"])
 
@@ -414,7 +461,7 @@ def test_enable_with_no_name_and_nothing_new_selected_says_so_and_exits_cleanly(
         "load_curated_entries",
         lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
-    _canned_input(monkeypatch, [""])
+    _stub_picker(monkeypatch, _keep_as_shown)
 
     cli.main(["--plugin-enable"])
 
@@ -442,8 +489,9 @@ def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_insta
     monkeypatch.setattr(plugin_curated, "add_marketplace", fake_add)
     user_file = env.ws.parent / "user-curated.toml"
     # picker: keep the one row checked (FR-0024-37); confirm the marketplace add; confirm saving
-    # it to the user file; row 0 (user) in the target table; confirm.
-    _canned_input(monkeypatch, ["", "y", "y", "0", "y"])
+    # it to the user file; "user" checked in the target table; confirm.
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y", "y", "y"])
 
     cli.main(["--plugin", "--list", str(user_file)])
 
@@ -463,7 +511,8 @@ def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
         "load_curated_entries",
         lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
-    _canned_input(monkeypatch, ["", "0", "y"])
+    _stub_picker(monkeypatch, _pick_and_target("user"))
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin-enable"])
 
@@ -476,9 +525,10 @@ def test_disable_with_no_name_acts_on_every_installed_plugin_without_asking_whic
     """FR-0024-34: no name → every installed plugin's current enables, via the compact
     (checked-only) table — one row here, not the full plugin x every-known-target grid."""
     _write_enable(env.ws, "pc-snow", True)
-    _canned_input(
-        monkeypatch, ["0", "y"]
+    _stub_picker(
+        monkeypatch, _uncheck_all
     )  # the table's own toggle+confirm, not a name picker
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin-disable"])
 
@@ -499,11 +549,17 @@ def test_disable_with_no_name_shows_the_compact_table_not_the_full_grid(
     every group, every repo) into the "no name" table — only rows actually checked."""
     _write_enable(env.ws, "pc-snow", True)
     _write_enable(env.ws / "pinky-core", "pc-x", True)
-    _canned_input(monkeypatch, ["0 1", "y"])
+    seen_items = []
+
+    def uncheck_and_record(items, title, **kwargs):
+        seen_items.extend(items)
+        return _uncheck_all(items, title, **kwargs)
+
+    _stub_picker(monkeypatch, uncheck_and_record)
+    _canned_input(monkeypatch, ["y"])
 
     cli.main(["--plugin-disable"])
 
-    table = capsys.readouterr().out
-    assert table.count(") [") == 2
+    assert len([it for it in seen_items if it.selectable]) == 2
     assert _enabled_at(env.ws, "pc-snow") is None
     assert _enabled_at(env.ws / "pinky-core", "pc-x") is None

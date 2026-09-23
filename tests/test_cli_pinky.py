@@ -469,7 +469,9 @@ def test_setup_main_accepts_explicit_argv_not_sys_argv(monkeypatch):
             seen.append((workspace, apply)) or {}
         ),
     )
-    monkeypatch.setattr(setup.cli, "print_all_plugin_rules_report", lambda plan: None)
+    monkeypatch.setattr(
+        setup.cli, "print_all_plugin_rules_report", lambda plan, **kwargs: None
+    )
 
     setup.cli.main(["--rules", "/from-explicit-argv"])
 

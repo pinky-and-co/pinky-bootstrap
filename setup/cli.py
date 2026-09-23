@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import agentic_assets, plugin_install
+from . import agentic_assets, plugin_install, style
 from .common import WORKSPACE_ROOT, resolve_workspace_root
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
@@ -386,6 +386,7 @@ def main(argv: list[str] | None = None) -> None:
             dry_run=args.dry_run,
             user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
             only_checked=only_checked,
+            verbose=args.verbose,
         )
         return
 
@@ -468,6 +469,7 @@ def main(argv: list[str] | None = None) -> None:
             yes=args.yes,
             dry_run=args.dry_run,
             user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
+            verbose=args.verbose,
         )
         # 4. Wire what needs the install path, per plugin — only when the plan actually landed or
         #    was already exactly as desired (`enable_result.wire`); `declined`/`dry_run` never
@@ -517,7 +519,9 @@ def main(argv: list[str] | None = None) -> None:
         plan = distribute_all_plugin_rules(
             workspace, apply=False, user_rules_dir=user_rules_dir
         )
-        print_all_plugin_rules_report(plan)
+        print_all_plugin_rules_report(
+            plan, verbose=args.verbose, color=style.use_color()
+        )
         has_changes = any(
             report.has_changes
             for by_target in plan.values()

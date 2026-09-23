@@ -14,11 +14,11 @@ import json
 import subprocess
 import sys
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_catalog
+from . import plugin_catalog, tui
 from .common import PACKAGE_DIR
 
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
@@ -233,6 +233,7 @@ def resolve_no_name_selection(
     user_path: Path | None = None,
     yes: bool = False,
     dry_run: bool = False,
+    picker: Callable[..., list[bool]] | None = None,
 ) -> list[str]:
     """`install`/`enable` with no plugin name, end to end (FR-0024-33, 36, 37, 39, 43): the
     curated ∪ installed picker, a registered marketplace expanded to its plugins, an unregistered
@@ -261,7 +262,9 @@ def resolve_no_name_selection(
             marker_to_entries.setdefault(marker, []).append(entry)
             curated_names.add(marker)
 
-    picked = plugin_enable.pick_plugins(sorted(curated_names), sorted(installed))
+    picked = plugin_enable.pick_plugins(
+        sorted(curated_names), sorted(installed), picker=picker or tui.run_checklist
+    )
     markers = [n for n in picked if n in marker_to_entries]
     names = [n for n in picked if n not in marker_to_entries and n not in installed]
     if not markers:

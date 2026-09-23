@@ -128,12 +128,18 @@ def test_a_missing_claude_dir_completes_nothing_and_does_not_fail(
     assert plugin_catalog.known_marketplace_names() == []
 
 
-def test_argcomplete_is_the_only_runtime_dependency():
+def test_runtime_dependencies_are_exactly_the_declared_allowlist():
+    """Every runtime dependency this repo takes is a deliberate one, not an accidental transitive
+    pull: `argcomplete` (shell completion) and `questionary` (the interactive checkbox picker,
+    `setup/tui.py` — see `docs/adr/0008-questionary-interactive-picker.md`)."""
     import tomllib
 
     pyproject = tomllib.loads(
         (Path(__file__).parent.parent / "pyproject.toml").read_text(encoding="utf-8")
     )
 
-    [only] = pyproject["project"]["dependencies"]
-    assert only.startswith("argcomplete")
+    names = {
+        dep.split(">=")[0].split("==")[0]
+        for dep in pyproject["project"]["dependencies"]
+    }
+    assert names == {"argcomplete", "questionary"}

@@ -317,6 +317,13 @@ def _canned(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", lambda *_: next(it))
 
 
+def _keep_as_shown(items, title, **kwargs):
+    """A fake `picker` (see `plugin_enable.Picker`) standing in for the interactive checkbox screen: confirms
+    every row exactly as prefilled, no toggle — the "keep as shown, press enter" case every
+    `resolve_no_name_selection` test below exercises."""
+    return [item.checked for item in items]
+
+
 def test_resolve_no_name_selection_expands_an_already_registered_marketplace(
     curated_env, monkeypatch
 ):
@@ -332,10 +339,11 @@ def test_resolve_no_name_selection_expands_an_already_registered_marketplace(
     (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
         json.dumps({"mp": {"installLocation": str(marketplace_dir)}}), encoding="utf-8"
     )
-    _canned(monkeypatch, [""])  # keep the (fully checked, FR-0024-37) picker as shown
-
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
     )
 
     assert names == ["pc-a"]
@@ -368,10 +376,10 @@ def test_resolve_no_name_selection_adds_expands_and_offers_to_remember_an_unregi
     user_file = tmp_path / "user.toml"
     # picker: keep the one (checked, FR-0024-37) row; confirm the marketplace add; confirm saving
     # it to the user file.
-    _canned(monkeypatch, ["", "y", "y"])
+    _canned(monkeypatch, ["y", "y"])
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=user_file
+        tmp_path, installed_names=[], user_path=user_file, picker=_keep_as_shown
     )
 
     assert names == ["pc-fresh"]
@@ -394,10 +402,13 @@ def test_resolve_no_name_selection_declining_the_add_drops_that_entry(
         "run",
         lambda *a, **k: pytest.fail("must not add a declined marketplace"),
     )
-    _canned(monkeypatch, ["", "n"])  # keep the row checked, then decline the add
+    _canned(monkeypatch, ["n"])  # decline the add
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
     )
 
     assert names == []
@@ -421,10 +432,13 @@ def test_resolve_no_name_selection_treats_a_plugin_keyed_entry_as_unregistered_t
         "run",
         lambda *a, **k: pytest.fail("must not add a declined marketplace"),
     )
-    _canned(monkeypatch, ["", "n"])  # keep the row checked, then decline the add
+    _canned(monkeypatch, ["n"])  # decline the add
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
     )
 
     assert names == []
@@ -456,12 +470,13 @@ def test_resolve_no_name_selection_groups_two_entries_under_one_unregistered_mar
         return type("R", (), {"returncode": 0})()
 
     monkeypatch.setattr(plugin_curated.subprocess, "run", fake_run)
-    _canned(
-        monkeypatch, ["", "y", "n"]
-    )  # keep both rows checked; confirm add; decline saving
+    _canned(monkeypatch, ["y", "n"])  # confirm add; decline saving
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
     )
 
     assert len(add_calls) == 1
@@ -484,10 +499,14 @@ def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
         lambda *a, **k: pytest.fail("must not add anything under dry_run"),
     )
     user_file = tmp_path / "user.toml"
-    _canned(monkeypatch, [""])  # keep the row checked
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=user_file, yes=True, dry_run=True
+        tmp_path,
+        installed_names=[],
+        user_path=user_file,
+        yes=True,
+        dry_run=True,
+        picker=_keep_as_shown,
     )
 
     assert names == []
@@ -509,12 +528,11 @@ def test_resolve_no_name_selection_excludes_an_already_installed_plugin(
     (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
         json.dumps({"mp": {"installLocation": "/wherever"}}), encoding="utf-8"
     )
-    _canned(monkeypatch, [""])  # keep as shown: pc-a pre-checked (installed), pc-b not
-
     names = plugin_curated.resolve_no_name_selection(
         tmp_path,
         installed_names=["pc-a"],
         user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
     )
 
     assert names == []
@@ -534,10 +552,10 @@ def test_resolve_no_name_selection_survives_a_failed_marketplace_add(
         lambda cmd, **kw: (_ for _ in ()).throw(subprocess.CalledProcessError(1, cmd)),
     )
     user_file = tmp_path / "user.toml"
-    _canned(monkeypatch, ["", "y"])  # keep the row checked, confirm the add
+    _canned(monkeypatch, ["y"])  # confirm the add
 
     names = plugin_curated.resolve_no_name_selection(
-        tmp_path, installed_names=[], user_path=user_file
+        tmp_path, installed_names=[], user_path=user_file, picker=_keep_as_shown
     )
 
     assert names == []

@@ -115,17 +115,86 @@ def _canned(monkeypatch, answers):
     monkeypatch.setattr("builtins.input", lambda *_: next(it))
 
 
-# ── build_rows / render_scope_table — the table, prefilled (FR-0024-44, 45) ────────────
+# ── build_rows / build_tree_items — the table, prefilled (FR-0024-44, 45) ──────────────
 
 
-def test_render_scope_table_exact_text():
+def test_build_tree_items_indents_a_nested_path_by_segment():
+    """The card's own complaint: `bootstrap/pinky-agentic-plugins` must not repeat
+    `bootstrap/pinky-agentic-plugins` in full — each path segment is its own (indented) line."""
     rows = [
         plugin_enable.ScopeRow(0, "pc-snow", "user", False),
-        plugin_enable.ScopeRow(1, "pc-snow", ".", True),
+        plugin_enable.ScopeRow(1, "pc-snow", "bootstrap", True),
+        plugin_enable.ScopeRow(2, "pc-snow", "bootstrap/pinky-agentic-plugins", False),
     ]
-    assert plugin_enable.render_scope_table(rows) == (
-        "  0) [ ] pc-snow @ user\n  1) [x] pc-snow @ ."
+
+    items = plugin_enable.build_tree_items(rows)
+
+    assert [(it.text, it.depth, it.key, it.checked) for it in items] == [
+        ("user", 0, 0, False),
+        ("bootstrap", 0, 1, True),
+        ("pinky-agentic-plugins", 1, 2, False),
+    ]
+
+
+def test_build_tree_items_names_the_workspace_root():
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", ".", True),
+        plugin_enable.ScopeRow(1, "pc-snow", "bootstrap", False),
+    ]
+
+    items = plugin_enable.build_tree_items(rows, root_name="pinky")
+
+    assert [(it.text, it.depth, it.key) for it in items] == [
+        ("pinky (workspace)", 0, 0),
+        ("bootstrap", 0, 1),
+    ]
+
+
+def test_build_tree_items_shows_a_non_selectable_grouping_node_with_no_row_of_its_own():
+    """A path with no row at its own prefix (only a grandchild target exists) still gets a line,
+    for the hierarchy to read — just not a checkable one."""
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", "pinky-lib/pinky-core", True),
+    ]
+
+    items = plugin_enable.build_tree_items(rows)
+
+    assert [(it.text, it.depth, it.selectable, it.key) for it in items] == [
+        ("pinky-lib", 0, False, None),
+        ("pinky-core", 1, True, 0),
+    ]
+
+
+def test_build_tree_items_headers_each_plugin_only_when_the_batch_names_more_than_one():
+    single = plugin_enable.build_tree_items(
+        [plugin_enable.ScopeRow(0, "pc-snow", "user", False)]
     )
+    assert all(it.selectable for it in single)
+
+    batch = plugin_enable.build_tree_items(
+        [
+            plugin_enable.ScopeRow(0, "pc-a", "user", False),
+            plugin_enable.ScopeRow(1, "pc-b", "user", False),
+        ]
+    )
+    assert [(it.text, it.selectable) for it in batch] == [
+        ("pc-a", False),
+        ("user", True),
+        ("pc-b", False),
+        ("user", True),
+    ]
+
+
+def test_apply_checklist_result_maps_back_by_row_index_only():
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-snow", "user", False),
+        plugin_enable.ScopeRow(1, "pc-snow", "pinky-lib", True),
+    ]
+    items = plugin_enable.build_tree_items(rows)
+
+    updated = plugin_enable.apply_checklist_result(rows, items, [True, False])
+
+    assert plugin_enable._desired_labels(updated, "pc-snow") == {"user"}
 
 
 def test_table_is_prefilled_from_a_project_enable_already_known_to_settings(env):
@@ -173,26 +242,7 @@ def test_filter_checked_keeps_only_checked_rows_and_reindexes():
     ]
 
 
-def test_toggling_a_row_flips_only_that_index():
-    rows = [
-        plugin_enable.ScopeRow(0, "pc-snow", "user", False),
-        plugin_enable.ScopeRow(1, "pc-snow", ".", True),
-    ]
-    flipped = plugin_enable._apply_toggles(rows, {0})
-    assert plugin_enable._desired_labels(flipped, "pc-snow") == {".", "user"}
-
-
 # ── pick_plugins — the "no name" checkbox list (FR-0024-33, 36, 37) ────────────────────
-
-
-def test_render_plugin_pick_table_exact_text():
-    rows = [
-        plugin_enable.PluginPickRow(0, "pc-a", False),
-        plugin_enable.PluginPickRow(1, "pc-b", True),
-    ]
-    assert plugin_enable.render_plugin_pick_table(rows) == (
-        "  0) [ ] pc-a\n  1) [x] pc-b"
-    )
 
 
 def test_build_plugin_pick_rows_prechecks_only_installed_names():
@@ -214,12 +264,22 @@ def test_build_plugin_pick_rows_checks_everything_with_no_installed_plugin():
     assert all(row.checked for row in rows)
 
 
+def _check_all(items, title, **kwargs):
+    """A fake `picker`: every row confirmed checked, regardless of how it was prefilled — stands
+    in for an interactive session where the user ticked everything before hitting enter."""
+    return [True for _ in items]
+
+
+def _keep_as_shown(items, title, **kwargs):
+    """A fake `picker`: confirms every row exactly as prefilled — the "enter, no toggle" case."""
+    return [item.checked for item in items]
+
+
 def test_pick_plugins_returns_the_checked_names_after_a_toggle(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *_: "0")
 
     picked = plugin_enable.pick_plugins(
-        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"]
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"], picker=_check_all
     )
 
     assert set(picked) == {"pc-a", "pc-b"}
@@ -227,13 +287,25 @@ def test_pick_plugins_returns_the_checked_names_after_a_toggle(monkeypatch):
 
 def test_pick_plugins_keeps_the_default_selection_on_enter(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda *_: "")
 
     picked = plugin_enable.pick_plugins(
-        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"]
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"], picker=_keep_as_shown
     )
 
     assert picked == ["pc-b"]
+
+
+def _interrupted(items, title, **kwargs):
+    raise KeyboardInterrupt
+
+
+def test_pick_plugins_lets_ctrl_c_through(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    with pytest.raises(KeyboardInterrupt):
+        plugin_enable.pick_plugins(
+            curated_names=["pc-a"], installed_names=[], picker=_interrupted
+        )
 
 
 def test_pick_plugins_refuses_without_a_tty(monkeypatch):
@@ -403,14 +475,18 @@ def test_disable_table_prefilled_and_unchecking_removes_the_enable(env, monkeypa
         yes=True,
         user_rules_dir=env.home / "no-user-rules",
     )
-    audit = plugin_reconcile.audit_plugins(env.ws)
-    label_map = plugin_reconcile.label_to_settings(env.ws)
-    rows = plugin_enable.build_rows([("pc-snow", audit["pc-snow"])], label_map)
-    pinky_lib_index = next(r.index for r in rows if r.label == "pinky-lib")
-    _canned(monkeypatch, [str(pinky_lib_index), "y"])
+
+    def uncheck_pinky_lib(items, title, **kwargs):
+        return [it.checked and it.text != "pinky-lib" for it in items]
+
+    _canned(monkeypatch, ["y"])
 
     plugin_enable.run(
-        "disable", ["pc-snow"], env.ws, user_rules_dir=env.home / "no-user-rules"
+        "disable",
+        ["pc-snow"],
+        env.ws,
+        user_rules_dir=env.home / "no-user-rules",
+        picker=uncheck_pinky_lib,
     )
 
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is None
@@ -628,11 +704,19 @@ def test_a_plugin_not_installed_writes_no_rule_file(tmp_path, monkeypatch):
 # ── the plan-then-[y/N] convention (NFR-0024-30, 31, 32) ───────────────────────────────
 
 
+def _check_dot(items, title, **kwargs):
+    return [it.checked or it.text.endswith(" (workspace)") for it in items]
+
+
 def test_a_declined_confirmation_writes_nothing(env, monkeypatch, capsys):
-    _canned(monkeypatch, ["1", "n"])  # toggle "." on, then refuse
+    _canned(monkeypatch, ["n"])  # refuse
 
     plugin_enable.run(
-        "enable", ["pc-snow"], env.ws, user_rules_dir=env.home / "no-user-rules"
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        user_rules_dir=env.home / "no-user-rules",
+        picker=_check_dot,
     )
 
     assert env.sim.calls == []
