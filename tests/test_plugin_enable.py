@@ -332,11 +332,11 @@ def test_disable_table_prefilled_and_unchecking_removes_the_enable(env, monkeypa
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is None
 
 
-# ── return value: which specs were actually applied ────────────────────────────────────
+# ── return value: outcome + which specs were actually applied ──────────────────────────
 
 
 def test_run_returns_the_applied_spec_on_success(env):
-    applied = plugin_enable.run(
+    result = plugin_enable.run(
         "enable",
         ["pc-snow"],
         env.ws,
@@ -345,10 +345,16 @@ def test_run_returns_the_applied_spec_on_success(env):
         user_rules_dir=env.home / "no-user-rules",
     )
 
-    assert applied == ["pc-snow"]
+    assert result.outcome == "applied"
+    assert result.applied == ["pc-snow"]
+    assert result.wire is True
 
 
-def test_run_returns_empty_when_nothing_to_do(env):
+def test_run_reports_nothing_to_do_but_still_wireable(env):
+    """A second identical run changes nothing, but the plugin IS on disk and enabled exactly as
+    desired — a caller like `install` re-wiring a statusLine path after `claude plugin update`
+    must still be able to tell this apart from a declined or dry-run plan (neither of which ever
+    wrote anything, so nothing to re-wire)."""
     plugin_enable.run(
         "enable",
         ["pc-snow"],
@@ -358,7 +364,7 @@ def test_run_returns_empty_when_nothing_to_do(env):
         user_rules_dir=env.home / "no-user-rules",
     )
 
-    applied = plugin_enable.run(
+    result = plugin_enable.run(
         "enable",
         ["pc-snow"],
         env.ws,
@@ -367,11 +373,13 @@ def test_run_returns_empty_when_nothing_to_do(env):
         user_rules_dir=env.home / "no-user-rules",
     )
 
-    assert applied == []
+    assert result.outcome == "nothing"
+    assert result.applied == []
+    assert result.wire is True
 
 
-def test_run_returns_empty_on_dry_run(env):
-    applied = plugin_enable.run(
+def test_run_reports_dry_run_as_not_wireable(env):
+    result = plugin_enable.run(
         "enable",
         ["pc-snow"],
         env.ws,
@@ -380,15 +388,17 @@ def test_run_returns_empty_on_dry_run(env):
         user_rules_dir=env.home / "no-user-rules",
     )
 
-    assert applied == []
+    assert result.outcome == "dry_run"
+    assert result.applied == []
+    assert result.wire is False
     assert not (env.ws / "pinky-lib" / ".claude" / "settings.json").exists()
 
 
-def test_run_returns_empty_when_the_plan_is_declined(env, monkeypatch):
+def test_run_reports_a_declined_plan_as_not_wireable(env, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     _canned(monkeypatch, ["n"])
 
-    applied = plugin_enable.run(
+    result = plugin_enable.run(
         "enable",
         ["pc-snow"],
         env.ws,
@@ -396,7 +406,9 @@ def test_run_returns_empty_when_the_plan_is_declined(env, monkeypatch):
         user_rules_dir=env.home / "no-user-rules",
     )
 
-    assert applied == []
+    assert result.outcome == "declined"
+    assert result.applied == []
+    assert result.wire is False
 
 
 # ── rules follow the plugin to its scope (FR-0024-52, 60, 61) ──────────────────────────

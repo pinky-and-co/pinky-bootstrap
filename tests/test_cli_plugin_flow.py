@@ -204,6 +204,39 @@ def test_pc_statusline_is_declared_keep_user_scope():
     assert "pc-statusline" in plugin_install.KEEP_USER_SCOPE
 
 
+def test_dry_run_with_force_writes_and_deletes_nothing(env, monkeypatch):
+    """NFR-0024-31: `--dry-run` writes nothing — not even the `--force` cache-bust, which is
+    destructive on its own regardless of what the table decides."""
+    plugin_dir = plugin_install.resolve_install_path("pc-snow")
+    assert plugin_dir.exists()
+    settings = env.home / ".claude" / "settings.json"
+    before = settings.read_text() if settings.exists() else None
+    _canned_input(monkeypatch, [""])  # keep the table as shown
+
+    cli.main(["--plugin", "pc-snow", "--force", "--dry-run"])
+
+    assert plugin_dir.exists()
+    after = settings.read_text() if settings.exists() else None
+    assert after == before
+    assert [
+        c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]
+    ] == []
+
+
+def test_a_declined_plan_writes_nothing(env, monkeypatch):
+    settings = env.home / ".claude" / "settings.json"
+    before = settings.read_text() if settings.exists() else None
+    _canned_input(monkeypatch, ["0", "n"])
+
+    cli.main(["--plugin", "pc-snow"])
+
+    after = settings.read_text() if settings.exists() else None
+    assert after == before
+    assert [
+        c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]
+    ] == []
+
+
 def test_rescope_leaves_a_deliberate_disabled_opt_out_alone(env, monkeypatch):
     """A `false` key is an explicit "parent wins, off here" — the table only ever adds a target
     the person checks (row 2, pinky-core), it never surfaces a disabled row (row 1, the
@@ -300,23 +333,23 @@ def test_choosing_user_scope_installs_there(env, monkeypatch):
 
 
 def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
-    env, monkeypatch
+    env, tmp_path, monkeypatch
 ):
-    """A re-run after `claude plugin update` must still refresh a stale statusLine/LSP path even
-    when the table shows the plugin already exactly where it should be — "nothing to do" is not
+    """A re-run after `claude plugin update` must still refresh a stale statusLine path even when
+    the table shows the plugin already exactly where it should be — "nothing to do" is not
     "nothing installed"."""
+    plugin_dir = tmp_path / "cache" / "mp" / "pc-snow" / "0.1.0"
+    (plugin_dir / "scripts").mkdir(parents=True)
+    (plugin_dir / "scripts" / "statusline.py").write_text("", encoding="utf-8")
     _canned_input(monkeypatch, ["0", "y"])
     cli.main(["--plugin", "pc-snow"])
+    (env.home / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
 
-    calls = []
-    original = plugin_install.resolve_install_path
-    monkeypatch.setattr(
-        plugin_install,
-        "resolve_install_path",
-        lambda *a, **k: calls.append(1) or original(*a, **k),
-    )
     _canned_input(monkeypatch, [""])  # keep the table as shown → "nothing to do"
-
     cli.main(["--plugin", "pc-snow"])
 
-    assert calls == [1]
+    settings = json.loads((env.home / ".claude" / "settings.json").read_text())
+    assert settings["statusLine"] == {
+        "type": "command",
+        "command": f'python3 "{plugin_dir / "scripts" / "statusline.py"}"',
+    }

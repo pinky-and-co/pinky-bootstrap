@@ -364,15 +364,25 @@ def main(argv: list[str] | None = None) -> None:
 
         # 0. Dev cache-bust: `claude plugin install`/`update` only ever fills an absent cache dir,
         #    so a plugin pinned at 0.1.0 can go on serving a stale build after an edit, no signal.
-        #    `--force` deletes it first — a no-op on a first install (nothing cached yet).
-        if args.force and plugin_install.force_refetch(args.plugin, args.marketplace):
-            spec = (
-                f"{args.plugin}@{args.marketplace}" if args.marketplace else args.plugin
-            )
-            print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
+        #    `--force` deletes it first — a no-op on a first install (nothing cached yet). Deletes,
+        #    so it never runs under `--dry-run` (NFR-0024-31).
+        if args.force and not args.dry_run:
+            if plugin_install.force_refetch(args.plugin, args.marketplace):
+                spec = (
+                    f"{args.plugin}@{args.marketplace}"
+                    if args.marketplace
+                    else args.plugin
+                )
+                print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # 1. An always-on plugin (autodiscovery, statusline) is user scope by design — the only case
-        #    where `pinky` writes there. No table to show.
+        #    where `pinky` writes there. No table to show, so `--dry-run` has nothing to preview —
+        #    it just says so and writes nothing (NFR-0024-31).
         if args.plugin in plugin_install.KEEP_USER_SCOPE:
+            if args.dry_run:
+                print(
+                    f"{args.plugin} would be kept at user scope (always-on) — dry run"
+                )
+                return
             plugin_install.install_plugin_files(args.plugin, args.marketplace)
             written = plugin_install.set_status_lines(
                 plugin_install.resolve_install_path(args.plugin, args.marketplace)
@@ -388,7 +398,7 @@ def main(argv: list[str] | None = None) -> None:
         # 2. Download then place, through the same plugin × target table as `enable` (FR-0024-31) —
         #    a prior enable anywhere (including a leftover at user scope) shows up pre-checked
         #    there (FR-0024-45), so unchecking it is how it gets removed; nothing left to do here.
-        plugin_enable.run(
+        enable_result = plugin_enable.run(
             "enable",
             [args.plugin],
             resolved.root,
@@ -398,11 +408,13 @@ def main(argv: list[str] | None = None) -> None:
             dry_run=args.dry_run,
             user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
         )
-        # 3. Wire what needs the install path — skipped only when nothing was ever fetched (a
-        #    fresh plugin the table left fully unchecked): `dry_run` and a declined/empty plan can
-        #    each reach here with the plugin still not on disk, `resolve_install_path` raises then.
-        #    An already-installed plugin reaches here even on "nothing to do", so a re-run after
-        #    `claude plugin update` still refreshes a stale statusLine/LSP path.
+        # 3. Wire what needs the install path — only when the plan actually landed or was already
+        #    exactly as desired (`enable_result.wire`); `declined`/`dry_run` never confirmed a
+        #    write, so the plugin may not be on disk anywhere yet and `resolve_install_path` would
+        #    raise. An already-installed plugin reaches here even on "nothing to do", so a re-run
+        #    after `claude plugin update` still refreshes a stale statusLine/LSP path.
+        if not enable_result.wire:
+            return
         try:
             install_path = plugin_install.resolve_install_path(
                 args.plugin, args.marketplace
