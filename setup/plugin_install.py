@@ -12,8 +12,7 @@ mode. Where the enablement lands is `--scope` × cwd:
 So a plugin useful only in some repos (`pc-snow` on data repos, not everywhere) is enabled by
 running `claude plugin install --scope project` from each of those dirs — not by a hand-rolled
 `enabledPlugins` merge. Nothing is downloaded before the scope is chosen, and a project choice
-downloads straight at the project: `claude` needs no user-scope step first (measured 2026-09-02
-and 2026-09-19). `install_plugin_files` is the user-scope install, used only when the user picks
+downloads straight at the project: `claude` needs no user-scope step first. `install_plugin_files` is the user-scope install, used only when the user picks
 user scope or for an always-on plugin (`KEEP_USER_SCOPE`).
 
 One thing `claude plugin install` does not do that this workspace needs: the main-session

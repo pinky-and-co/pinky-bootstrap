@@ -496,7 +496,7 @@ def render_worker_yml(repo: Path) -> str | None:
     return text.replace(CI_D1_DATABASE_PLACEHOLDER, d1_database)
 
 
-# Workflows written next to `ci.yml` and `prek.yml`, each only where it applies.
+# Workflows added beside the two default ones, each only where it applies.
 SPECIFIC_WORKFLOWS = (
     ("windows.yml", render_windows_yml),
     ("worker.yml", render_worker_yml),

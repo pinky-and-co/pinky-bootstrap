@@ -821,7 +821,7 @@ def test_replaying_the_same_command_says_nothing_to_do_and_writes_nothing(env, c
     assert "nothing to do" in capsys.readouterr().out
 
 
-# ── cli.py dispatch: the Workspace line, and no-name refusal ───────────────────────────
+# ── dispatch: the Workspace line, and no-name refusal ───────────────────────────
 
 
 def test_cli_prints_the_workspace_line_first(env, monkeypatch, capsys):

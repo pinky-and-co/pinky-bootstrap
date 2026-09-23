@@ -108,9 +108,8 @@ def env(tmp_path, monkeypatch):
         "_REGISTRY",
         home / ".claude" / "plugins" / "installed_plugins.json",
     )
-    # `plugin_catalog.CLAUDE_DIR` is bound once at import time (`Path.home()` there), so patching
-    # `Path.home` above does not redirect it — `plugin_curated.is_registered`/`expand_entry` would
-    # otherwise read this machine's real `~/.claude/plugins/known_marketplaces.json`.
+    # `plugin_catalog.CLAUDE_DIR` is bound at import time, so the `Path.home` patch misses it:
+    # without this, the real machine's registered marketplaces would be read.
     (home / ".claude" / "plugins").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(plugin_curated.plugin_catalog, "CLAUDE_DIR", home / ".claude")
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
@@ -191,7 +190,7 @@ def _write_enable(settings_dir: Path, spec: str, value: bool) -> None:
     p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-# ── cli.py dispatch: the Workspace line, `--workspace` honored ──
+# ── dispatch: the Workspace line, `--workspace` honored ──
 
 
 def test_install_prints_the_workspace_line_first(env, monkeypatch, capsys):
@@ -311,8 +310,7 @@ def _user_installs(sim: _ClaudeCliSim) -> list[list[str]]:
 
 def test_project_scope_never_installs_at_user_scope(env, monkeypatch):
     """Nothing is downloaded before the table is confirmed, and a project target downloads
-    straight there: user scope is not a step on the way (measured 2026-09-02 and 2026-09-19,
-    still true once `install` delegates to the same `enable` flow)."""
+    straight there: user scope is not a step on the way."""
     _stub_picker(monkeypatch, _pick_and_target("pinky-core"))
     _canned_input(monkeypatch, ["y"])
 

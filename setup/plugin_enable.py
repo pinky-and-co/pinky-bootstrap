@@ -29,10 +29,8 @@ from .plugin_reconcile import PluginState, _ScopeLabels
 
 USER_LABEL = "user"
 
-# `...` rather than a precise positional/keyword signature: every call site passes
-# `title=` as a keyword, which a strict `Callable[[Sequence[ChecklistItem]], ...]` cannot
-# express — the exact contract (items in, title=, optional color=, final checked flags or
-# None back) is documented on `tui.run_checklist` itself, the default every caller gets.
+# `...`: callers pass `title=` as a keyword, which a strict `Callable[[...], ...]` cannot
+# express; the contract is `tui.run_checklist`'s.
 Picker = Callable[..., "list[bool]"]
 
 

@@ -313,7 +313,7 @@ def test_global_purge_still_removes_a_file_no_plugin_owns(
     assert not (target / "ancient.md").exists()
 
 
-# ── two-level rules: the user's override dir on top of the shipped rules/<plugin>/ ──
+# ── two-level rules: the user's override dir on top of the shipped rules ──
 
 
 def test_user_rules_dir_adds_a_rule(tmp_path, monkeypatch, installed_plugins_file):
@@ -448,7 +448,7 @@ def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
     assert "minimal-code.md" in landed
 
 
-# ── ancestor coverage: Claude Code already loads a parent's .claude/rules/ ──────
+# ── ancestor coverage: Claude Code already loads a parent's rules ──
 
 
 def _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, *project_paths):

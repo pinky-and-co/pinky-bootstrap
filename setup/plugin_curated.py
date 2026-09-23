@@ -4,8 +4,8 @@ given: a default shipped with this repo, a user file layered on top.
 Two-level model, same shape as `rules.py`'s `RULES_DIR`/`USER_RULES_DIR`: the default ships in
 this repo, the user file's `[[entries]]` add or replace (same `marketplace`/`plugin` pair) a
 default entry, and its `[[remove]]` drops one. TOML throughout — read via `tomllib` (already used
-by `common.py`/`precommit.py`); the user file is the only one ever written back, by hand
-(no TOML writer dependency, decision 2026-09-23).
+elsewhere); the user file is the only one ever written back, serialized by hand — no TOML
+writer dependency.
 """
 
 from __future__ import annotations

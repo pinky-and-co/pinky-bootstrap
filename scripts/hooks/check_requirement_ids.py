@@ -2,7 +2,7 @@
 """
 check_requirement_ids.py — Block requirement ids in any committed text file.
 
-A requirement id (``FR-0024-33``, ``NFR-0024-37``…) points to a chantier story that lives outside
+A requirement id (``FR``, ``NFR``, ``ASS``, ``IMP`` or ``LEG``, a chantier number, an index) points to a chantier story that lives outside
 the repo and whose requirements are pruned once implemented: in a repo file it is a dead reference,
 wherever it sits — ``--help`` text, a string, a comment, a docstring, a test, a Markdown page. The
 fix is to delete it and state the behaviour, never to move it elsewhere.
