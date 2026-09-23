@@ -446,3 +446,94 @@ def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
     landed = {p.name for p in (without_kanban / ".claude/rules").glob("*.md")}
     assert "kanban-proactivity.md" not in landed
     assert "minimal-code.md" in landed
+
+
+# ── ancestor coverage: Claude Code already loads a parent's .claude/rules/ ──────
+
+
+def _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, *project_paths):
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-kanban").mkdir(parents=True)
+    (rules_dir / "pc-kanban" / "kanban-proactivity.md").write_text(
+        "kanban\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    installed_plugins_file(
+        {
+            "pc-kanban@m": [
+                {"scope": "project", "projectPath": str(p)} for p in project_paths
+            ]
+        }
+    )
+
+
+def test_a_target_under_another_target_gets_no_copy(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    ws, group = tmp_path / "ws", tmp_path / "ws" / "group"
+    _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, ws, group)
+
+    result = rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=tmp_path / "u")
+
+    assert set(result["pc-kanban"]) == {ws}
+    assert (ws / ".claude/rules/kanban-proactivity.md").exists()
+    assert not (group / ".claude").exists()
+
+
+def test_a_covered_target_loses_its_stale_copy_and_keeps_hand_written_rules(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    ws, group = tmp_path / "ws", tmp_path / "ws" / "group"
+    _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, ws, group)
+    (group / ".claude/rules").mkdir(parents=True)
+    (group / ".claude/rules/kanban-proactivity.md").write_text(
+        "old\n", encoding="utf-8"
+    )
+    (group / ".claude/rules/local.md").write_text("mine\n", encoding="utf-8")
+
+    result = rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=tmp_path / "u")
+
+    assert result["pc-kanban"][group] == rules_mod.RulesReport(
+        purged=["kanban-proactivity.md"]
+    )
+    assert sorted(p.name for p in (group / ".claude/rules").iterdir()) == ["local.md"]
+
+
+def test_sibling_targets_both_get_a_copy(tmp_path, monkeypatch, installed_plugins_file):
+    a, b = tmp_path / "ws" / "a", tmp_path / "ws" / "b"
+    _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, a, b)
+
+    result = rules_mod.distribute_all_plugin_rules(
+        tmp_path / "ws", user_rules_dir=tmp_path / "u"
+    )
+
+    assert set(result["pc-kanban"]) == {a, b}
+
+
+def test_enable_path_skips_a_present_target_under_a_present_ancestor(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    ws, group = tmp_path / "ws", tmp_path / "ws" / "group"
+    _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file)
+
+    reports = rules_mod.rules_report_for_plugin_at_targets(
+        "pc-kanban", [ws, group], [], ws, user_rules_dir=tmp_path / "u"
+    )
+
+    assert reports[ws] == rules_mod.RulesReport(added=["kanban-proactivity.md"])
+    assert reports[group] == rules_mod.RulesReport()
+    assert not (group / ".claude").exists()
+
+
+def test_enable_path_restores_the_copy_once_the_ancestor_is_dropped(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    ws, group = tmp_path / "ws", tmp_path / "ws" / "group"
+    _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file)
+
+    reports = rules_mod.rules_report_for_plugin_at_targets(
+        "pc-kanban", [group], [ws, group], ws, user_rules_dir=tmp_path / "u"
+    )
+
+    assert reports[group] == rules_mod.RulesReport(added=["kanban-proactivity.md"])
+    assert (group / ".claude/rules/kanban-proactivity.md").exists()

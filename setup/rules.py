@@ -104,6 +104,25 @@ def _distribute_sources(
     )
 
 
+def _covered_by_ancestor(target: Path, targets: Iterable[Path]) -> bool:
+    """True when another of `targets` is a parent of `target` — Claude Code already loads that
+    parent's `.claude/rules/` in any session under it, so a copy here would load twice."""
+    return any(other != target and target.is_relative_to(other) for other in targets)
+
+
+def _withdraw_sources(
+    names: Iterable[str], target_root: Path, *, apply: bool = True
+) -> RulesReport:
+    """Remove only the files named `names` from `<target_root>/.claude/rules/` — never a mirror
+    purge: a covered target may hold its own hand-written rules, which no plugin owns."""
+    target = target_root.expanduser().resolve() / TARGET_REL
+    purged = sorted(name for name in names if (target / name).is_file())
+    if apply:
+        for name in purged:
+            (target / name).unlink()
+    return RulesReport(purged=purged)
+
+
 def distribute_rules(
     rules_source: Path,
     target_root: Path,
@@ -251,7 +270,13 @@ def distribute_all_plugin_rules(
     for plugin_dir in plugin_dirs:
         by_target: dict[Path, RulesReport] = {}
         my_sources = _merged_sources(plugin_dir, user_rules_dir / plugin_dir.name)
-        for target in targets_by_plugin[plugin_dir.name]:
+        my_targets = targets_by_plugin[plugin_dir.name]
+        for target in my_targets:
+            if _covered_by_ancestor(target, my_targets):
+                withdrawn = _withdraw_sources(my_sources, target, apply=apply)
+                if withdrawn.purged:
+                    by_target[target] = withdrawn
+                continue
             sibling_owned = frozenset(
                 name
                 for other in plugins_by_target[target]
@@ -328,11 +353,15 @@ def rules_report_for_plugin_at_targets(
         )
 
     return {
-        target: _distribute_sources(
-            my_sources if target in present else {},
-            target,
-            apply=apply,
-            sibling_owned=sibling_owned_at(target),
+        target: (
+            _withdraw_sources(my_sources, target, apply=apply)
+            if target in present and _covered_by_ancestor(target, present)
+            else _distribute_sources(
+                my_sources if target in present else {},
+                target,
+                apply=apply,
+                sibling_owned=sibling_owned_at(target),
+            )
         )
         for target in sorted(all_targets)
     }
