@@ -96,7 +96,8 @@ def _choice(index: int, item: ChecklistItem) -> questionary.Choice:
         title=_title(item),
         value=index,
         checked=item.checked,
-        disabled=True if not item.selectable else None,
+        # A bool disables without the " (reason)" suffix a string adds; the stub only says str.
+        disabled=True if not item.selectable else None,  # type: ignore[arg-type]
     )
 
 
@@ -111,13 +112,14 @@ def run_checklist(
     so it reaches `cli_pinky`'s handler: one-line message, exit 130, same as an `input()` prompt."""
     use_color = style.use_color() if color is None else color
     choices = [_choice(i, item) for i, item in enumerate(items)]
+    start = _initial_choice(items)
     answer = questionary.checkbox(
         title,
         choices=choices,
         style=_checklist_style(
             color=use_color, light=use_color and style.is_light_theme()
         ),
-        initial_choice=_initial_choice(items),
+        initial_choice=None if start is None else choices[start],
         instruction=INSTRUCTION,
     ).unsafe_ask()
     picked = set(answer)
