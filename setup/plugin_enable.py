@@ -420,12 +420,16 @@ def run(
     yes: bool = False,
     dry_run: bool = False,
     user_rules_dir: Path | None = None,
-) -> None:
+) -> list[str]:
     """`pinky claude-plugin enable`/`disable`: one plan across every named plugin, one `[y/N]`.
 
     `scope` bypasses the interactive table (FR-0024-46): `_desired_from_scope_flags` decides the
     target set directly, no question asked beyond the shared `[y/N]` (skipped too under `--yes`).
     Without it, the table is printed and one toggle-index question adjusts it (FR-0024-44).
+
+    Returns the specs actually written — empty on "nothing to do", a declined plan or `--dry-run`,
+    so a caller like `install` (which still needs to wire a status line / LSP server after a fresh
+    fetch) knows whether anything landed instead of assuming a fetch it may not have caused.
     """
     if action not in ("enable", "disable"):
         raise ValueError(f"unknown action: {action!r}")
@@ -509,12 +513,12 @@ def run(
 
     if not any_changes:
         print("nothing to do")
-        return
+        return []
     if dry_run:
-        return
+        return []
     if not confirm(yes=yes):
         print("cancelled.")
-        return
+        return []
 
     for spec, plugin_id, plugin_marketplace, state, diff in plans:
         _apply_scope_diff(
@@ -530,3 +534,4 @@ def run(
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
     print("applied.")
+    return [spec for spec, _, _, _, diff in plans if diff.has_changes]

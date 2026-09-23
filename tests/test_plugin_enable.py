@@ -332,6 +332,73 @@ def test_disable_table_prefilled_and_unchecking_removes_the_enable(env, monkeypa
     assert _enabled_at(env.ws / "pinky-lib", "pc-snow") is None
 
 
+# ── return value: which specs were actually applied ────────────────────────────────────
+
+
+def test_run_returns_the_applied_spec_on_success(env):
+    applied = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert applied == ["pc-snow"]
+
+
+def test_run_returns_empty_when_nothing_to_do(env):
+    plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    applied = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert applied == []
+
+
+def test_run_returns_empty_on_dry_run(env):
+    applied = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        dry_run=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert applied == []
+    assert not (env.ws / "pinky-lib" / ".claude" / "settings.json").exists()
+
+
+def test_run_returns_empty_when_the_plan_is_declined(env, monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    _canned(monkeypatch, ["n"])
+
+    applied = plugin_enable.run(
+        "enable",
+        ["pc-snow"],
+        env.ws,
+        scope=["pinky-lib"],
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert applied == []
+
+
 # ── rules follow the plugin to its scope (FR-0024-52, 60, 61) ──────────────────────────
 
 

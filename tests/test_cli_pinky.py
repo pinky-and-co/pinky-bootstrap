@@ -75,6 +75,22 @@ def test_no_command_is_an_error_not_a_silent_default(capsys):
     assert exc.value.code != 0
 
 
+def test_ctrl_c_exits_cleanly_with_no_traceback(monkeypatch, capsys):
+    """NFR-0024-37: a `KeyboardInterrupt` anywhere under a command (the scope wizard's `input()`,
+    typically) exits 130 with a one-line message — never a raw Python traceback."""
+
+    def _raise(*_a, **_k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli_pinky_impl, "setup_main", _raise)
+
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["claude-plugin", "install", "pc-x"])
+
+    assert exc.value.code == 130
+    assert "Interrupted" in capsys.readouterr().err
+
+
 def _captured_argv(monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(cli_pinky_impl, "setup_main", lambda argv: calls.append(argv))
@@ -286,6 +302,37 @@ def test_claude_plugin_install_needs_a_plugin(capsys):
     with pytest.raises(SystemExit) as exc:
         cli_pinky.main(["claude-plugin", "install"])
     assert exc.value.code == 2
+
+
+def test_claude_plugin_install_threads_workspace_scope_dry_run_rules_dir(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(
+        [
+            "claude-plugin",
+            "install",
+            "pc-x",
+            "--workspace",
+            "/tmp/ws",
+            "--scope",
+            "pinky-lib",
+            "--dry-run",
+            "--rules-dir",
+            "/tmp/rules",
+        ]
+    )
+    assert calls == [
+        [
+            "--plugin",
+            "pc-x",
+            "--scope",
+            "pinky-lib",
+            "--workspace",
+            "/tmp/ws",
+            "--rules-dir",
+            "/tmp/rules",
+            "--dry-run",
+        ]
+    ]
 
 
 def test_claude_config_preset_install_dispatch(monkeypatch):

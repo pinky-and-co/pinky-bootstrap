@@ -1,52 +1,54 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-08 22:16*
+*Update date : 2026-09-23 10:11*
 
 ```bash
-pinky claude-plugin install <plugin-id> --marketplace <marketplace> [--yes] [--force]
+pinky claude-plugin install <plugin-id> [--marketplace <marketplace>] [--scope <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
 ```
 
-One command. It:
+`install <plugin-id>` downloads the plugin then runs it straight through the same plugin × target
+table as `pinky claude-plugin enable` (FR-0024-31) — a plugin already enabled somewhere shows those
+targets pre-checked, and the plan is the same one `enable` prints:
 
-1. **Asks where first, then downloads there.** Nothing is downloaded before the scope is chosen.
-   `claude plugin install <plugin-id>@<marketplace> --scope project --yes` run from each chosen
-   target downloads the plugin and enables it at that target; `--scope user` is used only when you
-   pick user scope, or for an always-on plugin (`pc-autodiscovery`, `pc-statusline`). Claude needs
-   no user-scope step first (measured 2026-09-02 and 2026-09-19). A plugin's dependencies land at
-   the same scope as the plugin.
+1. **`Workspace: <path> (via <origin>)`** is always the first line — `--workspace` takes priority
+   over `PINKY_WORKSPACE_ROOT`, which takes priority over the nearest `*.code-workspace` marker
+   above the current directory.
 
-   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
-   <version>/`) before the fetch. `claude plugin install`/`update` only ever *fills* an absent
-   cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual release) keeps
-   serving the stale build after you edit its working tree — `--force` is the automated form of
-   the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete only happens when
-   the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere is
-   refused, not removed.
+2. **The table**, one row per known target (`user` first, then the workspace root, then every
+   group/repo below it), checkbox-prefilled from where the plugin is *already* enabled
+   (`installed_plugins.json` + every `settings.json`). Toggle indices to flip a row, Enter to keep
+   it as shown — checking `user` enables it there, unchecking a previously-checked row removes that
+   enable. `--scope <path>` (repeatable, workspace-relative or `user`) replaces the table entirely
+   and answers no question. Nothing is downloaded or written before the plan below is confirmed.
 
-2. **The scope wizard** asks **user or project**, then (project) a depth (root / a group like
-   `pinky-lib/` / a repo nested under a group) and **one or more targets** at that depth. Each
-   target gets `claude plugin install --scope project` run from its own directory — Claude Code's
-   own command writes `<target>/.claude/settings.json` `enabledPlugins` and a
-   `{scope: project, projectPath: <target>}` registry entry. A refusal (bad answer, no tty, Ctrl-C)
-   leaves nothing installed.
+3. **The plan, then `[y/N]`.** Added/removed/unchanged targets, plus the rules that follow the
+   plugin to the same scopes (FR-0024-52). `--yes` skips the confirmation; `--dry-run` prints the
+   plan and writes nothing. Applying it runs `claude plugin install <plugin-id>@<marketplace>
+   --scope project --yes` from each newly-checked target (Claude Code's own command, which writes
+   `<target>/.claude/settings.json` and the registry entry together) or `--scope user` for a
+   newly-checked `user` row — nothing is fetched at user scope on a project-only run (measured
+   2026-09-02 and 2026-09-19). A row explicitly set to `false` (a deliberate "parent wins, off
+   here" opt-out) never shows up as something to re-check on its own; the table only ever reflects
+   what you toggle.
 
    **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
    `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
-   (resolved from `installed_plugins.json`, never a guessed path). Re-run after `claude plugin
-   update` — the path carries the plugin version.
+   (resolved from `installed_plugins.json`, never a guessed path) — only when the plan above
+   actually applied something. Re-run after `claude plugin update` — the path carries the plugin
+   version.
 
-3. **Rescopes — removes an enable the new targets no longer cover.** Before step 1 runs, `pinky`
-   snapshots where this plugin is currently enabled. Once the wizard's targets are known, any
-   snapshotted scope that isn't among them is removed too — a real `claude plugin uninstall
-   --scope <scope>` per stale scope, so re-running `--plugin` with different targets no longer
-   leaves the old ones silently enabled forever. It only fires when there is something to remove,
-   and it asks first:
-   ```
-   Also remove <plugin-id> from: <stale-scope-1>, <stale-scope-2>? [y/N]
-   ```
-   `--yes` skips the prompt and confirms. In a non-interactive shell without `--yes`, nothing is
-   removed — `pinky` prints what's left in place instead of guessing. A scope where the plugin is
-   explicitly set to `false` (a deliberate "parent wins, off here" opt-out) is **not** touched:
-   an install only ever adds a scope, it does not undo an opt-out.
+   `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
+   <version>/`) before the fetch, ahead of the table. `claude plugin install`/`update` only ever
+   *fills* an absent cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual
+   release) keeps serving the stale build after you edit its working tree — `--force` is the
+   automated form of the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete
+   only happens when the resolved path is under `~/.claude/plugins/cache/`; a registry entry
+   pointing elsewhere is refused, not removed.
+
+A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback
+(NFR-0024-37) — nothing is written before the plan is confirmed, so an interrupt before that point
+leaves nothing behind. The one gap: interrupting the *apply* loop itself after picking several
+targets can leave the earlier ones already enabled and the later ones not (no rollback across
+targets — accepted, see the chantier 0024 story's Open questions).
 
 ## During plugin development — local marketplace instead of GitHub
 

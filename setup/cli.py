@@ -6,7 +6,6 @@ from pathlib import Path
 
 from . import agentic_assets, plugin_install
 from .common import WORKSPACE_ROOT, resolve_workspace_root
-from .plugin_scope import run_marketplace_wizard
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
 from .rules import distribute_all_plugin_rules, print_all_plugin_rules_report
@@ -358,27 +357,21 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.plugin is not None:
-        from . import plugin_reconcile
+        from . import plugin_enable
 
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
         print(f"Workspace: {resolved.root} (via {resolved.via})")
-
-        # Snapshot BEFORE touching anything — same discipline as apply_reconcile's own loop (audit
-        # once, act, purge against the pre-action snapshot). `spec` mirrors plugin_install._spec's
-        # format exactly; it stays private there, this is cheap enough not to warrant exporting it.
-        label_map = plugin_reconcile.label_to_settings(resolved.root)
-        audit = plugin_reconcile.audit_plugins(resolved.root)
-        spec = plugin_reconcile.resolve_spec(args.plugin, args.marketplace, audit)
-        prior_state = audit.get(spec)
-        args.marketplace = args.marketplace or spec.partition("@")[2] or None
 
         # 0. Dev cache-bust: `claude plugin install`/`update` only ever fills an absent cache dir,
         #    so a plugin pinned at 0.1.0 can go on serving a stale build after an edit, no signal.
         #    `--force` deletes it first — a no-op on a first install (nothing cached yet).
         if args.force and plugin_install.force_refetch(args.plugin, args.marketplace):
+            spec = (
+                f"{args.plugin}@{args.marketplace}" if args.marketplace else args.plugin
+            )
             print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # 1. An always-on plugin (autodiscovery, statusline) is user scope by design — the only case
-        #    where `pinky` writes there. No depth question to ask.
+        #    where `pinky` writes there. No table to show.
         if args.plugin in plugin_install.KEEP_USER_SCOPE:
             plugin_install.install_plugin_files(args.plugin, args.marketplace)
             written = plugin_install.set_status_lines(
@@ -392,44 +385,35 @@ def main(argv: list[str] | None = None) -> None:
                 f"{args.plugin} kept at user scope (always-on) → ~/.claude/settings.json"
             )
             return
-        # 2. Scope first: nothing is downloaded before the user picked where it goes. A project
-        #    target downloads and enables the plugin right there (`claude plugin install --scope
-        #    project`); user scope is written only when the user chooses it.
-        roots = run_marketplace_wizard(resolved.root, args.plugin, args.marketplace)
-        if roots == [Path.home()]:
-            plugin_install.install_plugin_files(args.plugin, args.marketplace)
-        # 3. The files are cached now, wherever they went: wire what needs them.
-        install_path = plugin_install.resolve_install_path(
-            args.plugin, args.marketplace
+        # 2. Download then place, through the same plugin × target table as `enable` (FR-0024-31) —
+        #    a prior enable anywhere (including a leftover at user scope) shows up pre-checked
+        #    there (FR-0024-45), so unchecking it is how it gets removed; nothing left to do here.
+        plugin_enable.run(
+            "enable",
+            [args.plugin],
+            resolved.root,
+            marketplace=args.marketplace,
+            scope=args.scope,
+            yes=args.yes,
+            dry_run=args.dry_run,
+            user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
         )
+        # 3. Wire what needs the install path — skipped only when nothing was ever fetched (a
+        #    fresh plugin the table left fully unchecked): `dry_run` and a declined/empty plan can
+        #    each reach here with the plugin still not on disk, `resolve_install_path` raises then.
+        #    An already-installed plugin reaches here even on "nothing to do", so a re-run after
+        #    `claude plugin update` still refreshes a stale statusLine/LSP path.
+        try:
+            install_path = plugin_install.resolve_install_path(
+                args.plugin, args.marketplace
+            )
+        except FileNotFoundError:
+            return
         written = plugin_install.set_status_lines(install_path)
         if written:
             print(f"status line wired ({', '.join(written)}) → ~/.claude/settings.json")
         if plugin_install.ships_lsp_server(install_path):
             plugin_install.ensure_lsp_tool_enabled()
-
-        keep = {str(Path.home())} if roots == [Path.home()] else {str(r) for r in roots}
-        # Only a plugin that belongs at user scope (status line, always-on) keeps a user-scope enable
-        # that predates this run: for any other one it is a leftover, offered for removal below.
-        if prior_state is not None and plugin_reconcile.keeps_user_scope(prior_state):
-            keep.add(str(Path.home()))
-        if prior_state is not None:
-            removed = plugin_reconcile.stale_labels(
-                prior_state, label_map, keep=keep, include_disabled=False
-            )
-            if removed:
-                prompt = f"Also remove {args.plugin} from: {', '.join(removed)}? [y/N] "
-                confirmed = args.yes or (
-                    sys.stdin.isatty() and input(prompt).strip().lower() == "y"
-                )
-                if confirmed:
-                    plugin_reconcile.purge_other_enables(
-                        spec, prior_state, label_map, keep=keep, include_disabled=False
-                    )
-                else:
-                    print(f"left unchanged at: {', '.join(removed)}")
-
-        print(f"enabled at: {', '.join(str(r) for r in roots)}")
         return
 
     if args.output_style is not None:

@@ -237,10 +237,18 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         argv = ["--plugin", args.plugin]
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
+        for one_scope in args.scope or []:
+            argv += ["--scope", one_scope]
+        if args.workspace:
+            argv += ["--workspace", args.workspace]
+        if args.rules_dir:
+            argv += ["--rules-dir", args.rules_dir]
         if args.yes:
             argv.append("--yes")
         if args.force:
             argv.append("--force")
+        if args.dry_run:
+            argv.append("--dry-run")
         setup_main(argv)
         _run_doctor_advisory()
     elif args.verb == "list":
@@ -386,6 +394,31 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="delete the plugin's cache dir before fetching, so a plugin pinned at 0.1.0 "
         "re-pulls the working tree (dev cache-bust)",
+    )
+    p.add_argument(
+        "--scope",
+        action="append",
+        default=None,
+        metavar="PATH",
+        help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
+    )
+    p.add_argument(
+        "--workspace",
+        default=None,
+        metavar="PATH",
+        help="the workspace to act on (default: PINKY_WORKSPACE_ROOT, or the nearest "
+        "*.code-workspace marker)",
+    )
+    p.add_argument(
+        "--rules-dir",
+        default=None,
+        metavar="PATH",
+        help="the user's rules override root (default: ~/.claude/rules)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan and stop, write nothing",
     )
     p.set_defaults(func=cmd_claude_plugin)
     p = _add(
@@ -727,11 +760,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command."""
+    """Parse `argv` and dispatch to the matching `cmd_*`; print help and exit 1 if no sub-command.
+
+    A `KeyboardInterrupt` raised anywhere under `args.func` (the scope wizard's `input()`,
+    typically) exits 130 with a one-line message instead of a raw Python traceback (NFR-0024-37).
+    """
     parser = build_parser()
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         sys.exit(1)
-    args.func(args)
+    try:
+        args.func(args)
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        sys.exit(130)
