@@ -1,13 +1,28 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-23 10:44*
+*Update date : 2026-09-23 11:04*
 
 ```bash
-pinky claude-plugin install <plugin-id> [--marketplace <marketplace>] [--scope <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
+pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
 ```
 
 `install <plugin-id>` downloads the plugin then runs it straight through the same plugin × target
 table as `pinky claude-plugin enable` (FR-0024-31) — a plugin already enabled somewhere shows those
-targets pre-checked, and the plan is the same one `enable` prints:
+targets pre-checked, and the plan is the same one `enable` prints. Several plugin ids in one call
+share a single table and a single confirmation.
+
+**No plugin id at all** opens a checkbox list instead — every plugin the curated list names
+(`setup/data/curated_plugins.toml`, a `~/.claude/pinky-curated-plugins.toml` user file layered on
+top, or `--list <path>`) plus every plugin already installed, the installed ones pre-checked. With
+nothing installed yet, the whole curated list starts checked (a fresh machine bootstraps with all
+of it by default). A whole-marketplace curated entry expands to the individual plugins it
+publishes by reading that marketplace's own catalog — but only when this machine already has it
+registered (`claude plugin marketplace add`, once, by hand or via an earlier `install`/`enable`
+run). **A marketplace this machine has never registered contributes no rows at all** — a genuinely
+fresh machine needs `claude plugin marketplace add <source>` run once per curated marketplace
+before its plugins show up in this list; naming a plugin directly (`install pc-x --marketplace
+<name>`) always works regardless. `pinky claude-plugin enable` (no name) opens the same list;
+`pinky claude-plugin disable` (no name) skips the list and acts on every currently installed
+plugin directly — nothing to curate when the point is removal.
 
 1. **`Workspace: <path> (via <origin>)`** is always the first line — `--workspace` takes priority
    over `PINKY_WORKSPACE_ROOT`, which takes priority over the nearest `*.code-workspace` marker

@@ -19,8 +19,9 @@ from types import SimpleNamespace
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import cli, plugin_install, plugin_reconcile, state_file
+from setup import cli, plugin_curated, plugin_install, plugin_reconcile, state_file
 from setup.common import WorkspaceOrigin
+from setup.plugin_curated import CuratedEntry
 
 
 class _ClaudeCliSim:
@@ -353,3 +354,54 @@ def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
         "type": "command",
         "command": f'python3 "{plugin_dir / "scripts" / "statusline.py"}"',
     }
+
+
+# ── no name: the curated/installed picker (install/enable), "all installed" (disable) ──────
+
+
+def test_install_with_no_name_opens_the_picker(env, monkeypatch):
+    monkeypatch.setattr(
+        plugin_curated,
+        "load_curated_entries",
+        lambda: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+    )
+    # picker: keep pc-snow checked (FR-0024-37 prechecks it, nothing installed yet); then row 0
+    # (user) in the target table; confirm.
+    _canned_input(monkeypatch, ["", "0", "y"])
+
+    cli.main(["--plugin"])
+
+    assert _user_enabled(env.home, "pc-snow") is True
+
+
+def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
+    monkeypatch.setattr(
+        plugin_curated,
+        "load_curated_entries",
+        lambda: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+    )
+    _canned_input(monkeypatch, ["", "0", "y"])
+
+    cli.main(["--plugin-enable"])
+
+    assert _user_enabled(env.home, "pc-snow") is True
+
+
+def test_disable_with_no_name_acts_on_every_installed_plugin_without_asking_which(
+    env, monkeypatch
+):
+    _write_enable(env.ws, "pc-snow", True)
+    _canned_input(
+        monkeypatch, ["1", "y"]
+    )  # the table's own toggle+confirm, not a name picker
+
+    cli.main(["--plugin-disable"])
+
+    assert _enabled_at(env.ws, "pc-snow") is None
+
+
+def test_disable_with_no_name_and_nothing_installed_is_a_clean_no_op(env, capsys):
+    cli.main(["--plugin-disable"])
+
+    assert "no plugin installed" in capsys.readouterr().out
+    assert env.sim.calls == []

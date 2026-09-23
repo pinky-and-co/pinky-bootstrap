@@ -166,6 +166,72 @@ def test_toggling_a_row_flips_only_that_index():
     assert plugin_enable._desired_labels(flipped, "pc-snow") == {".", "user"}
 
 
+# ── pick_plugins — the "no name" checkbox list (FR-0024-33, 36, 37) ────────────────────
+
+
+def test_render_plugin_pick_table_exact_text():
+    rows = [
+        plugin_enable.PluginPickRow(0, "pc-a", False),
+        plugin_enable.PluginPickRow(1, "pc-b", True),
+    ]
+    assert plugin_enable.render_plugin_pick_table(rows) == (
+        "  0) [ ] pc-a\n  1) [x] pc-b"
+    )
+
+
+def test_build_plugin_pick_rows_prechecks_only_installed_names():
+    rows = plugin_enable.build_plugin_pick_rows(
+        curated_names=["pc-a", "pc-b", "pc-c"], installed_names=["pc-b"]
+    )
+
+    by_name = {row.name: row.checked for row in rows}
+    assert by_name == {"pc-a": False, "pc-b": True, "pc-c": False}
+
+
+def test_build_plugin_pick_rows_checks_everything_with_no_installed_plugin():
+    """FR-0024-37: `installed_plugins.json` absent or empty → the curated list is entirely
+    checked, not just the (nonexistent) installed subset."""
+    rows = plugin_enable.build_plugin_pick_rows(
+        curated_names=["pc-a", "pc-b"], installed_names=[]
+    )
+
+    assert all(row.checked for row in rows)
+
+
+def test_pick_plugins_returns_the_checked_names_after_a_toggle(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: "0")
+
+    picked = plugin_enable.pick_plugins(
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"]
+    )
+
+    assert set(picked) == {"pc-a", "pc-b"}
+
+
+def test_pick_plugins_keeps_the_default_selection_on_enter(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: "")
+
+    picked = plugin_enable.pick_plugins(
+        curated_names=["pc-a", "pc-b"], installed_names=["pc-b"]
+    )
+
+    assert picked == ["pc-b"]
+
+
+def test_pick_plugins_refuses_without_a_tty(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    with pytest.raises(SystemExit):
+        plugin_enable.pick_plugins(curated_names=["pc-a"], installed_names=[])
+
+
+def test_pick_plugins_refuses_with_nothing_to_pick_from():
+    with pytest.raises(SystemExit):
+        plugin_enable.pick_plugins(curated_names=[], installed_names=[])
+
+
 # ── desired_from_scope_flags — --scope bypasses the table (FR-0024-46) ─────────────────
 
 

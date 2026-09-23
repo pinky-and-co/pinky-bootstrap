@@ -15,7 +15,7 @@ something `enable`/`disable` places or removes.
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -141,6 +141,70 @@ def _apply_toggles(rows: Sequence[ScopeRow], toggled: set[int]) -> list[ScopeRow
 def _desired_labels(rows: Sequence[ScopeRow], plugin_id: str) -> set[str]:
     """The checked labels for one plugin, after the table (or its toggle) settled."""
     return {row.label for row in rows if row.plugin_id == plugin_id and row.checked}
+
+
+@dataclass(frozen=True)
+class PluginPickRow:
+    """One row of the "which plugin(s)" checkbox list (FR-0024-33) — which plugin, distinct from
+    `ScopeRow` (which plugin × which target)."""
+
+    index: int
+    name: str
+    checked: bool
+
+
+def build_plugin_pick_rows(
+    curated_names: Iterable[str], installed_names: Iterable[str]
+) -> list[PluginPickRow]:
+    """Every curated name plus every installed name, deduped and sorted, installed ones
+    pre-checked (FR-0024-36). No installed plugin at all → every row checked instead (FR-0024-37)
+    — a fresh machine bootstraps with the full curated set by default."""
+    installed = set(installed_names)
+    names = sorted(set(curated_names) | installed)
+    fully_checked = not installed
+    return [
+        PluginPickRow(i, name, checked=fully_checked or name in installed)
+        for i, name in enumerate(names)
+    ]
+
+
+def render_plugin_pick_table(rows: Sequence[PluginPickRow]) -> str:
+    """Same shape as `render_scope_table` — a numbered, checkbox-prefixed line per row."""
+    return "\n".join(
+        f"{row.index:>3}) [{'x' if row.checked else ' '}] {row.name}" for row in rows
+    )
+
+
+def pick_plugins(
+    curated_names: Iterable[str], installed_names: Iterable[str]
+) -> list[str]:
+    """`install`/`enable`'s "no name" entry point (FR-0024-33): an interactive checkbox over
+    curated ∪ installed plugin names, returning the checked ones. Errors rather than guessing when
+    there is nothing to pick from or no tty to ask — same discipline as `run`'s own table."""
+    rows = build_plugin_pick_rows(curated_names, installed_names)
+    if not rows:
+        print("No curated or installed plugin to pick from.", file=sys.stderr)
+        raise SystemExit(1)
+    if not sys.stdin.isatty():
+        print("Non-interactive shell — name the plugin(s) explicitly.", file=sys.stderr)
+        raise SystemExit(1)
+    print(render_plugin_pick_table(rows))
+    answer = input(
+        "Toggle indices to flip (space-separated), Enter to keep as shown: "
+    ).strip()
+    if answer:
+        try:
+            toggled = _parse_toggle_indices(answer, len(rows))
+        except ValueError as exc:
+            print(f"Invalid choice: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        rows = [
+            PluginPickRow(row.index, row.name, not row.checked)
+            if row.index in toggled
+            else row
+            for row in rows
+        ]
+    return [row.name for row in rows if row.checked]
 
 
 def _desired_from_scope_flags(

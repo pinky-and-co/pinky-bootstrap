@@ -298,10 +298,12 @@ def test_claude_plugin_install_threads_yes_and_force(monkeypatch):
     assert calls == [["--plugin", "pc-x", "--yes", "--force"]]
 
 
-def test_claude_plugin_install_needs_a_plugin(capsys):
-    with pytest.raises(SystemExit) as exc:
+def test_claude_plugin_install_with_no_name_and_no_tty_names_the_missing_option(capsys):
+    """FR-0024-33/NFR-0024-35: no name opens the curated/installed checkbox list, which needs a
+    tty — outside one, it fails naming what's missing instead of guessing."""
+    with pytest.raises(SystemExit):
         cli_pinky.main(["claude-plugin", "install"])
-    assert exc.value.code == 2
+    assert "name the plugin(s) explicitly" in capsys.readouterr().err
 
 
 def test_claude_plugin_install_threads_workspace_scope_dry_run_rules_dir(monkeypatch):
@@ -333,6 +335,30 @@ def test_claude_plugin_install_threads_workspace_scope_dry_run_rules_dir(monkeyp
             "--dry-run",
         ]
     ]
+
+
+def test_claude_plugin_install_with_no_name_forwards_bare_plugin_flag(monkeypatch):
+    """FR-0024-33: `install` with no name still reaches `--plugin` — `[]` vs the flag never being
+    passed at all is the signal `cli.py` reads to open the picker."""
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "install"])
+    assert calls == [["--plugin"]]
+
+
+def test_claude_plugin_enable_with_no_name_forwards_bare_plugin_enable_flag(
+    monkeypatch,
+):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "enable"])
+    assert calls == [["--plugin-enable"]]
+
+
+def test_claude_plugin_disable_with_no_name_forwards_bare_plugin_disable_flag(
+    monkeypatch,
+):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "disable"])
+    assert calls == [["--plugin-disable"]]
 
 
 def test_claude_config_preset_install_dispatch(monkeypatch):
