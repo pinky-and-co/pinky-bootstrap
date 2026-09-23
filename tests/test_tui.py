@@ -132,7 +132,7 @@ def test_run_checklist_passes_style_and_initial_choice(monkeypatch):
 
     tui.run_checklist(items, title="enable", color=False)
 
-    assert seen["initial_choice"] == 1
+    assert seen["initial_choice"].value == 1
     assert seen["instruction"] == (
         "(arrows move · space toggles · a all · i invert · ✓ = enabled now, uncheck to disable)"
     )
