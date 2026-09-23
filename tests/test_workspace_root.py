@@ -95,7 +95,7 @@ def test_no_marker_anywhere_falls_back_to_the_install_layout(tmp_path, monkeypat
     assert common.find_workspace_root(isolated) == (tmp_path / "workspace")
 
 
-# ── resolve_workspace_root — the same resolution, plus which origin won (FR-0024-48/49) ──
+# ── resolve_workspace_root — the same resolution, plus which origin won ──
 
 
 def test_resolve_workspace_root_explicit_wins_over_everything(tmp_path, monkeypatch):

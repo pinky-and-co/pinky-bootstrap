@@ -2,12 +2,12 @@
 `--scope`, the plan-then-`[y/N]` convention, and the rules that follow a plugin to its scope.
 
 Reuses `plugin_reconcile.audit_plugins`/`label_to_settings` for the state read (one source of
-truth, IMP-0024-31) and `plugin_install`'s scope primitives for the write — this module only adds
+truth) and `plugin_install`'s scope primitives for the write — this module only adds
 the table/diff/plan layer on top, plus the rules side effect (`setup/rules.py`).
 
 A settings label ending in " (local)" is `pc-autodiscovery`'s per-session state
-(`settings.local.json`) — never listed, never touched, never counted as an enable to add or remove
-(IMP-0024-30). The same discipline applies to a registry entry whose `scope` is `local`: it is
+(`settings.local.json`) — never listed, never touched, never counted as an enable to add or remove.
+The same discipline applies to a registry entry whose `scope` is `local`: it is
 `plugin_install`'s own bookkeeping (a language server, an autodiscovery-managed install), not
 something `enable`/`disable` places or removes.
 
@@ -29,10 +29,8 @@ from .plugin_reconcile import PluginState, _ScopeLabels
 
 USER_LABEL = "user"
 
-# `...` rather than a precise positional/keyword signature: every call site passes
-# `title=` as a keyword, which a strict `Callable[[Sequence[ChecklistItem]], ...]` cannot
-# express — the exact contract (items in, title=, optional color=, final checked flags or
-# None back) is documented on `tui.run_checklist` itself, the default every caller gets.
+# `...`: callers pass `title=` as a keyword, which a strict `Callable[[...], ...]` cannot
+# express; the contract is `tui.run_checklist`'s.
 Picker = Callable[..., "list[bool]"]
 
 
@@ -42,7 +40,7 @@ def _is_local_label(label: str) -> bool:
 
 def _current_enabled_labels(state: PluginState) -> set[str]:
     """`state.enabled_at`, with every `(local)` label dropped — a session-scope enable is neither
-    shown in the table nor a candidate for removal (IMP-0024-30)."""
+    shown in the table nor a candidate for removal."""
     return {label for label in state.enabled_at if not _is_local_label(label)}
 
 
@@ -102,7 +100,7 @@ def build_rows(
 ) -> list[ScopeRow]:
     """One `ScopeRow` per (plugin, label) pair — every non-local label known to `label_map`, in
     its existing order (`user` first, then the workspace root, then each group/repo), prefilled
-    from `state.enabled_at` (FR-0024-45)."""
+    from `state.enabled_at`."""
     rows: list[ScopeRow] = []
     index = 0
     for spec, state in plugin_states:
@@ -116,7 +114,7 @@ def build_rows(
 
 
 def filter_checked(rows: Sequence[ScopeRow]) -> list[ScopeRow]:
-    """Only the checked rows, reindexed 0..N-1 — `disable` with no name (FR-0024-34) shows this
+    """Only the checked rows, reindexed 0..N-1 — `disable` with no name shows this
     compact table instead of the full plugin × every-known-target cross product: an unchecked row
     has nothing to remove, so it is noise when the whole point of the run is removal."""
     return [
@@ -208,7 +206,7 @@ def _desired_labels(rows: Sequence[ScopeRow], plugin_id: str) -> set[str]:
 
 @dataclass(frozen=True)
 class PluginPickRow:
-    """One row of the "which plugin(s)" checkbox list (FR-0024-33) — which plugin, distinct from
+    """One row of the "which plugin(s)" checkbox list — which plugin, distinct from
     `ScopeRow` (which plugin × which target)."""
 
     index: int
@@ -220,7 +218,7 @@ def build_plugin_pick_rows(
     curated_names: Iterable[str], installed_names: Iterable[str]
 ) -> list[PluginPickRow]:
     """Every curated name plus every installed name, deduped and sorted, installed ones
-    pre-checked (FR-0024-36). No installed plugin at all → every row checked instead (FR-0024-37)
+    pre-checked. No installed plugin at all → every row checked instead
     — a fresh machine bootstraps with the full curated set by default."""
     installed = set(installed_names)
     names = sorted(set(curated_names) | installed)
@@ -237,7 +235,7 @@ def pick_plugins(
     *,
     picker: Picker | None = None,
 ) -> list[str]:
-    """`install`/`enable`'s "no name" entry point (FR-0024-33): an interactive checkbox over
+    """`install`/`enable`'s "no name" entry point: an interactive checkbox over
     curated ∪ installed plugin names, returning the checked ones. Errors rather than guessing when
     there is nothing to pick from or no tty to ask — same discipline as `run`'s own table.
 
@@ -248,7 +246,7 @@ def pick_plugins(
     """
     picker = picker or tui.run_checklist
     if not sys.stdin.isatty():
-        # NFR-0024-35: a non-interactive shell always needs the plugin(s) named explicitly —
+        # A non-interactive shell always needs the plugin(s) named explicitly —
         # checked ahead of "anything to pick from" so this message never depends on what happens
         # to be curated/installed on the machine running it.
         print("Non-interactive shell — name the plugin(s) explicitly.", file=sys.stderr)
@@ -266,7 +264,7 @@ def _desired_from_scope_flags(
     current: set[str], scope_labels: set[str], *, action: str
 ) -> set[str]:
     """`--scope` bypasses the table entirely: `enable` adds the named labels to what is already
-    enabled, `disable` removes them — never a full replacement of the other scopes (FR-0024-46)."""
+    enabled, `disable` removes them — never a full replacement of the other scopes."""
     if action == "enable":
         return current | scope_labels
     if action == "disable":
@@ -279,7 +277,7 @@ def _inherited_labels(
 ) -> list[str]:
     """Which of `desired`'s directory labels sit strictly under another desired label's directory
     — the child enables pc-autodiscovery creates so a session opened there gets the plugin; shown,
-    never auto-removed (FR-0024-51). `user` is never a directory ancestor of anything and is
+    never auto-removed. `user` is never a directory ancestor of anything and is
     excluded from the comparison."""
     dirs = {
         label: target_dir_for_label(label, label_map, workspace_root)
@@ -329,12 +327,12 @@ def render_scope_plan(
     plugin_id: str, diff: ScopeDiff, *, color: bool = False, autodiscovery: bool = False
 ) -> str:
     """The plan's exact text for one plugin — added / removed / unchanged / inherited, or
-    "nothing to do" when there is nothing to add, remove, or show (NFR-0024-30, NFR-0024-32).
+    "nothing to do" when there is nothing to add, remove, or show.
 
     Inherited children are shown only with `autodiscovery` on: Claude Code reads `enabledPlugins`
     in the opened directory alone, so a child enable is inherited only through pc-autodiscovery —
     without it, that child enable is what makes the plugin active there. Shown even when
-    `has_changes` is false (FR-0024-51: "signalé, jamais silencieux").
+    `has_changes` is false.
 
     `color` paints the same distinctions `setup/doctor.py` does (added = green, removed = red,
     unchanged/inherited = dim) via `setup/style.py` — off by default so a caller that never passes
@@ -463,7 +461,7 @@ def _apply_rules_diff(
     active_dirs_by_plugin: dict[str, set[Path]] | None = None,
 ) -> dict[Path, rules.RulesReport]:
     """The plugin's rules at every target the diff touches — present at what stays/becomes
-    enabled, purged at what stops being enabled (FR-0024-52, 60 to 66). Both directions are
+    enabled, purged at what stops being enabled. Both directions are
     derived from the diff's own settings labels, not a registry read: `current` (unchanged +
     removed) and `desired` (added + unchanged) are the same labels `_compute_diff` used, so a
     bare `@inline` enable (no `installed_plugins.json` entry) is a valid "previously here" or
@@ -560,7 +558,7 @@ def render_rules_plan(
 
 def confirm(*, yes: bool, prompt: str = "Apply this plan? [y/N] ") -> bool:
     """The shared plan-then-`[y/N]` gate: `--yes` skips it, a non-interactive shell without `--yes`
-    refuses rather than guessing (NFR-0024-30, NFR-0024-31, NFR-0024-35)."""
+    refuses rather than guessing."""
     if yes:
         return True
     if not sys.stdin.isatty():
@@ -659,14 +657,14 @@ def run(
 ) -> RunResult:
     """`pinky claude-plugin enable`/`disable`: one plan across every named plugin, one `[y/N]`.
 
-    `scope` bypasses the interactive table (FR-0024-46): `_desired_from_scope_flags` decides the
+    `scope` bypasses the interactive table: `_desired_from_scope_flags` decides the
     target set directly, no question asked beyond the shared `[y/N]` (skipped too under `--yes`).
     Without it, an interactive checklist screen (arrows, space, enter — `tui.run_checklist`) shows the
-    plugin × target tree, prefilled from the current state (FR-0024-44); a cancel (`q`/Esc) reads
+    plugin × target tree, prefilled from the current state; a cancel (`q`/Esc) reads
     as a decline.
 
     `only_checked` (with `scope` unset): the compact table (`filter_checked`) instead of the full
-    plugin × every-known-target cross product — `disable` with no name (FR-0024-34), where an
+    plugin × every-known-target cross product — `disable` with no name, where an
     unchecked row is noise.
 
     `picker` defaults to `tui.run_checklist`, resolved at call time — see `pick_plugins`'s own

@@ -23,9 +23,8 @@ from .common import AGENTIC_HARNESS_DIR
 RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
 TARGET_REL = ".claude/rules"
 INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
-# A user override lives one level below the same "<plugin>/<file>.md" shape as RULES_DIR, under
-# the directory pinky already writes other user-scope customisation to (output-styles, themes —
-# see setup/agentic_assets.py).
+# A user override has RULES_DIR's "<plugin>/<file>.md" shape, beside the other user-scope
+# customisation pinky writes (output styles, themes).
 USER_RULES_DIR = Path.home() / ".claude" / "rules"
 EXCLUDE_SUFFIX = ".md.exclude"
 

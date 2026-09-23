@@ -6,7 +6,7 @@ pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--s
 ```
 
 `install <plugin-id>` downloads the plugin then runs it straight through the same plugin × target
-table as `pinky claude-plugin enable` (FR-0024-31) — a plugin already enabled somewhere shows those
+table as `pinky claude-plugin enable` — a plugin already enabled somewhere shows those
 targets pre-checked, and the plan is the same one `enable` prints. Several plugin ids in one call
 share a single table and a single confirmation.
 
@@ -37,7 +37,7 @@ workspace with several groups/repos).
    and answers no question. Nothing is downloaded or written before the plan below is confirmed.
 
 3. **The plan, then `[y/N]`.** Added/removed/unchanged targets, plus the rules that follow the
-   plugin to the same scopes (FR-0024-52). `--yes` skips the confirmation; `--dry-run` prints the
+   plugin to the same scopes. `--yes` skips the confirmation; `--dry-run` prints the
    plan and writes nothing. Applying it runs `claude plugin install <plugin-id>@<marketplace>
    --scope project --yes` from each newly-checked target (Claude Code's own command, which writes
    `<target>/.claude/settings.json` and the registry entry together) or `--scope user` for a
@@ -61,8 +61,8 @@ workspace with several groups/repos).
    only happens when the resolved path is under `~/.claude/plugins/cache/`; a registry entry
    pointing elsewhere is refused, not removed.
 
-A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback
-(NFR-0024-37) — nothing is written before the plan is confirmed, so an interrupt before that point
+A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback —
+nothing is written before the plan is confirmed, so an interrupt before that point
 leaves nothing behind. The one gap: interrupting the *apply* loop itself after picking several
 targets can leave the earlier ones already enabled and the later ones not (no rollback across
 targets — accepted, see the chantier 0024 story's Open questions).

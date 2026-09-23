@@ -313,11 +313,11 @@ def test_global_purge_still_removes_a_file_no_plugin_owns(
     assert not (target / "ancient.md").exists()
 
 
-# ── two-level rules: the user's override dir on top of the shipped rules/<plugin>/ ──
+# ── two-level rules: the user's override dir on top of the shipped rules ──
 
 
 def test_user_rules_dir_adds_a_rule(tmp_path, monkeypatch, installed_plugins_file):
-    """FR-0024-62: a file added under the user's <plugin>/ dir is distributed alongside the
+    """A file added under the user's <plugin>/ dir is distributed alongside the
     shipped rules, not instead of them."""
     rules_dir = tmp_path / "rules"
     (rules_dir / "pc-toto").mkdir(parents=True)
@@ -339,7 +339,7 @@ def test_user_rules_dir_adds_a_rule(tmp_path, monkeypatch, installed_plugins_fil
 def test_user_rules_dir_file_of_same_name_replaces_shipped_rule(
     tmp_path, monkeypatch, installed_plugins_file
 ):
-    """FR-0024-63: a user file with the same name as a shipped rule wins — the distributed
+    """A user file with the same name as a shipped rule wins — the distributed
     content is the user's, byte for byte."""
     rules_dir = tmp_path / "rules"
     (rules_dir / "pc-toto").mkdir(parents=True)
@@ -363,7 +363,7 @@ def test_user_rules_dir_file_of_same_name_replaces_shipped_rule(
 def test_user_rules_dir_exclude_marker_drops_a_shipped_rule(
     tmp_path, monkeypatch, installed_plugins_file
 ):
-    """FR-0024-64: `<name>.md.exclude` (never itself globbed as a rule) removes a shipped rule
+    """`<name>.md.exclude` (never itself globbed as a rule) removes a shipped rule
     from distribution."""
     rules_dir = tmp_path / "rules"
     (rules_dir / "pc-toto").mkdir(parents=True)
@@ -384,7 +384,7 @@ def test_user_rules_dir_exclude_marker_drops_a_shipped_rule(
 
 
 def test_user_rules_dir_default_path_is_under_dot_claude(monkeypatch):
-    """FR-0024-65 (default path): with no `--rules-dir`, the override root is `~/.claude/rules`
+    """With no `--rules-dir`, the override root is `~/.claude/rules`
     (`USER_RULES_DIR`, resolved from `Path.home()` at import time like every other pinky
     user-scope path — see `INSTALLED_PLUGINS_PATH` above)."""
     monkeypatch.setattr(rules_mod, "USER_RULES_DIR", Path("/fake-home/.claude/rules"))
@@ -392,7 +392,7 @@ def test_user_rules_dir_default_path_is_under_dot_claude(monkeypatch):
 
 
 def test_user_rules_dir_explicit_path_overrides_the_default():
-    """FR-0024-65 (`--rules-dir`): an explicit path wins over the default."""
+    """An explicit `--rules-dir` path wins over the default."""
     explicit = Path("/somewhere/else")
     assert rules_mod.resolve_user_rules_dir(explicit) == explicit
 
@@ -400,7 +400,7 @@ def test_user_rules_dir_explicit_path_overrides_the_default():
 def test_a_rules_dir_for_an_uninstalled_plugin_still_writes_nothing_with_a_user_override(
     tmp_path, monkeypatch, installed_plugins_file
 ):
-    """FR-0024-61 survives the two-level merge: a plugin never installed on this machine still
+    """Holds through the two-level merge: a plugin never installed on this machine still
     resolves to no target, user override or not."""
     rules_dir = tmp_path / "rules"
     (rules_dir / "pc-toto").mkdir(parents=True)
@@ -448,7 +448,7 @@ def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
     assert "minimal-code.md" in landed
 
 
-# ── ancestor coverage: Claude Code already loads a parent's .claude/rules/ ──────
+# ── ancestor coverage: Claude Code already loads a parent's rules ──
 
 
 def _pc_kanban_at(tmp_path, monkeypatch, installed_plugins_file, *project_paths):

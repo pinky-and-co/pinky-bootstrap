@@ -76,7 +76,7 @@ def test_no_command_is_an_error_not_a_silent_default(capsys):
 
 
 def test_ctrl_c_exits_cleanly_with_no_traceback(monkeypatch, capsys):
-    """NFR-0024-37: a `KeyboardInterrupt` anywhere under a command (the scope wizard's `input()`,
+    """A `KeyboardInterrupt` anywhere under a command (the scope wizard's `input()`,
     typically) exits 130 with a one-line message — never a raw Python traceback."""
 
     def _raise(*_a, **_k):
@@ -299,7 +299,7 @@ def test_claude_plugin_install_threads_yes_and_force(monkeypatch):
 
 
 def test_claude_plugin_install_with_no_name_and_no_tty_names_the_missing_option(capsys):
-    """FR-0024-33/NFR-0024-35: no name opens the curated/installed checkbox list, which needs a
+    """No name opens the curated/installed checkbox list, which needs a
     tty — outside one, it fails naming what's missing instead of guessing."""
     with pytest.raises(SystemExit):
         cli_pinky.main(["claude-plugin", "install"])
@@ -356,7 +356,7 @@ def test_claude_plugin_disable_has_no_list_flag(capsys):
 
 
 def test_claude_plugin_install_with_no_name_forwards_bare_plugin_flag(monkeypatch):
-    """FR-0024-33: `install` with no name still reaches `--plugin` — `[]` vs the flag never being
+    """`install` with no name still reaches `--plugin` — `[]` vs the flag never being
     passed at all is the signal `cli.py` reads to open the picker."""
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["claude-plugin", "install"])
