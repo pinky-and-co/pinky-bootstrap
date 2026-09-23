@@ -360,7 +360,11 @@ def main(argv: list[str] | None = None) -> None:
                     installed_names,
                     user_path=Path(args.list) if args.list else None,
                     yes=args.yes,
+                    dry_run=args.dry_run,
                 )
+                if not names:
+                    print("nothing selected")
+                    return
             else:
                 # FR-0024-34: no name → every currently installed plugin, no question asked.
                 names = sorted(
@@ -415,7 +419,11 @@ def main(argv: list[str] | None = None) -> None:
                 installed_names,
                 user_path=Path(args.list) if args.list else None,
                 yes=args.yes,
+                dry_run=args.dry_run,
             )
+            if not names:
+                print("nothing selected")
+                return
 
         # 1. Dev cache-bust, per plugin: `claude plugin install`/`update` only ever fills an
         #    absent cache dir, so a plugin pinned at 0.1.0 can go on serving a stale build after

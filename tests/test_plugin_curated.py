@@ -2,6 +2,7 @@
 43), and the individual-plugin expansion of a whole-marketplace entry (FR-0024-36)."""
 
 import json
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -363,3 +364,77 @@ def test_resolve_no_name_selection_declining_the_add_drops_that_entry(
     )
 
     assert names == []
+
+
+def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
+    curated_env, monkeypatch
+):
+    """NFR-0024-31: `--dry-run` on the no-name path must not `marketplace add` or write the user
+    file, even with the unregistered row checked and `--yes`."""
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        plugin_curated.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("must not add anything under dry_run"),
+    )
+    user_file = tmp_path / "user.toml"
+    _canned(monkeypatch, [""])  # keep the row checked
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=user_file, yes=True, dry_run=True
+    )
+
+    assert names == []
+    assert not user_file.exists()
+
+
+def test_resolve_no_name_selection_excludes_an_already_installed_plugin(
+    curated_env, monkeypatch
+):
+    """FR-0024-44: the table covers what was *newly* selected — an already-installed plugin left
+    checked has nothing to place, so it is not returned here (`install <name>` named directly
+    still opens its own table)."""
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\nplugin = "pc-a"\n\n'
+        '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\nplugin = "pc-b"\n',
+        encoding="utf-8",
+    )
+    _canned(monkeypatch, [""])  # keep as shown: pc-a pre-checked (installed), pc-b not
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path,
+        installed_names=["pc-a"],
+        user_path=tmp_path / "absent-user.toml",
+    )
+
+    assert names == []
+
+
+def test_resolve_no_name_selection_survives_a_failed_marketplace_add(
+    curated_env, monkeypatch, capsys
+):
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        plugin_curated.subprocess,
+        "run",
+        lambda cmd, **kw: (_ for _ in ()).throw(subprocess.CalledProcessError(1, cmd)),
+    )
+    user_file = tmp_path / "user.toml"
+    _canned(monkeypatch, ["", "y"])  # keep the row checked, confirm the add
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=user_file
+    )
+
+    assert names == []
+    assert not user_file.exists()
+    assert "failed to add marketplace fresh" in capsys.readouterr().err

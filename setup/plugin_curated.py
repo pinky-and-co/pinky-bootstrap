@@ -24,8 +24,8 @@ from .common import PACKAGE_DIR
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
 USER_CURATED_PATH = Path.home() / ".claude" / "pinky-curated-plugins.toml"
 # A picker row standing in for a whole-marketplace entry this machine has never registered
-# (FR-0024-39) — not a real plugin name, so `expand_entry` never produces one; only the "no name"
-# picker's own row-building does, and only cli.py ever has to recognise it again.
+# (FR-0024-39) — not a real plugin name, so `expand_entry` never produces one; only
+# `resolve_no_name_selection`'s own row-building and recognition ever touch this marker.
 UNREGISTERED_MARKER = "@"
 
 
@@ -202,16 +202,21 @@ def resolve_no_name_selection(
     *,
     user_path: Path | None = None,
     yes: bool = False,
+    dry_run: bool = False,
 ) -> list[str]:
     """`install`/`enable` with no plugin name, end to end (FR-0024-33, 36, 37, 39, 43): the
     curated ∪ installed picker, a registered marketplace expanded to its plugins, an unregistered
     one offered as a single row — check it, confirm, `claude plugin marketplace add` it, expand it
-    now that it is registered, and offer to remember it in the user file. Returns the plugin names
-    to act on; an unregistered row left unchecked or declined contributes nothing."""
+    now that it is registered, and offer to remember it in the user file. Returns only the newly
+    picked names (FR-0024-44's "selected" plugins) — an already-installed one that stays checked
+    has nothing new to place, so it never reopens its own target table here; `install <name>` (or
+    `enable <name>`) named directly still does. `dry_run`: neither `marketplace add` nor the user
+    file write ever run (NFR-0024-31) — a checked unregistered row is reported, not added."""
     from . import (
         plugin_enable,
     )  # local: plugin_enable never imports this module, no cycle
 
+    installed = set(installed_names)
     entries = load_curated_entries(user_path)
     curated_names: set[str] = set()
     marker_to_entry: dict[str, CuratedEntry] = {}
@@ -223,15 +228,20 @@ def resolve_no_name_selection(
             marker_to_entry[marker] = entry
             curated_names.add(marker)
 
-    picked = plugin_enable.pick_plugins(
-        sorted(curated_names), sorted(set(installed_names))
-    )
+    picked = plugin_enable.pick_plugins(sorted(curated_names), sorted(installed))
     markers = [n for n in picked if n in marker_to_entry]
-    names = [n for n in picked if n not in marker_to_entry]
+    names = [n for n in picked if n not in marker_to_entry and n not in installed]
     if not markers:
         return names
 
     unregistered = [marker_to_entry[m] for m in markers]
+    if dry_run:
+        print(
+            "would add marketplace(s): "
+            f"{', '.join(e.marketplace for e in unregistered)} — dry run"
+        )
+        return names
+
     prompt = (
         "Also add marketplace(s): "
         f"{', '.join(e.marketplace for e in unregistered)}? [y/N] "
@@ -241,8 +251,17 @@ def resolve_no_name_selection(
         print(f"left out: {', '.join(e.marketplace for e in unregistered)}")
         return names
 
+    added = []
     for entry in unregistered:
-        add_marketplace(entry, workspace_root)
+        try:
+            add_marketplace(entry, workspace_root)
+        except subprocess.CalledProcessError as exc:
+            print(
+                f"failed to add marketplace {entry.marketplace}: {exc}", file=sys.stderr
+            )
+            continue
+        added.append(entry)
         names.extend(expand_entry(entry))
-    sync_user_file(unregistered, user_path, yes=yes)
+    if added:
+        sync_user_file(added, user_path, yes=yes)
     return names

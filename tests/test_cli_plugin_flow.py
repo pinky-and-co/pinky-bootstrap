@@ -375,6 +375,44 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
     assert _user_enabled(env.home, "pc-snow") is True
 
 
+def test_install_with_no_name_skips_the_table_for_an_already_installed_pick(
+    env, monkeypatch
+):
+    """FR-0024-44: the table covers what was *newly* selected. Keeping an already-installed
+    plugin checked in the "no name" picker must not reopen its own plugin x every-known-target
+    table — that was the original 528-row bug, reachable again through this path if unfiltered."""
+    _write_enable(env.ws, "pc-snow", True)
+    monkeypatch.setattr(
+        plugin_curated,
+        "load_curated_entries",
+        lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+    )
+    _canned_input(
+        monkeypatch, [""]
+    )  # picker only — no further prompt should ever be asked
+
+    cli.main(["--plugin"])
+
+    out = env.sim.calls
+    assert out == []
+
+
+def test_enable_with_no_name_and_nothing_new_selected_says_so_and_exits_cleanly(
+    env, monkeypatch, capsys
+):
+    _write_enable(env.ws, "pc-snow", True)
+    monkeypatch.setattr(
+        plugin_curated,
+        "load_curated_entries",
+        lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+    )
+    _canned_input(monkeypatch, [""])
+
+    cli.main(["--plugin-enable"])
+
+    assert "nothing selected" in capsys.readouterr().out
+
+
 def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_installs(
     env, monkeypatch
 ):
