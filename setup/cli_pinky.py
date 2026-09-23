@@ -239,6 +239,8 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
             argv += ["--marketplace", args.marketplace]
         for one_scope in args.scope or []:
             argv += ["--scope", one_scope]
+        if args.list:
+            argv += ["--list", args.list]
         if args.workspace:
             argv += ["--workspace", args.workspace]
         if args.rules_dir:
@@ -259,6 +261,8 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
             argv += ["--marketplace", args.marketplace]
         for one_scope in args.scope or []:
             argv += ["--scope", one_scope]
+        if getattr(args, "list", None):  # only the `enable` subparser has --list
+            argv += ["--list", args.list]
         if args.workspace:
             argv += ["--workspace", args.workspace]
         if args.rules_dir:
@@ -408,6 +412,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
     )
     p.add_argument(
+        "--list",
+        default=None,
+        metavar="PATH",
+        help="with no plugin name: the user's curated-list override (default: "
+        "~/.claude/pinky-curated-plugins.toml)",
+    )
+    p.add_argument(
         "--workspace",
         default=None,
         metavar="PATH",
@@ -487,6 +498,14 @@ def build_parser() -> argparse.ArgumentParser:
             metavar="PATH",
             help="a target (workspace-relative path, or `user`), repeatable — bypasses the table",
         )
+        if verb == "enable":
+            p.add_argument(
+                "--list",
+                default=None,
+                metavar="PATH",
+                help="with no plugin name: the user's curated-list override (default: "
+                "~/.claude/pinky-curated-plugins.toml)",
+            )
         p.add_argument(
             "--workspace",
             default=None,

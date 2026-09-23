@@ -113,6 +113,16 @@ def render_scope_table(rows: Sequence[ScopeRow]) -> str:
     )
 
 
+def filter_checked(rows: Sequence[ScopeRow]) -> list[ScopeRow]:
+    """Only the checked rows, reindexed 0..N-1 — `disable` with no name (FR-0024-34) shows this
+    compact table instead of the full plugin × every-known-target cross product: an unchecked row
+    has nothing to remove, so it is noise when the whole point of the run is removal."""
+    return [
+        ScopeRow(i, row.plugin_id, row.label, row.checked)
+        for i, row in enumerate(row for row in rows if row.checked)
+    ]
+
+
 def _parse_toggle_indices(answer: str, count: int) -> set[int]:
     """Space- or comma-separated row indices to flip — empty input flips nothing (keep the table
     as shown)."""
@@ -506,12 +516,17 @@ def run(
     yes: bool = False,
     dry_run: bool = False,
     user_rules_dir: Path | None = None,
+    only_checked: bool = False,
 ) -> RunResult:
     """`pinky claude-plugin enable`/`disable`: one plan across every named plugin, one `[y/N]`.
 
     `scope` bypasses the interactive table (FR-0024-46): `_desired_from_scope_flags` decides the
     target set directly, no question asked beyond the shared `[y/N]` (skipped too under `--yes`).
     Without it, the table is printed and one toggle-index question adjusts it (FR-0024-44).
+
+    `only_checked` (with `scope` unset): the compact table (`filter_checked`) instead of the full
+    plugin × every-known-target cross product — `disable` with no name (FR-0024-34), where an
+    unchecked row is noise.
     """
     if action not in ("enable", "disable"):
         raise ValueError(f"unknown action: {action!r}")
@@ -541,6 +556,8 @@ def run(
         }
     else:
         rows = build_rows(list(zip(specs, states, strict=True)), label_map)
+        if only_checked:
+            rows = filter_checked(rows)
         if rows and sys.stdin.isatty():
             print(render_scope_table(rows))
             answer = input(
@@ -553,6 +570,11 @@ def run(
                     print(f"Invalid choice: {exc}", file=sys.stderr)
                     raise SystemExit(1) from None
                 rows = _apply_toggles(rows, toggled)
+        elif not rows:
+            # only_checked with nothing currently enabled anywhere: an empty table means there is
+            # nothing to disable, not a missing tty — the two must not share one message.
+            print("nothing to do")
+            return RunResult("nothing", [])
         else:
             # No tty to ask the table, and no --scope to skip it: `--yes` only ever skips the
             # `[y/N]` confirmation, never substitutes for "which targets" — accepting it here

@@ -205,6 +205,13 @@ def main(argv: list[str] | None = None) -> None:
         "`user`), repeatable — bypasses the table entirely",
     )
     parser.add_argument(
+        "--list",
+        default=None,
+        metavar="PATH",
+        help="with --plugin/--plugin-enable and no name: the user's curated-list override "
+        "(default: ~/.claude/pinky-curated-plugins.toml)",
+    )
+    parser.add_argument(
         "--workspace",
         default=None,
         metavar="PATH",
@@ -337,20 +344,23 @@ def main(argv: list[str] | None = None) -> None:
         )
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
         print(f"Workspace: {resolved.root} (via {resolved.via})")
+        # Only `disable` with no name gets the compact (checked-only) table — everything it names
+        # is headed for removal, so an unchecked row is noise (FR-0024-34).
+        only_checked = not names and action == "disable"
         if not names:
             if action == "enable":
-                # FR-0024-33: no name → the curated ∪ installed checkbox list.
-                curated = plugin_curated.load_curated_entries()
-                curated_names = sorted(
-                    {n for entry in curated for n in plugin_curated.expand_entry(entry)}
+                # FR-0024-33/36/37/39/43: no name → the curated ∪ installed checkbox list, an
+                # unregistered marketplace's row added (and remembered) on confirmation.
+                installed_names = {
+                    spec.split("@", 1)[0]
+                    for spec in plugin_reconcile.audit_plugins(resolved.root)
+                }
+                names = plugin_curated.resolve_no_name_selection(
+                    resolved.root,
+                    installed_names,
+                    user_path=Path(args.list) if args.list else None,
+                    yes=args.yes,
                 )
-                installed_names = sorted(
-                    {
-                        spec.split("@", 1)[0]
-                        for spec in plugin_reconcile.audit_plugins(resolved.root)
-                    }
-                )
-                names = plugin_enable.pick_plugins(curated_names, installed_names)
             else:
                 # FR-0024-34: no name → every currently installed plugin, no question asked.
                 names = sorted(
@@ -371,6 +381,7 @@ def main(argv: list[str] | None = None) -> None:
             yes=args.yes,
             dry_run=args.dry_run,
             user_rules_dir=_resolve_rules_dir_arg(args.rules_dir),
+            only_checked=only_checked,
         )
         return
 
@@ -391,21 +402,20 @@ def main(argv: list[str] | None = None) -> None:
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
         print(f"Workspace: {resolved.root} (via {resolved.via})")
 
-        # 0. No name at all: the curated ∪ installed checkbox list (FR-0024-33, 36, 37) — the
-        #    installed set doubles as the curated list's own "already have this" signal.
+        # 0. No name at all: the curated ∪ installed checkbox list (FR-0024-33, 36, 37, 39, 43) —
+        #    the installed set doubles as the curated list's own "already have this" signal.
         names = list(args.plugin)
         if not names:
-            curated = plugin_curated.load_curated_entries()
-            curated_names = sorted(
-                {n for entry in curated for n in plugin_curated.expand_entry(entry)}
+            installed_names = {
+                spec.split("@", 1)[0]
+                for spec in plugin_reconcile.audit_plugins(resolved.root)
+            }
+            names = plugin_curated.resolve_no_name_selection(
+                resolved.root,
+                installed_names,
+                user_path=Path(args.list) if args.list else None,
+                yes=args.yes,
             )
-            installed_names = sorted(
-                {
-                    spec.split("@", 1)[0]
-                    for spec in plugin_reconcile.audit_plugins(resolved.root)
-                }
-            )
-            names = plugin_enable.pick_plugins(curated_names, installed_names)
 
         # 1. Dev cache-bust, per plugin: `claude plugin install`/`update` only ever fills an
         #    absent cache dir, so a plugin pinned at 0.1.0 can go on serving a stale build after

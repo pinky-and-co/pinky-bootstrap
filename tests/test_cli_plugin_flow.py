@@ -13,6 +13,7 @@ and `resolve_install_path` (a registry read the sim does not populate). `main` a
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -363,7 +364,7 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
     monkeypatch.setattr(
         plugin_curated,
         "load_curated_entries",
-        lambda: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+        lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
     # picker: keep pc-snow checked (FR-0024-37 prechecks it, nothing installed yet); then row 0
     # (user) in the target table; confirm.
@@ -374,11 +375,44 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
     assert _user_enabled(env.home, "pc-snow") is True
 
 
+def test_install_on_a_fresh_machine_adds_the_unregistered_marketplace_then_installs(
+    env, monkeypatch
+):
+    """FR-0024-37/39/43: a curated marketplace nothing has ever `marketplace add`ed still shows
+    up (as one row), gets added on confirmation, expands, and gets remembered in the user file."""
+    monkeypatch.setattr(
+        plugin_curated,
+        "load_curated_entries",
+        lambda *a, **k: [CuratedEntry("fresh", "owner/fresh-plugins")],
+    )
+    marketplace_calls = []
+
+    def fake_add(entry, workspace_root):
+        marketplace_calls.append(entry.marketplace)
+        monkeypatch.setattr(
+            plugin_curated, "expand_entry", lambda e: ["pc-fresh"] if e is entry else []
+        )
+
+    monkeypatch.setattr(plugin_curated, "add_marketplace", fake_add)
+    user_file = env.ws.parent / "user-curated.toml"
+    # picker: keep the one row checked (FR-0024-37); confirm the marketplace add; confirm saving
+    # it to the user file; row 0 (user) in the target table; confirm.
+    _canned_input(monkeypatch, ["", "y", "y", "0", "y"])
+
+    cli.main(["--plugin", "--list", str(user_file)])
+
+    assert marketplace_calls == ["fresh"]
+    assert _user_enabled(env.home, "pc-fresh") is True
+    assert tomllib.loads(user_file.read_text()) == {
+        "entries": [{"marketplace": "fresh", "source": "owner/fresh-plugins"}]
+    }
+
+
 def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
     monkeypatch.setattr(
         plugin_curated,
         "load_curated_entries",
-        lambda: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
+        lambda *a, **k: [CuratedEntry("mp", "owner/repo", plugin="pc-snow")],
     )
     _canned_input(monkeypatch, ["", "0", "y"])
 
@@ -390,9 +424,11 @@ def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
 def test_disable_with_no_name_acts_on_every_installed_plugin_without_asking_which(
     env, monkeypatch
 ):
+    """FR-0024-34: no name → every installed plugin's current enables, via the compact
+    (checked-only) table — one row here, not the full plugin x every-known-target grid."""
     _write_enable(env.ws, "pc-snow", True)
     _canned_input(
-        monkeypatch, ["1", "y"]
+        monkeypatch, ["0", "y"]
     )  # the table's own toggle+confirm, not a name picker
 
     cli.main(["--plugin-disable"])
@@ -405,3 +441,20 @@ def test_disable_with_no_name_and_nothing_installed_is_a_clean_no_op(env, capsys
 
     assert "no plugin installed" in capsys.readouterr().out
     assert env.sim.calls == []
+
+
+def test_disable_with_no_name_shows_the_compact_table_not_the_full_grid(
+    env, monkeypatch, capsys
+):
+    """A plugin enabled at only one target must not drag every known target (workspace root,
+    every group, every repo) into the "no name" table — only rows actually checked."""
+    _write_enable(env.ws, "pc-snow", True)
+    _write_enable(env.ws / "pinky-core", "pc-x", True)
+    _canned_input(monkeypatch, ["0 1", "y"])
+
+    cli.main(["--plugin-disable"])
+
+    table = capsys.readouterr().out
+    assert table.count(") [") == 2
+    assert _enabled_at(env.ws, "pc-snow") is None
+    assert _enabled_at(env.ws / "pinky-core", "pc-x") is None

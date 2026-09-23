@@ -6,6 +6,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import plugin_curated
 from setup.plugin_curated import CuratedEntry
@@ -128,6 +130,106 @@ def test_expand_entry_is_empty_for_a_marketplace_this_machine_never_registered(
     assert plugin_curated.expand_entry(entry) == []
 
 
+def test_is_registered_true_only_for_a_known_marketplace(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".claude" / "plugins").mkdir(parents=True)
+    monkeypatch.setattr(plugin_curated.plugin_catalog, "CLAUDE_DIR", home / ".claude")
+    (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+        json.dumps({"mp": {"installLocation": "/wherever"}}), encoding="utf-8"
+    )
+
+    assert plugin_curated.is_registered(CuratedEntry("mp", "owner/repo")) is True
+    assert plugin_curated.is_registered(CuratedEntry("never-added", "o/r")) is False
+
+
+# ── resolve_source / add_marketplace — FR-0024-39 ───────────────────────────────────────
+
+
+def test_resolve_source_leaves_a_github_spec_unchanged(tmp_path):
+    assert (
+        plugin_curated.resolve_source("anthropics/claude-plugins-official", tmp_path)
+        == "anthropics/claude-plugins-official"
+    )
+
+
+def test_resolve_source_resolves_a_real_relative_directory_against_the_workspace(
+    tmp_path,
+):
+    (tmp_path / "bootstrap" / "some-plugin-repo").mkdir(parents=True)
+
+    resolved = plugin_curated.resolve_source("bootstrap/some-plugin-repo", tmp_path)
+
+    assert resolved == str(tmp_path / "bootstrap" / "some-plugin-repo")
+
+
+def test_add_marketplace_runs_claude_plugin_marketplace_add(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        plugin_curated.subprocess,
+        "run",
+        lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})(),
+    )
+
+    plugin_curated.add_marketplace(CuratedEntry("mp", "owner/repo"), tmp_path)
+
+    assert calls == [["claude", "plugin", "marketplace", "add", "owner/repo"]]
+
+
+# ── sync_user_file — FR-0024-43 ─────────────────────────────────────────────────────────
+
+
+def test_sync_user_file_appends_a_new_entry_on_yes(tmp_path, monkeypatch):
+    user_file = tmp_path / "curated.toml"
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file
+    )
+
+    assert written is True
+    assert tomllib.loads(user_file.read_text()) == {
+        "entries": [{"marketplace": "mp", "source": "owner/repo"}]
+    }
+
+
+def test_sync_user_file_writes_nothing_on_no(tmp_path, monkeypatch):
+    user_file = tmp_path / "curated.toml"
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file
+    )
+
+    assert written is False
+    assert not user_file.exists()
+
+
+def test_sync_user_file_skips_the_prompt_under_yes(tmp_path, monkeypatch):
+    user_file = tmp_path / "curated.toml"
+    monkeypatch.setattr(
+        "builtins.input", lambda *_: pytest.fail("must not ask under yes=True")
+    )
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file, yes=True
+    )
+
+    assert written is True
+
+
+def test_sync_user_file_is_a_noop_when_nothing_new(tmp_path):
+    user_file = tmp_path / "curated.toml"
+    user_file.write_text(
+        '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\n', encoding="utf-8"
+    )
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file
+    )
+
+    assert written is False
+
+
 # ── render_curated_toml — the exact text FR-0024-43 writes back ───────────────────────────
 
 
@@ -156,3 +258,108 @@ def test_render_curated_toml_exact_text_for_one_entry():
 
 def test_render_curated_toml_of_an_empty_list_is_an_empty_string():
     assert plugin_curated.render_curated_toml([]) == ""
+
+
+# ── resolve_no_name_selection — the whole "no name" flow (FR-0024-33, 36, 37, 39, 43) ──────
+
+
+@pytest.fixture
+def curated_env(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    (home / ".claude" / "plugins").mkdir(parents=True)
+    monkeypatch.setattr(plugin_curated.plugin_catalog, "CLAUDE_DIR", home / ".claude")
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    default_file = tmp_path / "default.toml"
+    monkeypatch.setattr(plugin_curated, "DEFAULT_CURATED_PATH", default_file)
+    return tmp_path, home
+
+
+def _canned(monkeypatch, answers):
+    it = iter(answers)
+    monkeypatch.setattr("builtins.input", lambda *_: next(it))
+
+
+def test_resolve_no_name_selection_expands_an_already_registered_marketplace(
+    curated_env, monkeypatch
+):
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "mp"\nsource = "owner/repo"\n', encoding="utf-8"
+    )
+    marketplace_dir = tmp_path / "checkout"
+    (marketplace_dir / ".claude-plugin").mkdir(parents=True)
+    (marketplace_dir / ".claude-plugin" / "marketplace.json").write_text(
+        json.dumps({"plugins": [{"name": "pc-a"}]}), encoding="utf-8"
+    )
+    (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+        json.dumps({"mp": {"installLocation": str(marketplace_dir)}}), encoding="utf-8"
+    )
+    _canned(monkeypatch, [""])  # keep the (fully checked, FR-0024-37) picker as shown
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+    )
+
+    assert names == ["pc-a"]
+
+
+def test_resolve_no_name_selection_adds_expands_and_offers_to_remember_an_unregistered_entry(
+    curated_env, monkeypatch
+):
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\n',
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        marketplace_dir = tmp_path / "checkout"
+        (marketplace_dir / ".claude-plugin").mkdir(parents=True)
+        (marketplace_dir / ".claude-plugin" / "marketplace.json").write_text(
+            json.dumps({"plugins": [{"name": "pc-fresh"}]}), encoding="utf-8"
+        )
+        (home / ".claude" / "plugins" / "known_marketplaces.json").write_text(
+            json.dumps({"fresh": {"installLocation": str(marketplace_dir)}}),
+            encoding="utf-8",
+        )
+        return type("R", (), {"returncode": 0})()
+
+    monkeypatch.setattr(plugin_curated.subprocess, "run", fake_run)
+    user_file = tmp_path / "user.toml"
+    # picker: keep the one (checked, FR-0024-37) row; confirm the marketplace add; confirm saving
+    # it to the user file.
+    _canned(monkeypatch, ["", "y", "y"])
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=user_file
+    )
+
+    assert names == ["pc-fresh"]
+    assert calls == [["claude", "plugin", "marketplace", "add", "owner/fresh-plugins"]]
+    assert tomllib.loads(user_file.read_text()) == {
+        "entries": [{"marketplace": "fresh", "source": "owner/fresh-plugins"}]
+    }
+
+
+def test_resolve_no_name_selection_declining_the_add_drops_that_entry(
+    curated_env, monkeypatch
+):
+    tmp_path, home = curated_env
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "fresh"\nsource = "owner/fresh-plugins"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        plugin_curated.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("must not add a declined marketplace"),
+    )
+    _canned(monkeypatch, ["", "n"])  # keep the row checked, then decline the add
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path, installed_names=[], user_path=tmp_path / "absent-user.toml"
+    )
+
+    assert names == []

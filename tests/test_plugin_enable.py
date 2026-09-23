@@ -157,6 +157,22 @@ def test_a_local_settings_enable_is_never_a_row(env):
     assert all(not row.checked for row in rows)
 
 
+def test_filter_checked_keeps_only_checked_rows_and_reindexes():
+    rows = [
+        plugin_enable.ScopeRow(0, "pc-a", "user", True),
+        plugin_enable.ScopeRow(1, "pc-a", ".", False),
+        plugin_enable.ScopeRow(2, "pc-b", "user", False),
+        plugin_enable.ScopeRow(3, "pc-b", ".", True),
+    ]
+
+    filtered = plugin_enable.filter_checked(rows)
+
+    assert filtered == [
+        plugin_enable.ScopeRow(0, "pc-a", "user", True),
+        plugin_enable.ScopeRow(1, "pc-b", ".", True),
+    ]
+
+
 def test_toggling_a_row_flips_only_that_index():
     rows = [
         plugin_enable.ScopeRow(0, "pc-snow", "user", False),

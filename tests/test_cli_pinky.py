@@ -337,6 +337,24 @@ def test_claude_plugin_install_threads_workspace_scope_dry_run_rules_dir(monkeyp
     ]
 
 
+def test_claude_plugin_install_threads_list(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "install", "--list", "/tmp/curated.toml"])
+    assert calls == [["--plugin", "--list", "/tmp/curated.toml"]]
+
+
+def test_claude_plugin_enable_threads_list(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "enable", "--list", "/tmp/curated.toml"])
+    assert calls == [["--plugin-enable", "--list", "/tmp/curated.toml"]]
+
+
+def test_claude_plugin_disable_has_no_list_flag(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli_pinky.main(["claude-plugin", "disable", "--list", "/tmp/curated.toml"])
+    assert exc.value.code == 2
+
+
 def test_claude_plugin_install_with_no_name_forwards_bare_plugin_flag(monkeypatch):
     """FR-0024-33: `install` with no name still reaches `--plugin` — `[]` vs the flag never being
     passed at all is the signal `cli.py` reads to open the picker."""
