@@ -20,5 +20,5 @@ Do not wait for "create a card" or "move it to done". Surface the board update a
 - **End of session → handoff.** Before context runs out or the session ends, update the in-progress
   card's handoff so the next session resumes cleanly — narrative first, mechanical state second.
 - **Narrate → log.** Cross-chantier work another session needs to know about goes in
-  `_AGENT_LOG/YYYY-MM-DD_<tool>-<agent-identity>.md` — write it without waiting to be asked, same discipline
+  `_KANBAN/_AGENT_LOG/YYYY-MM-DD_<tool>-<agent-identity>.md` — write it without waiting to be asked, same discipline
   as the card handoff above.

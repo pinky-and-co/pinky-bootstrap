@@ -65,22 +65,40 @@ def _workspace(tmp_path, *, with_file=True, folders=("",), dirs=()):
 
 
 def test_discover_board_mounts_names_and_sorts(tmp_path):
-    root = _workspace(
-        tmp_path, folders=("", "sub"), dirs=("_KANBAN", "_AGENT_LOG", "sub/_KANBAN")
-    )
+    root = _workspace(tmp_path, folders=("", "sub"), dirs=("_KANBAN", "sub/_KANBAN"))
     mounts = live_docs.discover_board_mounts(root)
 
     names = [m.name for m in mounts]
     assert names == sorted(names)
     assert f"{root.name}-kanban" in names
-    assert f"{root.name}-log" in names
     assert "sub-kanban" in names
-    assert "sub-log" not in names  # sub/_AGENT_LOG does not exist
     assert {m.source for m in mounts} == {
         (root / "_KANBAN").resolve(),
-        (root / "_AGENT_LOG").resolve(),
         (root / "sub" / "_KANBAN").resolve(),
     }
+
+
+def test_discover_board_mounts_reaches_the_agent_log_through_the_kanban_mount(tmp_path):
+    """`_AGENT_LOG` nested at `_KANBAN/_AGENT_LOG`, plus a compat symlink at the workspace root
+    (the real-world layout) — one mount only, the log rides along inside it."""
+    root = _workspace(tmp_path, dirs=("_KANBAN", "_KANBAN/_AGENT_LOG"))
+    (root / "_AGENT_LOG").symlink_to(
+        root / "_KANBAN" / "_AGENT_LOG", target_is_directory=True
+    )
+
+    mounts = live_docs.discover_board_mounts(root)
+
+    names = [m.name for m in mounts]
+    assert names == [f"{root.name}-kanban"]
+    (mount,) = mounts
+    assert (mount.source / "_AGENT_LOG").is_dir()
+
+
+def test_discover_board_mounts_ignores_a_sibling_agent_log(tmp_path):
+    """A legacy, un-nested `_AGENT_LOG` sibling of `_KANBAN` still gets no mount of its own."""
+    root = _workspace(tmp_path, dirs=("_KANBAN", "_AGENT_LOG"))
+    names = [m.name for m in live_docs.discover_board_mounts(root)]
+    assert names == [f"{root.name}-kanban"]
 
 
 def test_discover_board_mounts_without_workspace_file(tmp_path):

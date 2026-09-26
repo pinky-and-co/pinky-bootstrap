@@ -47,7 +47,8 @@ _LEDGER_PLIST = "live-docs:plist"
 
 @dataclass(frozen=True)
 class BoardMount:
-    """One symlink the viewer needs: ``docs/<name>`` → the real kanban or agent-log directory."""
+    """One symlink the viewer needs: ``docs/<name>`` → the real ``_KANBAN`` directory. The agent
+    log lives nested at ``_KANBAN/_AGENT_LOG``, so this one mount carries both."""
 
     name: str
     source: Path
@@ -97,12 +98,13 @@ def _strip_jsonc(text: str) -> str:
 
 
 def discover_board_mounts(workspace_root: Path) -> list[BoardMount]:
-    """Every ``_KANBAN`` / ``_AGENT_LOG`` directory reachable from the workspace, as named mounts.
+    """Every ``_KANBAN`` directory reachable from the workspace, as named mounts.
 
     Sources: each ``folders[]`` entry of the ``*.code-workspace`` file (the VSCode multi-root
     convention already declares this N-mount), plus ``workspace_root`` itself. A folder named
-    ``<base>`` contributes ``<base>-kanban`` for its ``_KANBAN`` and ``<base>-log`` for its
-    ``_AGENT_LOG``, whichever exist. Deterministic order (sorted by mount name).
+    ``<base>`` contributes ``<base>-kanban`` when its ``_KANBAN`` exists. The agent log
+    (``_KANBAN/_AGENT_LOG``) is reachable through that same mount, so it gets no mount of its own.
+    Deterministic order (sorted by mount name).
     """
     roots: list[Path] = [workspace_root]
     ws_file = _code_workspace_file(workspace_root)
@@ -121,11 +123,10 @@ def discover_board_mounts(workspace_root: Path) -> list[BoardMount]:
     mounts: dict[str, BoardMount] = {}
     for root in roots:
         base = root.resolve().name
-        for subdir, suffix in (("_KANBAN", "kanban"), ("_AGENT_LOG", "log")):
-            source = root / subdir
-            if source.is_dir():
-                name = f"{base}-{suffix}"
-                mounts.setdefault(name, BoardMount(name=name, source=source.resolve()))
+        source = root / "_KANBAN"
+        if source.is_dir():
+            name = f"{base}-kanban"
+            mounts.setdefault(name, BoardMount(name=name, source=source.resolve()))
     return [mounts[k] for k in sorted(mounts)]
 
 
