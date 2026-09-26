@@ -71,7 +71,11 @@ pinky claude-plugin refresh [<plugin> ...] [--marketplace <marketplace>]
 The `--force` cache-bust alone: no table, no question, no scope or rules change — safe in a
 non-interactive shell. With no name, it refreshes every plugin installed from a `directory`
 marketplace (a working tree on this machine). One line per plugin — refreshed, not installed, or
-fetch failed (exit code 1). A running session keeps the old build until `/reload-plugins`.
+fetch failed (exit code 1).
+
+Under a `directory` marketplace only the status line reads the cache — skills, hooks and MCP
+servers run from the working tree (see below) — so there `refresh` matters for `pc-statusline`
+alone. Under a `github`/`url`/`npm` marketplace every component runs from the cache.
 
 A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback —
 nothing is written before the plan is confirmed, so an interrupt before that point
