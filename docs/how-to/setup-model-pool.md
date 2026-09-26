@@ -1,6 +1,6 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-09-26 23:08*
+*Update date : 2026-09-27 00:49*
 
 `pc-core`'s `adversarial`, `panel` and `pool_check` MCP tools read a pool of non-Claude models from
 the `model_pool` key of `settings.pinky.json` — the same file, and the same ascending resolution
@@ -108,11 +108,19 @@ Then add the pool entry with `"kind": "cli"` and `"provider"` set to the name us
 
 ```bash
 python3 <pinky-agentic-plugins>/plugins/pc-core/mcp/model_adversarial.py --check-pool
+python3 <pinky-agentic-plugins>/plugins/pc-core/mcp/model_adversarial.py --check-pool --provider nvidia
+python3 <pinky-agentic-plugins>/plugins/pc-core/mcp/model_adversarial.py --check-pool --name codestral-latest
 ```
 
-or the `pool_check` MCP tool. Each entry gets a one-line prompt with no tools, four at a time; the
-report gives the latency, or the provider's own error (bad key, rate limit, unknown model, timeout,
-out of memory for a local server). `offline` entries are skipped — `pinky doctor` checks them.
+or the `pool_check` MCP tool (`provider=`, `names=[…]`). Each entry gets a one-line prompt with no
+tools, four at a time; the report gives the latency, or the provider's own error (bad key, rate
+limit, unknown model, timeout, out of memory for a local server). `offline` entries are skipped —
+`pinky doctor` checks them.
+
+Each entry checked is one real call against that provider's quota, so validate a provider you just
+added with `--provider` (or one entry with `--name`, repeatable) rather than the whole pool — an
+evaluation key can be capped at a few dozen calls a day. A filter that matches nothing says so and
+exits 2, so a misspelled provider is not read as "nothing to check".
 
 ## Direct vs aggregator
 
