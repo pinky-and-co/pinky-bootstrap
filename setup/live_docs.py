@@ -54,71 +54,41 @@ class BoardMount:
     source: Path
 
 
-def _code_workspace_file(workspace_root: Path) -> Path | None:
-    """The ``*.code-workspace`` file at ``workspace_root``, or None."""
-    matches = sorted(workspace_root.glob("*.code-workspace"))
-    return matches[0] if matches else None
+SETTINGS_PINKY_PATH = Path.home() / ".claude" / "settings.pinky.json"
 
 
-def _strip_jsonc(text: str) -> str:
-    """Drop ``//`` and ``/* */`` comments — a ``.code-workspace`` file is JSONC. String-aware:
-    a ``//`` inside a quoted value (``"https://…"``, a Proton path) is left alone."""
-    out: list[str] = []
-    i, n, in_string = 0, len(text), False
-    while i < n:
-        c = text[i]
-        if in_string:
-            out.append(c)
-            if c == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if c == '"':
-                in_string = False
-            i += 1
-            continue
-        if c == '"':
-            in_string = True
-            out.append(c)
-            i += 1
-            continue
-        if c == "/" and i + 1 < n and text[i + 1] == "/":
-            while i < n and text[i] != "\n":
-                i += 1
-            continue
-        if c == "/" and i + 1 < n and text[i + 1] == "*":
-            i += 2
-            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
-                i += 1
-            i += 2
-            continue
-        out.append(c)
-        i += 1
-    return "".join(out)
+def _declared_board_roots(workspace_root: Path) -> list[Path]:
+    """Every additional board root declared for ``workspace_root`` in ``kanban_boards`` of
+    ``SETTINGS_PINKY_PATH`` — the sole declaration path (no ``*.code-workspace``, no environment
+    variable). Absent file, absent key, or a malformed value all mean simply none declared;
+    ``pc_kanban_init.py`` (companion repo) is the one place a malformed settings file is refused
+    rather than guessed past."""
+    if not SETTINGS_PINKY_PATH.is_file():
+        return []
+    try:
+        data = json.loads(SETTINGS_PINKY_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    boards = data.get("kanban_boards") if isinstance(data, dict) else None
+    declared = (
+        boards.get(str(workspace_root.resolve())) if isinstance(boards, dict) else None
+    )
+    return (
+        [Path(p) for p in declared if isinstance(p, str)]
+        if isinstance(declared, list)
+        else []
+    )
 
 
 def discover_board_mounts(workspace_root: Path) -> list[BoardMount]:
     """Every ``_KANBAN`` directory reachable from the workspace, as named mounts.
 
-    Sources: each ``folders[]`` entry of the ``*.code-workspace`` file (the VSCode multi-root
-    convention already declares this N-mount), plus ``workspace_root`` itself. A folder named
-    ``<base>`` contributes ``<base>-kanban`` when its ``_KANBAN`` exists. The agent log
-    (``_KANBAN/_AGENT_LOG``) is reachable through that same mount, so it gets no mount of its own.
-    Deterministic order (sorted by mount name).
+    Sources: ``workspace_root`` itself, plus every board declared for it in ``kanban_boards``
+    (``_declared_board_roots``). A folder named ``<base>`` contributes ``<base>-kanban`` when its
+    ``_KANBAN`` exists. The agent log (``_KANBAN/_AGENT_LOG``) is reachable through that same
+    mount, so it gets no mount of its own. Deterministic order (sorted by mount name).
     """
-    roots: list[Path] = [workspace_root]
-    ws_file = _code_workspace_file(workspace_root)
-    if ws_file is not None:
-        try:
-            data = json.loads(_strip_jsonc(ws_file.read_text(encoding="utf-8")))
-        except (OSError, json.JSONDecodeError):
-            data = {}
-        for entry in data.get("folders", []) if isinstance(data, dict) else []:
-            raw = entry.get("path") if isinstance(entry, dict) else None
-            if not isinstance(raw, str):
-                continue
-            p = Path(raw).expanduser()
-            roots.append(p if p.is_absolute() else (ws_file.parent / p).resolve())
+    roots: list[Path] = [workspace_root, *_declared_board_roots(workspace_root)]
 
     mounts: dict[str, BoardMount] = {}
     for root in roots:

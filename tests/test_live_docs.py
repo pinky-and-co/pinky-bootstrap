@@ -6,6 +6,7 @@ oracle (`tests.md` — a `render_*` generator).
 """
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -46,26 +47,32 @@ def ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
 
 
-def _workspace(tmp_path, *, with_file=True, folders=("",), dirs=()):
-    """A workspace root with an optional `.code-workspace` and the given `_KANBAN`/`_AGENT_LOG`."""
+def _workspace(tmp_path, *, dirs=()):
+    """A workspace root with the given `_KANBAN`/`_AGENT_LOG` directories already on disk."""
     root = tmp_path / "ws"
     root.mkdir()
-    if with_file:
-        entries = ", ".join(f'{{ "path": "{p or "."}" }}' for p in folders)
-        (root / "pinky.code-workspace").write_text(
-            '// a jsonc comment\n{\n  /* block */ "folders": [' + entries + "]\n}\n",
-            encoding="utf-8",
-        )
     for d in dirs:
         (root / d).mkdir(parents=True)
     return root
 
 
+def _declare_boards(monkeypatch, tmp_path, mapping):
+    """Point `live_docs.SETTINGS_PINKY_PATH` at a fresh file carrying `kanban_boards: mapping`
+    — the sole declaration path a real `~/.claude/settings.pinky.json` would carry."""
+    settings = tmp_path / "settings.pinky.json"
+    settings.write_text(json.dumps({"kanban_boards": mapping}), encoding="utf-8")
+    monkeypatch.setattr(live_docs, "SETTINGS_PINKY_PATH", settings)
+
+
 # ── discover_board_mounts ───────────────────────────────────────────────────────────────────
 
 
-def test_discover_board_mounts_names_and_sorts(tmp_path):
-    root = _workspace(tmp_path, folders=("", "sub"), dirs=("_KANBAN", "sub/_KANBAN"))
+def test_discover_board_mounts_names_and_sorts(tmp_path, monkeypatch):
+    root = _workspace(tmp_path, dirs=("_KANBAN", "sub/_KANBAN"))
+    _declare_boards(
+        monkeypatch, tmp_path, {str(root.resolve()): [str((root / "sub").resolve())]}
+    )
+
     mounts = live_docs.discover_board_mounts(root)
 
     names = [m.name for m in mounts]
@@ -78,10 +85,15 @@ def test_discover_board_mounts_names_and_sorts(tmp_path):
     }
 
 
-def test_discover_board_mounts_reaches_the_agent_log_through_the_kanban_mount(tmp_path):
+def test_discover_board_mounts_reaches_the_agent_log_through_the_kanban_mount(
+    tmp_path, monkeypatch
+):
     """`_AGENT_LOG` nested at `_KANBAN/_AGENT_LOG` (the real-world layout — the migration script
     keeps no compat symlink at the workspace root) — one mount only, the log rides along inside it."""
     root = _workspace(tmp_path, dirs=("_KANBAN", "_KANBAN/_AGENT_LOG"))
+    monkeypatch.setattr(
+        live_docs, "SETTINGS_PINKY_PATH", tmp_path / "no-such-file.json"
+    )
 
     mounts = live_docs.discover_board_mounts(root)
 
@@ -91,40 +103,35 @@ def test_discover_board_mounts_reaches_the_agent_log_through_the_kanban_mount(tm
     assert (mount.source / "_AGENT_LOG").is_dir()
 
 
-def test_discover_board_mounts_ignores_a_sibling_agent_log(tmp_path):
+def test_discover_board_mounts_ignores_a_sibling_agent_log(tmp_path, monkeypatch):
     """A legacy, un-nested `_AGENT_LOG` sibling of `_KANBAN` still gets no mount of its own."""
     root = _workspace(tmp_path, dirs=("_KANBAN", "_AGENT_LOG"))
+    monkeypatch.setattr(
+        live_docs, "SETTINGS_PINKY_PATH", tmp_path / "no-such-file.json"
+    )
     names = [m.name for m in live_docs.discover_board_mounts(root)]
     assert names == [f"{root.name}-kanban"]
 
 
-def test_discover_board_mounts_without_workspace_file(tmp_path):
-    root = _workspace(tmp_path, with_file=False, dirs=("_KANBAN",))
-    (mount,) = live_docs.discover_board_mounts(root)
-    assert mount.name == f"{root.name}-kanban"
-
-
-def test_discover_board_mounts_tolerates_a_broken_workspace_file(tmp_path):
+def test_discover_board_mounts_default_single_root(tmp_path, monkeypatch):
+    """No `kanban_boards` entry for this root — just the one mount, no error."""
     root = _workspace(tmp_path, dirs=("_KANBAN",))
-    (root / "pinky.code-workspace").write_text("{ not json", encoding="utf-8")
-    (mount,) = live_docs.discover_board_mounts(root)
-    assert mount.name == f"{root.name}-kanban"
-
-
-def test_discover_board_mounts_keeps_a_double_slash_inside_a_string(tmp_path):
-    """A `//` in a quoted path or URL is not a comment — the naive line-strip broke on the
-    real workspace file's Proton path and settings-block URLs."""
-    root = tmp_path / "ws"
-    root.mkdir()
-    external = tmp_path / "proton-like"
-    (external / "_KANBAN").mkdir(parents=True)
-    (root / "pinky.code-workspace").write_text(
-        '{\n  // header comment\n  "settings": { "x": "https://example.com" },\n'
-        f'  "folders": [ {{ "path": "{external.as_posix()}" }} ]\n}}\n',
-        encoding="utf-8",
+    monkeypatch.setattr(
+        live_docs, "SETTINGS_PINKY_PATH", tmp_path / "no-such-file.json"
     )
     (mount,) = live_docs.discover_board_mounts(root)
-    assert mount.name == "proton-like-kanban"
+    assert mount.name == f"{root.name}-kanban"
+
+
+def test_discover_board_mounts_tolerates_a_malformed_settings_file(
+    tmp_path, monkeypatch
+):
+    root = _workspace(tmp_path, dirs=("_KANBAN",))
+    settings = tmp_path / "settings.pinky.json"
+    settings.write_text("not json", encoding="utf-8")
+    monkeypatch.setattr(live_docs, "SETTINGS_PINKY_PATH", settings)
+    (mount,) = live_docs.discover_board_mounts(root)
+    assert mount.name == f"{root.name}-kanban"
 
 
 # ── _copy_tooling / _write_mounts ───────────────────────────────────────────────────────────
@@ -222,7 +229,7 @@ def test_render_plist_full_string_oracle(tmp_path):
 
 
 def test_install_off_macos_installs_tooling_without_a_service(src, tmp_path, ledger):
-    ws = _workspace(tmp_path, with_file=False, dirs=("_KANBAN",))
+    ws = _workspace(tmp_path, dirs=("_KANBAN",))
     install = tmp_path / "install"
     plist = tmp_path / "agent.plist"
 
@@ -249,7 +256,7 @@ def _rc(code):
 
 
 def test_install_on_macos_writes_plist_and_loads_the_agent(src, tmp_path, ledger):
-    ws = _workspace(tmp_path, with_file=False, dirs=("_KANBAN",))
+    ws = _workspace(tmp_path, dirs=("_KANBAN",))
     install = tmp_path / "install"
     plist = tmp_path / "agent.plist"
     calls = []
@@ -277,7 +284,7 @@ def test_install_on_macos_writes_plist_and_loads_the_agent(src, tmp_path, ledger
 def test_install_reports_a_failed_bootstrap_instead_of_claiming_loaded(
     src, tmp_path, ledger
 ):
-    ws = _workspace(tmp_path, with_file=False, dirs=("_KANBAN",))
+    ws = _workspace(tmp_path, dirs=("_KANBAN",))
     result = live_docs.install(
         workspace_root=ws,
         src=src,
@@ -296,7 +303,7 @@ def test_install_refuses_a_plist_it_does_not_own(src, tmp_path, ledger):
 
     with pytest.raises(live_docs.LiveDocsConflict):
         live_docs.install(
-            workspace_root=_workspace(tmp_path, with_file=False, dirs=("_KANBAN",)),
+            workspace_root=_workspace(tmp_path, dirs=("_KANBAN",)),
             src=src,
             install_dir=install,
             plist_path=plist,
@@ -312,7 +319,7 @@ def test_install_force_replaces_a_foreign_plist(src, tmp_path, ledger):
     plist.write_text("<plist>someone else</plist>", encoding="utf-8")
 
     result = live_docs.install(
-        workspace_root=_workspace(tmp_path, with_file=False, dirs=("_KANBAN",)),
+        workspace_root=_workspace(tmp_path, dirs=("_KANBAN",)),
         src=src,
         install_dir=install,
         plist_path=plist,
@@ -337,7 +344,7 @@ def test_status_absent_then_mine_then_not_mine(src, tmp_path, ledger):
     )
 
     live_docs.install(
-        workspace_root=_workspace(tmp_path, with_file=False, dirs=("_KANBAN",)),
+        workspace_root=_workspace(tmp_path, dirs=("_KANBAN",)),
         src=src,
         install_dir=install,
         plist_path=plist,
@@ -369,7 +376,7 @@ def test_status_off_macos_reflects_the_tooling_ledger_without_a_plist(
         == state_file.EntryStatus.ABSENT
     )
     live_docs.install(
-        workspace_root=_workspace(tmp_path, with_file=False, dirs=("_KANBAN",)),
+        workspace_root=_workspace(tmp_path, dirs=("_KANBAN",)),
         src=src,
         install_dir=install,
         plist_path=plist,
@@ -387,7 +394,7 @@ def test_uninstall_removes_only_what_was_posed(src, tmp_path, ledger):
     plist = tmp_path / "agent.plist"
     calls = []
     live_docs.install(
-        workspace_root=_workspace(tmp_path, with_file=False, dirs=("_KANBAN",)),
+        workspace_root=_workspace(tmp_path, dirs=("_KANBAN",)),
         src=src,
         install_dir=install,
         plist_path=plist,
@@ -423,7 +430,7 @@ def test_uninstall_leaves_a_plist_it_did_not_pose(tmp_path, ledger):
 
 
 def test_serve_refreshes_mounts_then_runs_mkdocs(src, tmp_path, capsys):
-    ws = _workspace(tmp_path, with_file=False, dirs=("_KANBAN",))
+    ws = _workspace(tmp_path, dirs=("_KANBAN",))
     install = tmp_path / "install"
     cmds = []
 
