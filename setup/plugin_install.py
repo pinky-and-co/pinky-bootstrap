@@ -32,12 +32,14 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Literal
 from pathlib import Path
 
 from . import state_file
 
 _PLUGINS_DIR = Path.home() / ".claude" / "plugins"
 _REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
+_MARKETPLACES = _PLUGINS_DIR / "known_marketplaces.json"
 _CACHE_ROOT = _PLUGINS_DIR / "cache"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
@@ -338,3 +340,88 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
             print(exc.stderr, end="", file=sys.stderr)
         raise
     return True
+
+
+@dataclass(frozen=True)
+class RefreshOutcome:
+    """What `refresh_plugins` did for one plugin: `refreshed`, `absent` (nothing cached or not a
+    cache dir `force_refetch` may delete), or `failed` (the fetch errored — its stderr is already
+    printed)."""
+
+    spec: str
+    status: Literal["refreshed", "absent", "failed"]
+
+
+def local_marketplace_plugins() -> list[str]:
+    """Every installed `<plugin>@<marketplace>` whose marketplace is a `directory` source — a
+    working tree on this machine, the only place a plugin gets edited without a version bump.
+
+    Returns:
+        The registry keys, sorted; empty when either registry file is missing or unreadable.
+    """
+    try:
+        marketplaces = json.loads(_MARKETPLACES.read_text(encoding="utf-8"))
+        plugins = json.loads(_REGISTRY.read_text(encoding="utf-8")).get("plugins", {})
+    except (OSError, json.JSONDecodeError):
+        return []
+    local = {
+        name
+        for name, entry in marketplaces.items()
+        if isinstance(entry, dict)
+        and entry.get("source", {}).get("source") == "directory"
+    }
+    return sorted(key for key in plugins if key.split("@", 1)[-1] in local)
+
+
+def refresh_plugins(
+    specs: list[str], marketplace: str | None = None
+) -> list[RefreshOutcome]:
+    """Clear and refetch each plugin's cache — no scope plan, no question, nothing but the files.
+
+    Args:
+        specs: plugin names, bare or `<plugin>@<marketplace>`; empty means every plugin
+            `local_marketplace_plugins` returns.
+        marketplace: applied to every bare name in `specs`.
+
+    Returns:
+        One outcome per plugin, in order. A failed fetch does not stop the others.
+    """
+    outcomes = []
+    for spec in specs or local_marketplace_plugins():
+        name, _, own_marketplace = spec.partition("@")
+        try:
+            refreshed = force_refetch(name, own_marketplace or marketplace)
+        except subprocess.CalledProcessError:
+            outcomes.append(RefreshOutcome(spec, "failed"))
+            continue
+        outcomes.append(RefreshOutcome(spec, "refreshed" if refreshed else "absent"))
+    return outcomes
+
+
+_REFRESH_LABELS = {
+    "refreshed": ("✅", "refreshed"),
+    "absent": ("• ", "not installed — nothing to refresh"),
+    "failed": ("❌", "fetch failed (see the error above)"),
+}
+
+
+def render_refresh_report(outcomes: list[RefreshOutcome]) -> str:
+    """The per-plugin report `pinky claude-plugin refresh` prints.
+
+    Args:
+        outcomes: what `refresh_plugins` returned.
+
+    Returns:
+        One aligned line per plugin plus the reload reminder, or a single line when nothing
+        matched.
+    """
+    if not outcomes:
+        return "nothing to refresh — no plugin installed from a local (directory) marketplace"
+    width = max(len(o.spec) for o in outcomes)
+    lines = [
+        f"{_REFRESH_LABELS[o.status][0]} {o.spec.ljust(width)}  {_REFRESH_LABELS[o.status][1]}"
+        for o in outcomes
+    ]
+    return "\n".join(
+        [*lines, "", "Running sessions keep the old build until /reload-plugins."]
+    )

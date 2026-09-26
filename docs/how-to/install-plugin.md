@@ -54,12 +54,24 @@ workspace with several groups/repos).
    writes it. Re-run after `claude plugin update` — the path carries the plugin version.
 
    `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
-   <version>/`) before the fetch, ahead of the table. `claude plugin install`/`update` only ever
-   *fills* an absent cache dir, so a plugin pinned at `0.1.0` (no version bump until an actual
-   release) keeps serving the stale build after you edit its working tree — `--force` is the
-   automated form of the `rm -rf` you'd otherwise do by hand. No-op on a first install. The delete
-   only happens when the resolved path is under `~/.claude/plugins/cache/`; a registry entry
-   pointing elsewhere is refused, not removed.
+   <version>/`) and fetch it again, ahead of the table. `claude plugin install` only ever *fills*
+   an absent cache dir and `update` skips a plugin whose version did not move, so a plugin pinned
+   at `0.1.0` (no version bump until an actual release) keeps serving the stale build after you
+   edit its working tree. The refetch reinstalls at the scope `installed_plugins.json` already
+   records, whatever the table then decides. No-op on a first install. The delete only happens
+   when the resolved path is under `~/.claude/plugins/cache/`; a registry entry pointing elsewhere
+   is refused, not removed.
+
+## Refresh a plugin's cache without the table
+
+```bash
+pinky claude-plugin refresh [<plugin> ...] [--marketplace <marketplace>]
+```
+
+The `--force` cache-bust alone: no table, no question, no scope or rules change — safe in a
+non-interactive shell. With no name, it refreshes every plugin installed from a `directory`
+marketplace (a working tree on this machine). One line per plugin — refreshed, not installed, or
+fetch failed (exit code 1). A running session keeps the old build until `/reload-plugins`.
 
 A `Ctrl-C` at any prompt exits with a one-line message and code `130`, never a Python traceback —
 nothing is written before the plan is confirmed, so an interrupt before that point

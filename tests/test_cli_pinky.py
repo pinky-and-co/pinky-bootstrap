@@ -451,6 +451,18 @@ def test_claude_plugin_list_who_dispatch(monkeypatch):
     assert calls == [["--plugins-who"]]
 
 
+def test_claude_plugin_refresh_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "refresh", "pc-git", "pc-kanban"])
+    assert calls == [["--plugins-refresh", "pc-git", "pc-kanban"]]
+
+
+def test_claude_plugin_refresh_no_name_dispatch(monkeypatch):
+    calls = _captured_argv(monkeypatch)
+    cli_pinky.main(["claude-plugin", "refresh"])
+    assert calls == [["--plugins-refresh"]]
+
+
 def test_claude_plugin_reconcile_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["claude-plugin", "reconcile"])

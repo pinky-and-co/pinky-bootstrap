@@ -24,6 +24,9 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin_install, "_REGISTRY", registry)
     monkeypatch.setattr(plugin_install, "_USER_SETTINGS", settings)
     monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
+    monkeypatch.setattr(
+        plugin_install, "_MARKETPLACES", tmp_path / "known_marketplaces.json"
+    )
     monkeypatch.setattr(state_file, "STATE_FILE_PATH", tmp_path / "ledger.json")
     return tmp_path
 
@@ -423,3 +426,97 @@ def test_ensure_lsp_tool_enabled_records_the_ledger(home):
     entry = raw["env.ENABLE_LSP_TOOL@user"]
     assert entry["path"] == str(home / "settings.json")
     assert entry["value"] == "1"
+
+
+def _seed_two_marketplaces(home: Path) -> None:
+    """`pc-a` from a local `directory` marketplace, `pc-b` from a GitHub one, both cached."""
+    entries = {}
+    for key in ("pc-a@local", "pc-b@remote"):
+        name, mp = key.split("@")
+        install = home / "cache" / mp / name / "0.1.0"
+        install.mkdir(parents=True)
+        entries[key] = [
+            {"scope": "user", "installPath": str(install), "version": "0.1.0"}
+        ]
+    (home / "installed_plugins.json").write_text(
+        json.dumps({"version": 2, "plugins": entries}), encoding="utf-8"
+    )
+    (home / "known_marketplaces.json").write_text(
+        json.dumps(
+            {
+                "local": {"source": {"source": "directory", "path": "/src/local"}},
+                "remote": {"source": {"source": "github", "repo": "o/r"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_refresh_with_no_name_refreshes_only_local_marketplace_plugins(
+    home, monkeypatch
+):
+    calls = _record_calls(monkeypatch)
+    _seed_two_marketplaces(home)
+
+    outcomes = plugin_install.refresh_plugins([])
+
+    assert outcomes == [plugin_install.RefreshOutcome("pc-a@local", "refreshed")]
+    assert [cmd[3] for cmd, _ in calls] == ["pc-a@local"]
+
+
+def test_refresh_named_plugin_resolves_its_marketplace(home, monkeypatch):
+    _record_calls(monkeypatch)
+    _seed_two_marketplaces(home)
+
+    outcomes = plugin_install.refresh_plugins(["pc-b"])
+
+    assert outcomes == [plugin_install.RefreshOutcome("pc-b", "refreshed")]
+
+
+def test_refresh_reports_a_plugin_that_is_not_installed(home, monkeypatch):
+    calls = _record_calls(monkeypatch)
+    _seed_two_marketplaces(home)
+
+    outcomes = plugin_install.refresh_plugins(["pc-nope"])
+
+    assert outcomes == [plugin_install.RefreshOutcome("pc-nope", "absent")]
+    assert calls == []
+
+
+def test_refresh_keeps_going_after_a_failed_fetch(home, monkeypatch, capsys):
+    def fake_run(cmd, **kw):
+        if cmd[3] == "pc-a@local":
+            raise subprocess.CalledProcessError(1, cmd, "", "boom\n")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    _seed_two_marketplaces(home)
+
+    outcomes = plugin_install.refresh_plugins(["pc-a", "pc-b"])
+
+    assert outcomes == [
+        plugin_install.RefreshOutcome("pc-a", "failed"),
+        plugin_install.RefreshOutcome("pc-b", "refreshed"),
+    ]
+    assert "boom" in capsys.readouterr().err
+
+
+def test_render_refresh_report():
+    outcomes = [
+        plugin_install.RefreshOutcome("pc-git", "refreshed"),
+        plugin_install.RefreshOutcome("pc-nope", "absent"),
+        plugin_install.RefreshOutcome("pc-core", "failed"),
+    ]
+    assert plugin_install.render_refresh_report(outcomes) == (
+        "✅ pc-git   refreshed\n"
+        "•  pc-nope  not installed — nothing to refresh\n"
+        "❌ pc-core  fetch failed (see the error above)\n"
+        "\n"
+        "Running sessions keep the old build until /reload-plugins."
+    )
+
+
+def test_render_refresh_report_when_nothing_matched():
+    assert plugin_install.render_refresh_report([]) == (
+        "nothing to refresh — no plugin installed from a local (directory) marketplace"
+    )
