@@ -1,40 +1,27 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-08-27 18:00*
+*Update date : 2026-09-26 23:08*
 
-`pc-core`'s `adversarial` MCP tool (and, in the future, a task-delegation consumer) reads a pool of
-non-Claude models from the `model_pool` key of `settings.pinky.json` — the same file, and the same
-ascending resolution (repo → parent directories → `~/.claude/`), that every other pinky setting uses
-(see `.claude/settings.pinky.json` conventions elsewhere in this doc set). No `model_pool` key
-anywhere in the chain → the tool falls back to a single built-in Mistral entry, so an unconfigured
-account keeps working. In practice this key almost always lives at the **account** tier
-(`~/.claude/settings.pinky.json`) — a repo-level override is legal (same mechanism, no special
-case) but rarely useful, since a model pool is a machine/account fact, not a per-repo one.
+`pc-core`'s `adversarial`, `panel` and `pool_check` MCP tools read a pool of non-Claude models from
+the `model_pool` key of `settings.pinky.json` — the same file, and the same ascending resolution
+(repo → parent directories → `~/.claude/`), that every other pinky setting uses. No `model_pool` key
+anywhere in the chain → a single built-in `mistral-medium-3.5` entry. In practice the key lives at
+the **account** tier (`~/.claude/settings.pinky.json`): a model pool is a machine/account fact, not
+a per-repo one.
+
+Every remote model is called through `pi`: `pi -p --model <provider>/<model>`. The pool says *which*
+models to use; pi knows *where* they are (its built-in providers, or `~/.pi/agent/models.json`).
+Keys stay in the keychain: the `keys` array of the same `settings.pinky.json` (see
+`setup-declarative-secrets.md`) is resolved once per run and handed to each pi call as environment
+variables — for Bash through `load_secrets`, for the MCP server through `secret_env`, since that
+process never receives `$CLAUDE_ENV_FILE`. pi's own `auth.json` is not needed.
 
 ## Files
 
 | File | Contents | Committed? |
 |---|---|---|
-| `~/.claude/settings.pinky.json` | `{"model_pool": [...], "keys": [...]}` (see schema below), alongside any other pinky setting | never |
-
-Store each provider's key in the **classic macOS keychain**, under a service name equal to the
-entry's `api_key_env` (`MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, ...). Declaring it in the `keys`
-array too is recommended but not required by the pool — see `setup-declarative-secrets.md` for the
-schema and the `security add-generic-password` commands.
-
-`resolve_api_key_for` reads, in order: the `api_key_env` variable from the process environment,
-then a keychain item of that same name. **No plaintext file anywhere** — a keychain item is the
-only supported store.
-
-The env-var branch matters less than it looks: the `adversarial` MCP tool runs in a server process
-that never receives `$CLAUDE_ENV_FILE` (Claude Code sources that for Bash commands only), so
-`load_secrets.py` exporting the key does **not** reach it — the keychain read is the real path. The
-env branch only catches a key exported into the session by hand, or a bare-CLI
-`model_adversarial.py --task ...` run with the var already set.
-
-Keychain reads need the `login` keychain unlocked (it unlocks with your macOS GUI session). A
-headless/SSH caller with the keychain locked gets no key and that pool entry is skipped — acceptable
-for a live-review tool, revisit only if a scheduled local caller needs it.
+| `~/.claude/settings.pinky.json` | `{"model_pool": [...], "keys": [...]}` (schema below), alongside any other pinky setting | never |
+| `~/.pi/agent/models.json` | custom providers pi does not ship (Cohere, a local MLX server, …) | never |
 
 ## Pool entry schema
 
@@ -43,11 +30,9 @@ for a live-review tool, revisit only if a scheduled local caller needs it.
   "model_pool": [
     {
       "name": "mistral-medium-3.5",
-      "kind": "http",
+      "kind": "cli",
       "provider": "mistral",
       "model": "mistral-medium-3.5",
-      "base_url": "https://api.mistral.ai/v1/chat/completions",
-      "api_key_env": "MISTRAL_API_KEY",
       "capacity_tier": "opus",
       "free_tier": false,
       "concurrency": null
@@ -56,30 +41,78 @@ for a live-review tool, revisit only if a scheduled local caller needs it.
 }
 ```
 
-- `api_key_env` — the env var checked first for this entry's key, and the macOS keychain service
-  name checked next. No file fallback — see "Files" above.
-- `kind` — `"http"` (called directly, OpenAI-compatible `/v1/chat/completions`) or `"offline"`
-  (routed to the separate zero-egress `offline` MCP tool instead — never called through this pool's
-  HTTP path, so its answer body never crosses into the cloud tool's return value).
-- `capacity_tier` — rough Claude-tier equivalence (`haiku`/`sonnet`/`opus`), used both as
-  `adversarial`'s capacity floor and delegation's "cheapest that can still do it" filter.
+- `kind` — `"cli"` (called through pi) or `"offline"` (routed to the separate zero-egress `offline`
+  MCP tool, never through the pool). A leftover `"http"` entry is refused with a message saying to
+  declare its provider in pi.
+- `provider` + `model` — joined as pi's `--model <provider>/<model>`. The provider prefix is never
+  optional: the same model id can exist under several providers, and pi would pick one on its own.
+- `capacity_tier` — rough Claude-tier equivalence (`haiku`/`sonnet`/`opus`): `adversarial`'s floor,
+  delegation's "cheapest that can still do it" filter, and `panel`'s eligibility (sonnet/opus by
+  default).
 - `free_tier` — no marginal cost; drives delegation's cost order (free before paid).
-- `concurrency` — max simultaneous tasks, or `null` for no known limit. Set to `1` for a local/offline
-  entry (one machine) — recorded for a future concurrent dispatcher, not enforced by the pool
-  selectors themselves today.
-- `max_tokens` — optional, overrides the module's global response-token budget for this entry only.
-  Needed when a free tier's tokens-per-minute quota is tighter than the default (confirmed on Groq:
-  `openai/gpt-oss-120b`'s free tier caps at 8000 TPM, below the default budget alone — a real `413`,
-  not assumed). Omit for providers with a generous enough quota.
+- `concurrency` — max simultaneous tasks, or `null` for no known limit. Recorded, not enforced.
+- `local` — `true` for a model on this machine; sorts it before an equally ranked remote one.
+- `timeout` — optional seconds to wait for this entry, overriding the caller's default (180s for
+  `adversarial`/`panel`, 60s for `pool_check`). For a slow provider that still answers well —
+  NVIDIA NIM models took 90–250s for a one-line reply.
+- `thinking` — optional pi thinking level (`off`, `low`, `medium`, …). Absent → pi's own default.
+  Set `off` for a small local model: a thinking pass drowns it into an empty answer.
 
-Adding a provider is a config-only change — no `pc-core` code references a provider name.
+Tools are never set in the pool. `adversarial` and `panel` take a `tools` argument per call
+(`["read", "grep"]`); without it the model gets `--no-tools` and sees only its prompt.
 
-## A plain `urllib` request gets blocked by some providers' WAF
+## Adding a provider pi does not know
 
-Confirmed on Groq: the default `urllib` User-Agent trips a Cloudflare rule (error code 1010, a bare
-`403`, easy to misread as an auth problem). `call_provider` already sends a fixed `User-Agent`
-header for every request — nothing to configure per entry, but worth knowing if you're debugging a
-`403` from a new provider that looks unrelated to the API key.
+Declare it in `~/.pi/agent/models.json`, its key read from the environment that `keys` fills —
+nothing in plaintext:
+
+```json
+{
+  "providers": {
+    "cohere": {
+      "baseUrl": "https://api.cohere.com/compatibility/v1",
+      "api": "openai-completions",
+      "apiKey": "$COHERE_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "supportsStore": false,
+        "supportsUsageInStreaming": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        { "id": "command-a-03-2025", "maxTokens": 8000 },
+        { "id": "command-r7b-12-2024", "maxTokens": 4000 }
+      ]
+    }
+  }
+}
+```
+
+A bare `400 status code (no body)` from a new OpenAI-compatible provider usually means pi sent a
+field it rejects: pi's default `maxTokens` (16384) above the model's own output cap, `store`,
+`stream_options`, or `max_completion_tokens`. The `compat` block above turns those off.
+
+Then store the key in the keychain under `COHERE_API_KEY` and declare it in `keys`
+(`{"reader": "macos_keychain", "service": "COHERE_API_KEY", "env": "COHERE_API_KEY"}`).
+
+The keychain item must list `apple-tool:` in its partition list — the hidden ACL entry that lets
+`/usr/bin/security` read it without a password dialog. An item created with
+`security add-generic-password` has it; one saved from the Keychain Access app gets `apple:` instead,
+and Keychain Access never shows the difference. Fix an item with
+`security set-generic-password-partition-list -S apple-tool:,apple: -a <user> -s <SERVICE>`.
+
+Then add the pool entry with `"kind": "cli"` and `"provider"` set to the name used in `models.json`.
+
+## Checking the pool
+
+```bash
+python3 <pinky-agentic-plugins>/plugins/pc-core/mcp/model_adversarial.py --check-pool
+```
+
+or the `pool_check` MCP tool. Each entry gets a one-line prompt with no tools, four at a time; the
+report gives the latency, or the provider's own error (bad key, rate limit, unknown model, timeout,
+out of memory for a local server). `offline` entries are skipped — `pinky doctor` checks them.
 
 ## Direct vs aggregator
 
@@ -90,15 +123,18 @@ entry only for models unreachable any other way.
 
 ## Verifying a model id before adding it
 
-An aggregator's `:free` suffix is not predictable from the model's own naming — check the live
-catalog rather than guessing:
-
 ```bash
-curl -s https://openrouter.ai/api/v1/models | python3 -c \
-  "import json,sys; [print(m['id']) for m in json.load(sys.stdin)['data'] if 'free' in m['id']]"
+pi --list-models <search>
 ```
 
-A wrong id fails with `404`, not a clean fallback to the next pool entry — verify before shipping a
-new entry. A free-tier model can also return `429` (`limit_source: upstream_provider_shared_pool`) —
-that is normal shared-pool congestion, not a broken id; the pool's fallback-on-error is what absorbs
-it, not a fix on your end.
+lists the models pi can reach, with their provider — only for providers whose key it resolves, so
+run it with the `keys` variables in its environment (a fresh shell where `load_secrets` ran). An
+aggregator's `:free` suffix is not predictable from the model's own naming — check it there rather
+than guessing.
+
+A `429` with `x-ratelimit-limit-req-minute: 0` is not congestion but a closed model: some providers
+set the quota per model, and a free plan can leave most of them at zero while the key itself is
+valid (a free Mistral plan opens `codestral-*` and `ministral-*`, not `mistral-medium-*`). Probe the
+model directly before blaming pi. A free-tier model can also return `429` under shared-pool
+congestion: the pool falls through to its next entry on a rate limit, an out-of-memory, an
+insufficient credit or a timeout, never on a wrong answer.
