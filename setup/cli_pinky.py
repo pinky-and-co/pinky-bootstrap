@@ -229,7 +229,8 @@ def _run_doctor_advisory() -> None:
 def cmd_claude_plugin(args: argparse.Namespace) -> None:
     """Translate `claude-plugin <verb>` to `setup.cli`'s plugin flags.
 
-    `install` fetches the plugin then runs the scope wizard (`--plugin`); `list` is the audit
+    `install` fetches the plugin then runs the scope wizard (`--plugin`); `refresh` clears and
+    refetches the cache with no question (`--plugins-refresh`); `list` is the audit
     report, `who` the provenance report, `reconcile` the interactive placer, `enable`/`disable`
     the plugin x target table (or `--scope` to skip it).
     """
@@ -253,6 +254,11 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
             argv.append("--dry-run")
         setup_main(argv)
         _run_doctor_advisory()
+    elif args.verb == "refresh":
+        argv = ["--plugins-refresh", *args.plugin]
+        if args.marketplace:
+            argv += ["--marketplace", args.marketplace]
+        setup_main(argv)
     elif args.verb == "list":
         setup_main(["--plugins-who"] if args.who else ["--plugins-reconcile"])
     elif args.verb in ("enable", "disable"):
@@ -360,6 +366,7 @@ def build_parser() -> argparse.ArgumentParser:
         "🔌 install, place and audit Claude Code plugins across the workspace",
         [
             "pinky claude-plugin install pc-kanban  # download + the scope wizard",
+            "pinky claude-plugin refresh  # refetch every locally-developed plugin",
             "pinky claude-plugin list  # where each plugin is enabled",
             "pinky claude-plugin list --who  # which session ran each install",
         ],
@@ -435,6 +442,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="print the plan and stop, write nothing",
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+    p = _add(
+        verbs,
+        "refresh",
+        "clear and refetch plugins' cache so an edited plugin pinned at the same version is "
+        "picked up — no table, no question",
+        [
+            "pinky claude-plugin refresh  # every plugin from a local (directory) marketplace",
+            "pinky claude-plugin refresh pc-git pc-kanban  # just these",
+        ],
+    )
+    _completing(
+        p.add_argument(
+            "plugin",
+            nargs="*",
+            metavar="PLUGIN",
+            help="plugins to refresh, bare or <plugin>@<marketplace> (omit: every plugin "
+            "installed from a local directory marketplace)",
+        ),
+        _complete_plugin,
+    )
+    _completing(
+        p.add_argument(
+            "--marketplace",
+            default=None,
+            help="the marketplace for every bare plugin name",
+        ),
+        _complete_marketplace,
     )
     p.set_defaults(func=cmd_claude_plugin)
     p = _add(

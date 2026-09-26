@@ -32,12 +32,14 @@ import subprocess
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Literal
 from pathlib import Path
 
 from . import state_file
 
 _PLUGINS_DIR = Path.home() / ".claude" / "plugins"
 _REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
+_MARKETPLACES = _PLUGINS_DIR / "known_marketplaces.json"
 _CACHE_ROOT = _PLUGINS_DIR / "cache"
 _USER_SETTINGS = Path.home() / ".claude" / "settings.json"
 
@@ -131,6 +133,25 @@ def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
 def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path:
     """The directory `claude plugin install` unpacked the plugin into, from the registry it keeps
     (`installed_plugins.json`) — authoritative, and still correct after a version bump."""
+    return Path(_registered_install(plugin_id, marketplace)[1]["installPath"])
+
+
+def _registered_install(
+    plugin_id: str, marketplace: str | None = None
+) -> tuple[str, dict[str, str]]:
+    """The registry key and entry of the plugin's first install whose directory exists.
+
+    Args:
+        plugin_id: the plugin name, without marketplace.
+        marketplace: the marketplace it comes from; None matches any.
+
+    Returns:
+        `(key, entry)` — the `<plugin>@<marketplace>` key and its `installed_plugins.json` entry
+        (`scope`, `installPath`, `projectPath` for a project/local install).
+
+    Raises:
+        FileNotFoundError: no entry of that plugin points at an existing directory.
+    """
     data = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     plugins = data.get("plugins", {})
     keys = (
@@ -140,9 +161,8 @@ def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path
     )
     for key in keys:
         for entry in plugins.get(key, []):
-            path = Path(entry["installPath"])
-            if path.is_dir():
-                return path
+            if Path(entry["installPath"]).is_dir():
+                return key, entry
     raise FileNotFoundError(
         f"{plugin_id!r} not in {_REGISTRY} — was `claude plugin install` run?"
     )
@@ -274,10 +294,16 @@ def set_status_lines(install_path: Path) -> list[str]:
 
 
 def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
-    """Delete the plugin's cache directory so the next `claude plugin install`/`update` re-pulls
-    it — the automated form of the manual `rm -rf ~/.claude/plugins/cache/<mp>/<plugin>/<ver>/`
-    needed when editing a plugin pinned at `0.1.0` during dev (`claude` only ever fills an absent
-    cache dir). Returns True when a directory was removed, False when there was nothing to remove.
+    """Delete the plugin's cache directory and fetch it again — the automated form of
+    `rm -rf ~/.claude/plugins/cache/<mp>/<plugin>/<ver>/` + reinstall, needed when editing a plugin
+    pinned at `0.1.0` during dev (`claude` only ever fills an absent cache dir, and `update` skips
+    a plugin whose version did not move). Returns True when a directory was removed and refetched,
+    False when there was nothing to remove.
+
+    The fetch is `claude plugin install` at the scope the registry already records for it, run from
+    its `projectPath` for a project/local install — it rewrites an enable that is already there,
+    nothing else. It happens here rather than on the caller's later install because that install
+    only runs for a target the scope plan adds: an unchanged plan would leave the cache empty.
 
     The path comes from `installed_plugins.json` `installPath`, which this function does not
     control. It removes it **only** when it resolves to a `<marketplace>/<plugin>/<version>/` dir
@@ -286,9 +312,10 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
     or at the cache root / a whole marketplace dir, is refused rather than `rmtree`'d.
     """
     try:
-        install_path = resolve_install_path(plugin_id, marketplace).resolve()
+        key, entry = _registered_install(plugin_id, marketplace)
     except FileNotFoundError:
         return False
+    install_path = Path(entry["installPath"]).resolve()
     cache_root = _CACHE_ROOT.resolve()
     inside_a_plugin_version_dir = (
         install_path != cache_root
@@ -303,4 +330,98 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
         )
         return False
     shutil.rmtree(install_path)
+    scope = entry.get("scope", "user")
+    project_path = entry.get("projectPath")
+    cwd = Path(project_path) if scope != "user" and project_path else None
+    try:
+        _run_claude(["plugin", "install", key, "--scope", scope, "--yes"], cwd=cwd)
+    except subprocess.CalledProcessError as exc:
+        if exc.stderr:
+            print(exc.stderr, end="", file=sys.stderr)
+        raise
     return True
+
+
+@dataclass(frozen=True)
+class RefreshOutcome:
+    """What `refresh_plugins` did for one plugin: `refreshed`, `absent` (nothing cached or not a
+    cache dir `force_refetch` may delete), or `failed` (the fetch errored — its stderr is already
+    printed)."""
+
+    spec: str
+    status: Literal["refreshed", "absent", "failed"]
+
+
+def local_marketplace_plugins() -> list[str]:
+    """Every installed `<plugin>@<marketplace>` whose marketplace is a `directory` source — a
+    working tree on this machine, the only place a plugin gets edited without a version bump.
+
+    Returns:
+        The registry keys, sorted; empty when either registry file is missing or unreadable.
+    """
+    try:
+        marketplaces = json.loads(_MARKETPLACES.read_text(encoding="utf-8"))
+        plugins = json.loads(_REGISTRY.read_text(encoding="utf-8")).get("plugins", {})
+    except (OSError, json.JSONDecodeError):
+        return []
+    local = {
+        name
+        for name, entry in marketplaces.items()
+        if isinstance(entry, dict)
+        and entry.get("source", {}).get("source") == "directory"
+    }
+    return sorted(key for key in plugins if key.split("@", 1)[-1] in local)
+
+
+def refresh_plugins(
+    specs: list[str], marketplace: str | None = None
+) -> list[RefreshOutcome]:
+    """Clear and refetch each plugin's cache — no scope plan, no question, nothing but the files.
+
+    Args:
+        specs: plugin names, bare or `<plugin>@<marketplace>`; empty means every plugin
+            `local_marketplace_plugins` returns.
+        marketplace: applied to every bare name in `specs`.
+
+    Returns:
+        One outcome per plugin, in order. A failed fetch does not stop the others.
+    """
+    outcomes = []
+    for spec in specs or local_marketplace_plugins():
+        name, _, own_marketplace = spec.partition("@")
+        try:
+            refreshed = force_refetch(name, own_marketplace or marketplace)
+        except subprocess.CalledProcessError:
+            outcomes.append(RefreshOutcome(spec, "failed"))
+            continue
+        outcomes.append(RefreshOutcome(spec, "refreshed" if refreshed else "absent"))
+    return outcomes
+
+
+_REFRESH_LABELS = {
+    "refreshed": ("✅", "refreshed"),
+    "absent": ("• ", "not installed — nothing to refresh"),
+    "failed": ("❌", "fetch failed (see the error above)"),
+}
+
+
+def render_refresh_report(outcomes: list[RefreshOutcome]) -> str:
+    """The per-plugin report `pinky claude-plugin refresh` prints.
+
+    Args:
+        outcomes: what `refresh_plugins` returned.
+
+    Returns:
+        One aligned line per plugin plus the reload reminder, or a single line when nothing
+        matched.
+    """
+    if not outcomes:
+        return "nothing to refresh — no plugin installed from a local (directory) marketplace"
+    width = max(len(o.spec) for o in outcomes)
+    lines = [
+        f"{_REFRESH_LABELS[o.status][0]} {o.spec.ljust(width)}  {_REFRESH_LABELS[o.status][1]}"
+        for o in outcomes
+    ]
+    return "\n".join(
+        [*lines, "", "Running sessions keep the old build until /reload-plugins."]
+    )

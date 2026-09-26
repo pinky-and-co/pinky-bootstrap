@@ -172,6 +172,14 @@ def main(argv: list[str] | None = None) -> None:
         "every enable that does not match (`pinky claude-plugin reconcile`)",
     )
     parser.add_argument(
+        "--plugins-refresh",
+        nargs="*",
+        default=None,
+        metavar="PLUGIN",
+        help="clear and refetch these plugins' cache, no question asked (empty: every plugin "
+        "installed from a local `directory` marketplace — `pinky claude-plugin refresh`)",
+    )
+    parser.add_argument(
         "--plugins-who",
         action="store_true",
         help="for every plugin install in the registry, the session transcript that ran the "
@@ -326,6 +334,15 @@ def main(argv: list[str] | None = None) -> None:
         print(f"  service: {result.service}")
         if result.service != "loaded":
             print(f"  `pinky live-docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        return
+
+    if args.plugins_refresh is not None:
+        outcomes = plugin_install.refresh_plugins(
+            list(args.plugins_refresh), args.marketplace
+        )
+        print(plugin_install.render_refresh_report(outcomes))
+        if any(o.status == "failed" for o in outcomes):
+            raise SystemExit(1)
         return
 
     if args.plugins_who:
