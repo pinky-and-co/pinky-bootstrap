@@ -131,6 +131,25 @@ def drop_user_scope(plugin_id: str, marketplace: str | None = None) -> None:
 def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path:
     """The directory `claude plugin install` unpacked the plugin into, from the registry it keeps
     (`installed_plugins.json`) — authoritative, and still correct after a version bump."""
+    return Path(_registered_install(plugin_id, marketplace)[1]["installPath"])
+
+
+def _registered_install(
+    plugin_id: str, marketplace: str | None = None
+) -> tuple[str, dict[str, str]]:
+    """The registry key and entry of the plugin's first install whose directory exists.
+
+    Args:
+        plugin_id: the plugin name, without marketplace.
+        marketplace: the marketplace it comes from; None matches any.
+
+    Returns:
+        `(key, entry)` — the `<plugin>@<marketplace>` key and its `installed_plugins.json` entry
+        (`scope`, `installPath`, `projectPath` for a project/local install).
+
+    Raises:
+        FileNotFoundError: no entry of that plugin points at an existing directory.
+    """
     data = json.loads(_REGISTRY.read_text(encoding="utf-8"))
     plugins = data.get("plugins", {})
     keys = (
@@ -140,9 +159,8 @@ def resolve_install_path(plugin_id: str, marketplace: str | None = None) -> Path
     )
     for key in keys:
         for entry in plugins.get(key, []):
-            path = Path(entry["installPath"])
-            if path.is_dir():
-                return path
+            if Path(entry["installPath"]).is_dir():
+                return key, entry
     raise FileNotFoundError(
         f"{plugin_id!r} not in {_REGISTRY} — was `claude plugin install` run?"
     )
@@ -274,10 +292,16 @@ def set_status_lines(install_path: Path) -> list[str]:
 
 
 def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
-    """Delete the plugin's cache directory so the next `claude plugin install`/`update` re-pulls
-    it — the automated form of the manual `rm -rf ~/.claude/plugins/cache/<mp>/<plugin>/<ver>/`
-    needed when editing a plugin pinned at `0.1.0` during dev (`claude` only ever fills an absent
-    cache dir). Returns True when a directory was removed, False when there was nothing to remove.
+    """Delete the plugin's cache directory and fetch it again — the automated form of
+    `rm -rf ~/.claude/plugins/cache/<mp>/<plugin>/<ver>/` + reinstall, needed when editing a plugin
+    pinned at `0.1.0` during dev (`claude` only ever fills an absent cache dir, and `update` skips
+    a plugin whose version did not move). Returns True when a directory was removed and refetched,
+    False when there was nothing to remove.
+
+    The fetch is `claude plugin install` at the scope the registry already records for it, run from
+    its `projectPath` for a project/local install — it rewrites an enable that is already there,
+    nothing else. It happens here rather than on the caller's later install because that install
+    only runs for a target the scope plan adds: an unchanged plan would leave the cache empty.
 
     The path comes from `installed_plugins.json` `installPath`, which this function does not
     control. It removes it **only** when it resolves to a `<marketplace>/<plugin>/<version>/` dir
@@ -286,9 +310,10 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
     or at the cache root / a whole marketplace dir, is refused rather than `rmtree`'d.
     """
     try:
-        install_path = resolve_install_path(plugin_id, marketplace).resolve()
+        key, entry = _registered_install(plugin_id, marketplace)
     except FileNotFoundError:
         return False
+    install_path = Path(entry["installPath"]).resolve()
     cache_root = _CACHE_ROOT.resolve()
     inside_a_plugin_version_dir = (
         install_path != cache_root
@@ -303,4 +328,13 @@ def force_refetch(plugin_id: str, marketplace: str | None = None) -> bool:
         )
         return False
     shutil.rmtree(install_path)
+    scope = entry.get("scope", "user")
+    project_path = entry.get("projectPath")
+    cwd = Path(project_path) if scope != "user" and project_path else None
+    try:
+        _run_claude(["plugin", "install", key, "--scope", scope, "--yes"], cwd=cwd)
+    except subprocess.CalledProcessError as exc:
+        if exc.stderr:
+            print(exc.stderr, end="", file=sys.stderr)
+        raise
     return True

@@ -115,6 +115,12 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
 
     monkeypatch.setattr(plugin_install, "_CACHE_ROOT", tmp_path / "cache")
+    # `force_refetch` lit ce registre pour savoir quoi supprimer : le vrai pointerait sur le vrai cache.
+    monkeypatch.setattr(
+        plugin_install,
+        "_REGISTRY",
+        home / ".claude" / "plugins" / "installed_plugins.json",
+    )
     plugin_dir = tmp_path / "cache" / "mp" / "pc-snow" / "0.1.0"
     (plugin_dir / "skills").mkdir(parents=True)
     monkeypatch.setattr(
@@ -286,10 +292,27 @@ def test_rescope_leaves_a_deliberate_disabled_opt_out_alone(env, monkeypatch):
     assert _enabled_at(env.ws, "pc-snow") is False
 
 
-def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
-
+def test_force_busts_the_cache_dir_and_refetches_it(env, monkeypatch, capsys):
     install = plugin_install.resolve_install_path("pc-snow")
     assert install.exists()
+    registry = env.home / ".claude" / "plugins" / "installed_plugins.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "plugins": {
+                    "pc-snow@mp": [
+                        {
+                            "scope": "user",
+                            "installPath": str(install),
+                            "version": "0.1.0",
+                        }
+                    ]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     _stub_picker(monkeypatch, _pick_and_target("user"))
     _canned_input(monkeypatch, ["y"])
 
@@ -297,6 +320,15 @@ def test_force_busts_the_cache_dir_before_fetching(env, monkeypatch, capsys):
 
     assert not install.exists()
     assert "cache cleared for pc-snow@mp" in capsys.readouterr().out
+    assert _user_installs(env.sim)[0] == [
+        "claude",
+        "plugin",
+        "install",
+        "pc-snow@mp",
+        "--scope",
+        "user",
+        "--yes",
+    ]
 
 
 def _user_installs(sim: _ClaudeCliSim) -> list[list[str]]:

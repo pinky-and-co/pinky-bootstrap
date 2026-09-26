@@ -28,20 +28,17 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _write_registry(path: Path, key: str, install_path: Path) -> None:
+def _write_registry(
+    path: Path, key: str, install_path: Path, project_path: Path | None = None
+) -> None:
+    entry = {"scope": "user", "installPath": str(install_path), "version": "0.1.0"}
+    if project_path is not None:
+        entry.update(scope="project", projectPath=str(project_path))
     path.write_text(
         json.dumps(
             {
                 "version": 2,
-                "plugins": {
-                    key: [
-                        {
-                            "scope": "user",
-                            "installPath": str(install_path),
-                            "version": "0.1.0",
-                        }
-                    ]
-                },
+                "plugins": {key: [entry]},
             }
         ),
         encoding="utf-8",
@@ -106,7 +103,20 @@ def test_install_plugin_files_propagates_an_install_failure(monkeypatch, capsys)
     assert "marketplace 'mp' not found" in capsys.readouterr().err
 
 
-def test_force_refetch_removes_a_cache_dir_and_reports_true(home):
+def _record_calls(monkeypatch) -> list[tuple[list[str], dict]]:
+    """Replace `subprocess.run` with a recorder; the returned list fills as `claude` is called."""
+    calls: list[tuple[list[str], dict]] = []
+
+    def fake_run(cmd, **kw):
+        calls.append((cmd, kw))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    return calls
+
+
+def test_force_refetch_removes_a_cache_dir_and_reports_true(home, monkeypatch):
+    _record_calls(monkeypatch)
     install = home / "cache" / "mp" / "pc-x" / "0.1.0"
     install.mkdir(parents=True)
     (install / "SKILL.md").write_text("x", encoding="utf-8")
@@ -114,6 +124,41 @@ def test_force_refetch_removes_a_cache_dir_and_reports_true(home):
 
     assert plugin_install.force_refetch("pc-x", "mp") is True
     assert not install.exists()
+
+
+def test_force_refetch_refetches_at_the_registered_user_scope(home, monkeypatch):
+    """The fetch happens here, not on a later install: a scope plan with nothing to change
+    installs nothing, which left the cache emptied."""
+    calls = _record_calls(monkeypatch)
+    install = home / "cache" / "mp" / "pc-x" / "0.1.0"
+    install.mkdir(parents=True)
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", install)
+
+    plugin_install.force_refetch("pc-x", "mp")
+
+    assert [(cmd, kw.get("cwd")) for cmd, kw in calls] == [
+        (["claude", "plugin", "install", "pc-x@mp", "--scope", "user", "--yes"], None)
+    ]
+
+
+def test_force_refetch_refetches_from_the_registered_project_dir(
+    home, monkeypatch, tmp_path
+):
+    calls = _record_calls(monkeypatch)
+    install = home / "cache" / "mp" / "pc-x" / "0.1.0"
+    install.mkdir(parents=True)
+    project = tmp_path / "workspace"
+    project.mkdir()
+    _write_registry(home / "installed_plugins.json", "pc-x@mp", install, project)
+
+    plugin_install.force_refetch("pc-x", "mp")
+
+    assert [(cmd, kw.get("cwd")) for cmd, kw in calls] == [
+        (
+            ["claude", "plugin", "install", "pc-x@mp", "--scope", "project", "--yes"],
+            project,
+        )
+    ]
 
 
 def test_force_refetch_is_false_when_nothing_is_cached(home):
