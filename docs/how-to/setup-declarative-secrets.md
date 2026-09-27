@@ -1,16 +1,22 @@
-# How to declare a secret loaded at session start
+# How to declare a secret resolved on demand
 
-*Update date : 2026-08-27 18:00*
+*Update date : 2026-09-27 15:00*
 
 `pc-core`'s `load_secrets.py` (a `SessionStart` hook) reads the `keys` array of
-`settings.pinky.json` and exports each resolved value as an environment variable before the first
-Bash command of the session runs. This is the general-purpose sibling of the `model_pool` key
-(`setup-model-pool.md`) — `keys` covers any secret a session's **Bash commands** need.
+`settings.pinky.json`. A `literal` entry is exported as `export <env>=<value>` into
+`$CLAUDE_ENV_FILE` at boot, into every Bash command's environment for the rest of the session. A
+`macos_keychain` entry — every secret goes through this reader — is never exported there:
+`resolve_env_exports` filters it out before boot, so no keychain round trip happens at
+`SessionStart` at all. It is resolved only when pc-core's own MCP-server process (behind
+`adversarial`, `panel`, `pool_check`) calls `secret_env()`, right before starting a `pi` subprocess
+— the value then lives only in that subprocess's own `env=`, never in the session's Bash
+environment. This is the general-purpose sibling of the `model_pool` key (`setup-model-pool.md`) —
+`keys` covers any provider credential a `pi` call needs.
 
-Scope note: the export reaches Bash-invoked processes only. An MCP server process does not receive
-`$CLAUDE_ENV_FILE`, so an MCP tool that needs a provider key reads the keychain directly at the
-point of use (see `setup-model-pool.md`) — declaring the key here still matters, because that is
-what puts the item in the keychain.
+Scope note: `secret_env()` resolves every declared key in one call, not just the one a given `pi`
+call needs — each subprocess still only receives that one dict in its own `env=`. Declaring a
+`macos_keychain` entry here maps a keychain service name to the env var name pc-core expects; it
+does not create the keychain item itself — `security add-generic-password` (below) does that.
 
 ## Where a key lives
 
@@ -36,9 +42,14 @@ shows up.
 ```
 
 - `service` — the keychain item's service name (whatever you pick when you create it, below).
-- `env` — the environment variable name exported for the session.
-- `reader` — `macos_keychain` is the only one wired today. An unwired reader (`aws_secretsmanager`,
-  ...) fails loud on stderr at session start and leaves that variable unset — never a silent gap.
+- `env` — the environment variable name pc-core hands to the `pi` subprocess that needs it — never
+  exported into the session's own Bash environment.
+- `reader` — `macos_keychain` and `literal` are both wired. `macos_keychain` (every secret goes
+  here) resolves on demand, inside pc-core's own process, right before a pi call — never at
+  `SessionStart`. `literal` (never a secret) is the one reader `resolve_env_exports` exports into
+  `$CLAUDE_ENV_FILE` at `SessionStart`, into every Bash command's environment for the session — see
+  `load_secrets.py`'s own docstring for that split. An unwired reader (`aws_secretsmanager`, ...)
+  fails loud on stderr wherever it is resolved, and leaves that variable unset — never a silent gap.
 
 ## Creating, updating, deleting a key
 
