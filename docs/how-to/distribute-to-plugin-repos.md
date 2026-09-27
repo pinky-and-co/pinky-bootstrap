@@ -1,5 +1,5 @@
 # How to distribute the hygiene to the workspace repos
-*Update date : 2026-09-27 04:30*
+*Update date : 2026-09-27 04:33*
 
 ```bash
 pinky repo distribute (--repo <name> | --all) [--dry-run] [--yes] [--commit] [--agents-md [--standalone]]
