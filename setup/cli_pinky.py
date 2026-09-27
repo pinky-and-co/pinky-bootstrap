@@ -573,7 +573,7 @@ def build_parser() -> argparse.ArgumentParser:
         "claude-config-preset",
         "🎨 install a preset into ~/.claude: an output style or a theme",
         [
-            "pinky claude-config-preset install output-style adhd",
+            "pinky claude-config-preset install output-style skim-and-push",
             "pinky claude-config-preset install theme lisible",
         ],
         extra=_assets_epilog(),

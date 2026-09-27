@@ -34,11 +34,11 @@ def isolated_home(tmp_path, monkeypatch):
     return fake_home
 
 
-def test_discover_output_styles_finds_adhd_with_its_frontmatter_name_as_value():
+def test_discover_output_styles_finds_skim_and_push_with_its_frontmatter_name_as_value():
     styles = discover_output_styles()
-    adhd = next(a for a in styles if a.name == "adhd")
-    assert adhd.value == "ADHD"
-    assert adhd.description
+    style = next(a for a in styles if a.name == "skim-and-push")
+    assert style.value == "Skim-and-push"
+    assert style.description
 
 
 def test_discover_themes_finds_lisible_with_custom_prefix_as_value():
@@ -49,14 +49,14 @@ def test_discover_themes_finds_lisible_with_custom_prefix_as_value():
 
 
 def test_install_output_style_copies_file_and_sets_settings_key(isolated_home):
-    target = install_output_style("adhd")
+    target = install_output_style("skim-and-push")
 
-    assert target == isolated_home / ".claude" / "output-styles" / "adhd.md"
+    assert target == isolated_home / ".claude" / "output-styles" / "skim-and-push.md"
     assert target.is_file()
     data = json.loads(
         (isolated_home / ".claude" / "settings.json").read_text(encoding="utf-8")
     )
-    assert data["outputStyle"] == "ADHD"
+    assert data["outputStyle"] == "Skim-and-push"
 
 
 def test_install_output_style_unknown_name_raises():
@@ -71,11 +71,11 @@ def test_install_output_style_merges_never_overwrites_existing_settings(isolated
         json.dumps({"someOtherKey": "keep-me"}), encoding="utf-8"
     )
 
-    install_output_style("adhd")
+    install_output_style("skim-and-push")
 
     data = json.loads((settings_path / "settings.json").read_text(encoding="utf-8"))
     assert data["someOtherKey"] == "keep-me"
-    assert data["outputStyle"] == "ADHD"
+    assert data["outputStyle"] == "Skim-and-push"
 
 
 def test_install_theme_copies_file_and_sets_settings_key(isolated_home):
@@ -101,7 +101,7 @@ def test_install_output_style_records_in_state_file(isolated_home, monkeypatch):
         state_file_module, "STATE_FILE_PATH", isolated_home / "state.json"
     )
 
-    install_output_style("adhd")
+    install_output_style("skim-and-push")
 
     raw = json.loads((isolated_home / "state.json").read_text(encoding="utf-8"))
-    assert raw["outputStyle"]["value"] == "ADHD"
+    assert raw["outputStyle"]["value"] == "Skim-and-push"

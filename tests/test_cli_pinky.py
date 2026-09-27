@@ -382,8 +382,8 @@ def test_claude_plugin_disable_with_no_name_forwards_bare_plugin_disable_flag(
 def test_claude_config_preset_install_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["claude-config-preset", "install", "theme", "lisible"])
-    cli_pinky.main(["claude-config-preset", "install", "output-style", "adhd"])
-    assert calls == [["--theme", "lisible"], ["--output-style", "adhd"]]
+    cli_pinky.main(["claude-config-preset", "install", "output-style", "skim-and-push"])
+    assert calls == [["--theme", "lisible"], ["--output-style", "skim-and-push"]]
 
 
 def test_live_docs_dispatch(monkeypatch):
@@ -411,7 +411,7 @@ def test_drift_dispatch(monkeypatch):
     "argv",
     [
         ["install", "--plugin", "pc-x"],
-        ["install", "--output-style", "adhd"],
+        ["install", "--output-style", "skim-and-push"],
         ["install", "--theme", "lisible"],
         ["install", "--live-docs"],
     ],
