@@ -18,7 +18,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import plugin_install, state_file
-from setup.plugin_scope import list_targets_at_depth, run_marketplace_wizard
+from setup.plugin_scope import (
+    IGNORE_MARKER,
+    list_targets_at_depth,
+    run_marketplace_wizard,
+)
 
 
 def _canned_input(monkeypatch, answers):
@@ -119,6 +123,43 @@ def test_depth_1_lists_top_level_groups_only(tmp_path):
 def test_depth_1_ignores_dotfile_directories(tmp_path):
     root = _workspace(tmp_path)
     assert ".hidden" not in {p.name for p in list_targets_at_depth(root, depth=1)}
+
+
+def test_depth_1_ignores_a_directory_marked_with_pinky_ignore(tmp_path):
+    """`_BACKUP_READ-ONLY`-shaped case: a read-only backup mount, named however the workspace
+    owner likes, is excluded by the marker alone — no name is hard-coded."""
+    root = _workspace(tmp_path)
+    backup = root / "_BACKUP_READ-ONLY"
+    _make_repo(backup / "bootstrap")
+    (backup / IGNORE_MARKER).touch()
+
+    assert "_BACKUP_READ-ONLY" not in {
+        p.name for p in list_targets_at_depth(root, depth=1)
+    }
+
+
+def test_depth_2_ignores_repos_under_a_marked_directory(tmp_path):
+    root = _workspace(tmp_path)
+    backup = root / "_BACKUP_READ-ONLY"
+    _make_repo(backup / "bootstrap")
+    (backup / IGNORE_MARKER).touch()
+
+    targets = list_targets_at_depth(root, depth=2)
+
+    assert {p.name for p in targets} == {"bootstrap", "pinky-core", "pinky-snowpark"}
+
+
+def test_a_marked_repo_itself_is_also_excluded(tmp_path):
+    """The marker wins even on a directory that is itself a git repo — a read-only checkout
+    under backup is still a repo by `_is_repo`'s own test, but must not become a target."""
+    root = _workspace(tmp_path)
+    backup_repo = root / "bootstrap-backup"
+    _make_repo(backup_repo)
+    (backup_repo / IGNORE_MARKER).touch()
+
+    targets = list_targets_at_depth(root, depth=2)
+
+    assert "bootstrap-backup" not in {p.name for p in targets}
 
 
 def test_depth_2_lists_every_repo_regardless_of_nesting(tmp_path):

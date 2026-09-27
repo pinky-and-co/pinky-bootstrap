@@ -364,14 +364,15 @@ def main(argv: list[str] | None = None) -> None:
         # Only `disable` with no name gets the compact (checked-only) table — everything it names
         # is headed for removal, so an unchecked row is noise.
         only_checked = not names and action == "disable"
+        # The curated picker (below) already qualifies each freshly picked name as
+        # `<name>@<marketplace>` — `--marketplace` stays for names typed directly only, or it
+        # would double up the `@`.
+        run_marketplace = args.marketplace
         if not names:
             if action == "enable":
                 # No name → the curated ∪ installed checkbox list, an
                 # unregistered marketplace's row added (and remembered) on confirmation.
-                installed_names = {
-                    spec.split("@", 1)[0]
-                    for spec in plugin_reconcile.audit_plugins(resolved.root)
-                }
+                installed_names = plugin_reconcile.enabled_plugin_names(resolved.root)
                 names = plugin_curated.resolve_no_name_selection(
                     resolved.root,
                     installed_names,
@@ -382,6 +383,7 @@ def main(argv: list[str] | None = None) -> None:
                 if not names:
                     print("nothing selected")
                     return
+                run_marketplace = None
             else:
                 # No name → every currently installed plugin, no question asked.
                 names = sorted(
@@ -397,7 +399,7 @@ def main(argv: list[str] | None = None) -> None:
             action,
             names,
             resolved.root,
-            marketplace=args.marketplace,
+            marketplace=run_marketplace,
             scope=args.scope,
             yes=args.yes,
             dry_run=args.dry_run,
@@ -427,11 +429,9 @@ def main(argv: list[str] | None = None) -> None:
         # 0. No name at all: the curated ∪ installed checkbox list —
         #    the installed set doubles as the curated list's own "already have this" signal.
         names = list(args.plugin)
-        if not names:
-            installed_names = {
-                spec.split("@", 1)[0]
-                for spec in plugin_reconcile.audit_plugins(resolved.root)
-            }
+        from_picker = not names
+        if from_picker:
+            installed_names = plugin_reconcile.enabled_plugin_names(resolved.root)
             names = plugin_curated.resolve_no_name_selection(
                 resolved.root,
                 installed_names,
@@ -443,30 +443,44 @@ def main(argv: list[str] | None = None) -> None:
                 print("nothing selected")
                 return
 
+        # A name from the curated picker is already qualified as `<name>@<marketplace>`, one per
+        # curated entry — `--marketplace` must not also apply to those (it would double up the
+        # `@`); it still applies, as before, to a name typed directly on the command line.
+        def _bare(name: str) -> str:
+            return name.partition("@")[0]
+
+        def _marketplace_for(name: str) -> str | None:
+            if from_picker:
+                _, sep, mp = name.partition("@")
+                return mp if sep else None
+            return args.marketplace
+
         # `claude plugin install` only fills an absent cache dir: `--force` empties it so an edited
         # plugin pinned at 0.1.0 is re-fetched. It deletes, so never under `--dry-run`.
         if args.force and not args.dry_run:
             for name in names:
-                if plugin_install.force_refetch(name, args.marketplace):
-                    spec = f"{name}@{args.marketplace}" if args.marketplace else name
+                bare, mp = _bare(name), _marketplace_for(name)
+                if plugin_install.force_refetch(bare, mp):
+                    spec = f"{bare}@{mp}" if mp else bare
                     print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
         # An always-on plugin is user scope by design, the only case `pinky` writes there: no
         # scope table, so it stays out of the shared one below.
-        keep_scope = [n for n in names if n in plugin_install.KEEP_USER_SCOPE]
-        regular = [n for n in names if n not in plugin_install.KEEP_USER_SCOPE]
+        keep_scope = [n for n in names if _bare(n) in plugin_install.KEEP_USER_SCOPE]
+        regular = [n for n in names if _bare(n) not in plugin_install.KEEP_USER_SCOPE]
         for name in keep_scope:
+            bare, mp = _bare(name), _marketplace_for(name)
             if args.dry_run:
-                print(f"{name} would be kept at user scope (always-on) — dry run")
+                print(f"{bare} would be kept at user scope (always-on) — dry run")
                 continue
-            plugin_install.install_plugin_files(name, args.marketplace)
+            plugin_install.install_plugin_files(bare, mp)
             written = plugin_install.set_status_lines(
-                plugin_install.resolve_install_path(name, args.marketplace)
+                plugin_install.resolve_install_path(bare, mp)
             )
             if written:
                 print(
                     f"status line wired ({', '.join(written)}) → ~/.claude/settings.json"
                 )
-            print(f"{name} kept at user scope (always-on) → ~/.claude/settings.json")
+            print(f"{bare} kept at user scope (always-on) → ~/.claude/settings.json")
         if not regular:
             return
         # One plugin × target table and one plan for the whole batch; a prior enable shows up
@@ -475,7 +489,7 @@ def main(argv: list[str] | None = None) -> None:
             "enable",
             regular,
             resolved.root,
-            marketplace=args.marketplace,
+            marketplace=None if from_picker else args.marketplace,
             scope=args.scope,
             yes=args.yes,
             dry_run=args.dry_run,
@@ -487,10 +501,9 @@ def main(argv: list[str] | None = None) -> None:
         if not enable_result.wire:
             return
         for name in regular:
+            bare, mp = _bare(name), _marketplace_for(name)
             try:
-                install_path = plugin_install.resolve_install_path(
-                    name, args.marketplace
-                )
+                install_path = plugin_install.resolve_install_path(bare, mp)
             except FileNotFoundError:
                 continue
             written = plugin_install.set_status_lines(install_path)

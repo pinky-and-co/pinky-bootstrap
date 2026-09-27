@@ -231,6 +231,18 @@ def audit_plugins(workspace_root: Path) -> dict[str, PluginState]:
     return result
 
 
+def enabled_plugin_names(workspace_root: Path) -> frozenset[str]:
+    """Bare ids of every plugin actually enabled somewhere — narrower than every key
+    `audit_plugins` carries: a plugin that is only explicitly disabled, or that carries just a
+    stale registry entry with nothing ever turned on (`PluginState.is_ghost`), is not "installed"
+    for the curated picker's pre-check."""
+    return frozenset(
+        state.plugin_id.split("@", 1)[0]
+        for state in audit_plugins(workspace_root).values()
+        if not state.is_ghost
+    )
+
+
 def _is_always_on(plugin_id: str) -> bool:
     """Is the plugin (bare id or ``id@marketplace``) in ``plugin_install.KEEP_USER_SCOPE``?"""
     return plugin_id.split("@", 1)[0] in plugin_install.KEEP_USER_SCOPE
