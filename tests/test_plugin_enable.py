@@ -228,6 +228,34 @@ def test_a_local_settings_enable_is_never_a_row(env):
     assert all(not row.checked for row in rows)
 
 
+def test_run_accepts_a_pre_qualified_spec_with_no_global_marketplace(env, capsys):
+    """The curated picker hands `run` names already qualified as `<id>@<marketplace>` instead of
+    changing `run`'s own signature — `resolve_spec` falls back to the bare id it's given verbatim
+    when nothing in the audit matches it and no global `marketplace=` overrides it, which is
+    exactly a pre-qualified spec's own shape. First-time install (nothing in the audit yet), so a
+    bare `--plugin pc-a` here would have installed unqualified — this proves the qualifier
+    survives end to end onto the actual `claude plugin install` call."""
+    plugin_enable.run(
+        "enable", ["pc-a@pinky-agentic-plugins"], env.ws, scope=["."], yes=True
+    )
+
+    assert _enabled_at(env.ws, "pc-a@pinky-agentic-plugins") is True
+    install_calls = [
+        c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]
+    ]
+    assert install_calls == [
+        [
+            "claude",
+            "plugin",
+            "install",
+            "pc-a@pinky-agentic-plugins",
+            "--scope",
+            "project",
+            "--yes",
+        ]
+    ]
+
+
 def test_filter_checked_keeps_only_checked_rows_and_reindexes():
     rows = [
         plugin_enable.ScopeRow(0, "pc-a", "user", True),
@@ -715,6 +743,48 @@ def test_batch_enable_of_two_new_plugins_keeps_both_plugins_rules(
     target_rules = env.ws / ".claude" / "rules"
     assert (target_rules / "a.md").read_text(encoding="utf-8") == "A\n"
     assert (target_rules / "b.md").read_text(encoding="utf-8") == "B\n"
+
+
+def test_batch_disable_of_two_co_resident_plugins_does_not_double_count_a_purge(
+    env, monkeypatch, tmp_path, capsys
+):
+    """Naming ≥2 co-resident plugins in one `disable` call must show each plugin's own purge
+    count exactly once — never a later plugin's plan re-claiming a file an earlier plugin of the
+    same batch already listed as removed. Strict line-by-line equality on the printed plan, not a
+    substring check."""
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-a").mkdir(parents=True)
+    (rules_dir / "pc-a" / "a.md").write_text("A\n", encoding="utf-8")
+    (rules_dir / "pc-b").mkdir(parents=True)
+    (rules_dir / "pc-b" / "b.md").write_text("B\n", encoding="utf-8")
+    monkeypatch.setattr(rules, "RULES_DIR", rules_dir)
+    _write_enabled(env.ws / ".claude" / "settings.json", {"pc-a": True, "pc-b": True})
+    target_rules = env.ws / ".claude" / "rules"
+    target_rules.mkdir(parents=True)
+    (target_rules / "a.md").write_text("A\n", encoding="utf-8")
+    (target_rules / "b.md").write_text("B\n", encoding="utf-8")
+
+    plugin_enable.run(
+        "disable",
+        ["pc-a", "pc-b"],
+        env.ws,
+        scope=["."],
+        yes=True,
+        user_rules_dir=env.home / "no-user-rules",
+    )
+
+    assert capsys.readouterr().out == (
+        "pc-a:\n"
+        "  remove: .\n"
+        "  rules → workspace (workspace): removed a.md\n"
+        "pc-b:\n"
+        "  remove: .\n"
+        "  rules → workspace (workspace): removed b.md\n"
+        "applied.\n"
+    )
+    # And the real, measured effect: both files are actually gone, no loss, no exception.
+    assert not (target_rules / "a.md").exists()
+    assert not (target_rules / "b.md").exists()
 
 
 def test_a_plugin_not_installed_writes_no_rule_file(tmp_path, monkeypatch):

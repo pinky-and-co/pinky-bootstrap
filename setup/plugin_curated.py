@@ -105,13 +105,18 @@ def is_registered(entry: CuratedEntry) -> bool:
 
 
 def expand_entry(entry: CuratedEntry) -> list[str]:
-    """Individual plugin names for one curated entry — the entry's own `plugin` name
-    if it names one, or every plugin this machine already knows that marketplace publishes, read
-    straight from its local `.claude-plugin/marketplace.json` (no network fetch, no write). A
+    """This curated entry's plugins, as `<name>@<marketplace>` specs — the entry's own `plugin`
+    name if it names one, or every plugin this machine already knows that marketplace publishes,
+    read straight from its local `.claude-plugin/marketplace.json` (no network fetch, no write). A
     marketplace this machine has never registered (a fresh machine, `source` not yet added)
-    expands to nothing — the caller shows one unexpanded row for it instead."""
+    expands to nothing — the caller shows one unexpanded row for it instead.
+
+    Always qualified with `entry.marketplace`, never a bare name: a bare name loses which
+    marketplace it came from, and a fresh install with no marketplace to fall back on then goes
+    out unqualified (see `plugin-reconcile.resolve_spec`'s bare-id path).
+    """
     if entry.plugin is not None:
-        return [entry.plugin]
+        return [f"{entry.plugin}@{entry.marketplace}"]
     known = _known_marketplaces().get(entry.marketplace)
     location = known.get("installLocation") if isinstance(known, dict) else None
     if not location:
@@ -120,7 +125,7 @@ def expand_entry(entry: CuratedEntry) -> list[str]:
         Path(location) / ".claude-plugin" / "marketplace.json"
     )
     return [
-        p["name"]
+        f"{p['name']}@{entry.marketplace}"
         for p in catalog.get("plugins", [])
         if isinstance(p, dict) and p.get("name")
     ]
@@ -239,24 +244,33 @@ def resolve_no_name_selection(
     curated ∪ installed picker, a registered marketplace expanded to its plugins, an unregistered
     one offered as a single row — check it, confirm, `claude plugin marketplace add` it, expand it
     now that it is registered, and offer to remember it in the user file. Returns only the newly
-    picked names — an already-installed one that stays checked
-    has nothing new to place, so it never reopens its own target table here; `install <name>` (or
-    `enable <name>`) named directly still does. `dry_run`: neither `marketplace add` nor the user
-    file write ever run — a checked unregistered row is reported, not added."""
+    picked names, each qualified as `<name>@<marketplace>` — an already-installed one that stays
+    checked has nothing new to place, so it never reopens its own target table here (and is
+    returned bare, but is filtered out regardless); `install <name>` (or `enable <name>`) named
+    directly still does. `dry_run`: neither `marketplace add` nor the user file write ever run —
+    a checked unregistered row is reported, not added."""
     from . import (
         plugin_enable,
     )  # local: plugin_enable never imports this module, no cycle
 
     installed = set(installed_names)
     entries = load_curated_entries(user_path)
-    curated_names: set[str] = set()
-    # Grouped by marketplace, not by entry: two entries (a `plugin=` one and a whole-marketplace
-    # one, or two different `plugin=` ones) can share one not-yet-registered marketplace, and
-    # `marketplace add` must run once for the group, not once per entry.
+    curated_names: set[str] = (
+        set()
+    )  # bare plugin names — the picker's rows, matched against
+    # `installed` (also bare, see `plugin_reconcile.enabled_plugin_names`) for the pre-check.
+    # bare name -> the marketplace `expand_entry` qualified it with, so a freshly picked name
+    # goes back out qualified (`pick_plugins`/`build_plugin_pick_rows` stay bare-name generic).
+    marketplace_by_name: dict[str, str] = {}
+    # keyed by marketplace, not by entry: several entries can share one not-yet-registered
+    # marketplace, and `marketplace add` must run once for the group, not once per entry.
     marker_to_entries: dict[str, list[CuratedEntry]] = {}
     for entry in entries:
         if is_registered(entry):
-            curated_names.update(expand_entry(entry))
+            for spec in expand_entry(entry):
+                name, _, entry_marketplace = spec.partition("@")
+                curated_names.add(name)
+                marketplace_by_name[name] = entry_marketplace
         else:
             marker = f"{UNREGISTERED_MARKER}{entry.marketplace}"
             marker_to_entries.setdefault(marker, []).append(entry)
@@ -266,7 +280,11 @@ def resolve_no_name_selection(
         sorted(curated_names), sorted(installed), picker=picker or tui.run_checklist
     )
     markers = [n for n in picked if n in marker_to_entries]
-    names = [n for n in picked if n not in marker_to_entries and n not in installed]
+    names = [
+        f"{n}@{marketplace_by_name[n]}" if n in marketplace_by_name else n
+        for n in picked
+        if n not in marker_to_entries and n not in installed
+    ]
     if not markers:
         return names
 

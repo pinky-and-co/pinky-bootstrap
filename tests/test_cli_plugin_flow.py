@@ -454,7 +454,7 @@ def test_install_with_no_name_opens_the_picker(env, monkeypatch):
 
     cli.main(["--plugin"])
 
-    assert _user_enabled(env.home, "pc-snow") is True
+    assert _user_enabled(env.home, "pc-snow@mp") is True
 
 
 def test_install_with_no_name_skips_the_table_for_an_already_installed_pick(
@@ -546,7 +546,7 @@ def test_enable_with_no_name_opens_the_picker(env, monkeypatch):
 
     cli.main(["--plugin-enable"])
 
-    assert _user_enabled(env.home, "pc-snow") is True
+    assert _user_enabled(env.home, "pc-snow@mp") is True
 
 
 def test_disable_with_no_name_acts_on_every_installed_plugin_without_asking_which(

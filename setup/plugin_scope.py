@@ -30,23 +30,37 @@ _DEPTH_LABELS = {
     2: "repo",
 }
 
+# A marker file at a directory's own root — not a name pinned to any one workspace (e.g. a
+# read-only backup mount) — excludes it and everything below it from the scan. `_collect` never
+# reads its content; presence alone is the signal.
+IGNORE_MARKER = ".pinky-ignore"
+
 
 def _is_repo(p: Path) -> bool:
     """Whether `p` is the root of a git repo."""
     return (p / ".git").exists()
 
 
+def _is_ignored(p: Path) -> bool:
+    """Whether `p` carries `IGNORE_MARKER` at its own root — a read-only backup mount or
+    anything else the workspace owner wants the scan to never descend into or list."""
+    return (p / IGNORE_MARKER).exists()
+
+
 def _collect(root: Path) -> tuple[list[Path], list[Path]]:
     """Recursively partition `root`'s subtree into groups and repos.
 
-    A repo is pruned once found — its own subtree is never descended into.
-    Dotfile dirs are excluded. Depth is unbounded: a group at any nesting
-    level is included as long as a repo exists somewhere below it.
+    A repo is pruned once found — its own subtree is never descended into. Dotfile dirs and any
+    dir carrying `IGNORE_MARKER` are excluded (the marked dir itself and its whole subtree —
+    checked before the repo test, so a marked repo is skipped too). Depth is unbounded: a group
+    at any nesting level is included as long as a repo exists somewhere below it.
     """
     groups: list[Path] = []
     repos: list[Path] = []
     for p in sorted(root.iterdir()):
         if not p.is_dir() or p.name.startswith("."):
+            continue
+        if _is_ignored(p):
             continue
         if _is_repo(p):
             repos.append(p)

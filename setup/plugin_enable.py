@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from . import plugin_install, plugin_reconcile, rules, state_file, style, tui
@@ -491,6 +491,32 @@ def _apply_rules_diff(
     )
 
 
+def _dedupe_batch_purges(
+    rules_preview: dict[Path, rules.RulesReport],
+    claimed_purges: dict[Path, set[str]],
+) -> dict[Path, rules.RulesReport]:
+    """Attribute each purged filename, per target, to only the first plugin of this batch that
+    reports it — `claimed_purges` accumulates across the whole planning loop of one `run()` call.
+
+    Needed because `active_dirs_by_plugin` is folded to each plugin's own post-action state as
+    soon as its diff is computed (so a *later* plugin in the batch sees an earlier one as already
+    active at a shared target — the "batch enable" fix). For a batch `disable`, that same fold
+    means an earlier plugin's target looks inactive by the time a later co-resident plugin's own
+    `sibling_owned_at` runs — its purge is no longer protected there, and gets recounted. The
+    actual write is unaffected (each apply-time purge checks the file still exists on disk before
+    unlinking it), so this only corrects what the plan *shows* before `[y/N]`.
+    """
+    result: dict[Path, rules.RulesReport] = {}
+    for target, report in rules_preview.items():
+        claimed = claimed_purges.setdefault(target, set())
+        fresh = [name for name in report.purged if name not in claimed]
+        claimed.update(fresh)
+        result[target] = (
+            report if fresh == report.purged else replace(report, purged=fresh)
+        )
+    return result
+
+
 def _target_label(target: Path, workspace_root: Path | None) -> str:
     """`target` as the user thinks of it: `<root> (workspace)` for the root itself, a path relative
     to it otherwise; the absolute path when there is no root to relate it to."""
@@ -728,6 +754,9 @@ def run(
 
     plans = []
     any_changes = False
+    # Per-target filenames already shown as purged by an earlier plugin of this same batch — see
+    # `_dedupe_batch_purges`.
+    claimed_purges: dict[Path, set[str]] = {}
     for spec, state in zip(specs, states, strict=True):
         plugin_id, plugin_marketplace = _split_spec(spec, marketplace)
         current = _current_enabled_labels(state)
@@ -747,6 +776,7 @@ def run(
             user_rules_dir=user_rules_dir,
             active_dirs_by_plugin=active_dirs_by_plugin,
         )
+        rules_preview = _dedupe_batch_purges(rules_preview, claimed_purges)
         print(render_scope_plan(spec, diff, color=color, autodiscovery=autodiscovery))
         rules_text = render_rules_plan(
             rules_preview, workspace_root=workspace_root, verbose=verbose, color=color

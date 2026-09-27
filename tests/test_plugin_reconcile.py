@@ -121,6 +121,27 @@ def test_ghost_is_a_key_enabled_nowhere(world):
     assert state.disabled_at == ("user",)
 
 
+def test_enabled_plugin_names_excludes_a_ghost(world):
+    """A plugin only ever disabled (or a stale registry entry with nothing turned on) must not
+    count as "installed" for the curated picker's pre-check — `audit_plugins` carries it,
+    `enabled_plugin_names` must not."""
+    user_claude, ws = world
+    _write_enabled(
+        user_claude / "settings.json",
+        {"kept@mp": True, "only-disabled@mp": False},
+    )
+    _write_registry(user_claude, {"registry-only@mp": [{"scope": "user"}]})
+
+    assert plugin_reconcile.enabled_plugin_names(ws) == {"kept"}
+
+
+def test_enabled_plugin_names_strips_the_marketplace(world):
+    user_claude, ws = world
+    _write_enabled(user_claude / "settings.json", {"p@mp": True})
+
+    assert plugin_reconcile.enabled_plugin_names(ws) == {"p"}
+
+
 def test_ships_status_line_true_when_the_script_is_in_the_install_path(world, tmp_path):
     user_claude, ws = world
     install = tmp_path / "cache" / "pc-statusline"

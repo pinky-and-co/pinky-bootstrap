@@ -95,7 +95,7 @@ def test_a_specific_plugin_entry_and_a_whole_marketplace_entry_coexist(tmp_path)
 def test_expand_entry_returns_the_named_plugin_as_is():
     entry = CuratedEntry("mp", "owner/repo", plugin="pc-snow")
 
-    assert plugin_curated.expand_entry(entry) == ["pc-snow"]
+    assert plugin_curated.expand_entry(entry) == ["pc-snow@mp"]
 
 
 def test_expand_entry_reads_the_local_catalog_of_a_known_marketplace(
@@ -116,7 +116,7 @@ def test_expand_entry_reads_the_local_catalog_of_a_known_marketplace(
 
     entry = CuratedEntry("mp", "owner/repo")
 
-    assert plugin_curated.expand_entry(entry) == ["pc-a", "pc-b"]
+    assert plugin_curated.expand_entry(entry) == ["pc-a@mp", "pc-b@mp"]
 
 
 def test_expand_entry_is_empty_for_a_marketplace_this_machine_never_registered(
@@ -346,7 +346,7 @@ def test_resolve_no_name_selection_expands_an_already_registered_marketplace(
         picker=_keep_as_shown,
     )
 
-    assert names == ["pc-a"]
+    assert names == ["pc-a@mp"]
 
 
 def test_resolve_no_name_selection_adds_expands_and_offers_to_remember_an_unregistered_entry(
@@ -382,7 +382,7 @@ def test_resolve_no_name_selection_adds_expands_and_offers_to_remember_an_unregi
         tmp_path, installed_names=[], user_path=user_file, picker=_keep_as_shown
     )
 
-    assert names == ["pc-fresh"]
+    assert names == ["pc-fresh@fresh"]
     assert calls == [["claude", "plugin", "marketplace", "add", "owner/fresh-plugins"]]
     assert tomllib.loads(user_file.read_text()) == {
         "entries": [{"marketplace": "fresh", "source": "owner/fresh-plugins"}]
@@ -480,7 +480,7 @@ def test_resolve_no_name_selection_groups_two_entries_under_one_unregistered_mar
     )
 
     assert len(add_calls) == 1
-    assert set(names) == {"pc-x", "pc-y"}
+    assert set(names) == {"pc-x@fresh", "pc-y@fresh"}
 
 
 def test_resolve_no_name_selection_under_dry_run_adds_and_writes_nothing(
