@@ -31,7 +31,7 @@ class Asset:
     type. `value` is what actually gets written to `outputStyle`/`theme` in settings.json — NOT
     always the same string (verified against the real schema and a live install):
     outputStyle takes the frontmatter's own `name:` field (case-sensitive — the real value in use
-    on this machine is `ADHD`, not the filename `adhd`); theme takes `custom:<name>` (schema:
+    on this machine is `Skim-and-push`, not the filename `skim-and-push`); theme takes `custom:<name>` (schema:
     `theme` is an enum of built-ins OR a string matching `^custom:.*` — a bare name matches
     neither).
     """
