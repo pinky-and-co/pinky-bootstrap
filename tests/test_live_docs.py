@@ -426,6 +426,54 @@ def test_uninstall_leaves_a_plist_it_did_not_pose(tmp_path, ledger):
     assert plist.exists()
 
 
+# ── the CLI reports — whole-string oracles, color off ──────────────────────────────────────
+
+
+def test_render_install_report_loaded_service():
+    result = live_docs.InstallResult(Path("/i"), ["a-kanban", "b-kanban"], "loaded")
+    assert live_docs.render_install_report(result) == (
+        "✓ live-docs installed → /i\n  mounts: a-kanban, b-kanban\n  service: loaded"
+    )
+
+
+def test_render_install_report_names_the_serve_fallback_when_not_loaded():
+    result = live_docs.InstallResult(Path("/i"), [], "skipped (not macOS)")
+    assert live_docs.render_install_report(result) == (
+        "✓ live-docs installed → /i\n"
+        "  mounts: (none found)\n"
+        "  service: skipped (not macOS)\n"
+        "  `pinky live-docs serve` to view (http://127.0.0.1:8765)"
+    )
+
+
+def test_render_install_report_paints_only_when_color_is_on():
+    result = live_docs.InstallResult(Path("/i"), ["a-kanban"], "loaded")
+    painted = live_docs.render_install_report(result, color=True)
+    assert painted.startswith("\x1b[32m✓\x1b[0m live-docs installed"), painted
+
+
+def test_render_status_report_covers_the_three_states():
+    assert (
+        live_docs.render_status_report(state_file.EntryStatus.ABSENT)
+        == "live-docs: absent"
+    )
+    assert (
+        live_docs.render_status_report(state_file.EntryStatus.PRESENT_NOT_MINE)
+        == "⚠ live-docs: present but not posed by pinky"
+    )
+    assert (
+        live_docs.render_status_report(state_file.EntryStatus.POSED_BY_ME)
+        == "✓ live-docs: posed by pinky"
+    )
+
+
+def test_render_uninstall_report_names_every_removed_path():
+    assert live_docs.render_uninstall_report(
+        ["/p/com.pinky.live-docs.plist", "/p/live-docs"]
+    ) == ("removed:\n  /p/com.pinky.live-docs.plist\n  /p/live-docs")
+    assert live_docs.render_uninstall_report([]) == "nothing pinky posed to remove"
+
+
 # ── serve ───────────────────────────────────────────────────────────────────────────────────
 
 

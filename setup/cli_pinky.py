@@ -104,7 +104,7 @@ def _epilog() -> str:
     """Top-level `--help` epilog: the Claude Code commands index, then the standalone scripts."""
     sections = [
         (
-            "🤖 Claude Code commands (see .claude/commands/, or /help in a session):",
+            "Claude Code commands (see .claude/commands/, or /help in a session):",
             _commands_index(),
         ),
         ("🐍 Standalone scripts:", _scripts_index()),
@@ -336,7 +336,7 @@ def _drift_kinds_epilog() -> str:
         + (" · scan default" if kind.name in SCAN_KINDS_DEFAULT else "")
         for kind in DRIFT_KINDS
     ]
-    return "🧹 drift kinds:\n" + "\n".join(lines)
+    return "drift kinds:\n" + "\n".join(lines)
 
 
 def _subject(
@@ -409,7 +409,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="delete the plugin's cache dir before fetching, so a plugin pinned at 0.1.0 "
-        "re-pulls the working tree (dev cache-bust)",
+        "re-pulls the working tree",
     )
     p.add_argument(
         "--scope",
@@ -843,5 +843,5 @@ def main(argv: list[str] | None = None) -> None:
     try:
         args.func(args)
     except KeyboardInterrupt:
-        print("\nInterrupted.", file=sys.stderr)
+        print("cancelled.", file=sys.stderr)
         sys.exit(130)

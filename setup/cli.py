@@ -273,6 +273,7 @@ def main(argv: list[str] | None = None) -> None:
         "or the whole table without a code",
     )
     args, _ = parser.parse_known_args(argv)
+    color = style.use_color()
 
     if args.doctor:
         from . import doctor
@@ -315,32 +316,24 @@ def main(argv: list[str] | None = None) -> None:
             return
         if args.live_docs_uninstall:
             removed = live_docs.uninstall()
-            print(
-                "removed:\n  " + "\n  ".join(removed)
-                if removed
-                else "nothing pinky posed to remove"
-            )
+            print(live_docs.render_uninstall_report(removed, color=color))
             return
         if args.live_docs_status:
-            print(f"live-docs: {live_docs.status().value}")
+            print(live_docs.render_status_report(live_docs.status(), color=color))
             return
         try:
             result = live_docs.install(force=args.force)
         except live_docs.LiveDocsConflict as exc:
             print(exc, file=sys.stderr)
             raise SystemExit(1) from exc
-        print(f"live-docs installed → {result.install_dir}")
-        print(f"  mounts: {', '.join(result.mounts) or '(none found)'}")
-        print(f"  service: {result.service}")
-        if result.service != "loaded":
-            print(f"  `pinky live-docs serve` to view (http://{live_docs.SERVE_ADDR})")
+        print(live_docs.render_install_report(result, color=color))
         return
 
     if args.plugins_refresh is not None:
         outcomes = plugin_install.refresh_plugins(
             list(args.plugins_refresh), args.marketplace
         )
-        print(plugin_install.render_refresh_report(outcomes))
+        print(plugin_install.render_refresh_report(outcomes, color=color))
         if any(o.status == "failed" for o in outcomes):
             raise SystemExit(1)
         return
@@ -360,7 +353,13 @@ def main(argv: list[str] | None = None) -> None:
             else ("disable", list(args.plugin_disable))
         )
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
-        print(f"Workspace: {resolved.root} (via {resolved.via})")
+        print(
+            style.paint(
+                f"Workspace: {resolved.root} (via {resolved.via})",
+                style.DIM,
+                color=color,
+            )
+        )
         # Only `disable` with no name gets the compact (checked-only) table — everything it names
         # is headed for removal, so an unchecked row is noise.
         only_checked = not names and action == "disable"
@@ -379,6 +378,7 @@ def main(argv: list[str] | None = None) -> None:
                     user_path=Path(args.list) if args.list else None,
                     yes=args.yes,
                     dry_run=args.dry_run,
+                    color=color,
                 )
                 if not names:
                     print("nothing selected")
@@ -416,7 +416,7 @@ def main(argv: list[str] | None = None) -> None:
             plugin_reconcile.apply_reconcile(WORKSPACE_ROOT)
         else:
             plugin_reconcile.print_audit_report(
-                plugin_reconcile.audit_plugins(WORKSPACE_ROOT)
+                plugin_reconcile.audit_plugins(WORKSPACE_ROOT), color=color
             )
         return
 
@@ -424,7 +424,13 @@ def main(argv: list[str] | None = None) -> None:
         from . import plugin_curated, plugin_enable, plugin_reconcile
 
         resolved = resolve_workspace_root(Path.cwd(), args.workspace)
-        print(f"Workspace: {resolved.root} (via {resolved.via})")
+        print(
+            style.paint(
+                f"Workspace: {resolved.root} (via {resolved.via})",
+                style.DIM,
+                color=color,
+            )
+        )
 
         # 0. No name at all: the curated ∪ installed checkbox list —
         #    the installed set doubles as the curated list's own "already have this" signal.
@@ -438,6 +444,7 @@ def main(argv: list[str] | None = None) -> None:
                 user_path=Path(args.list) if args.list else None,
                 yes=args.yes,
                 dry_run=args.dry_run,
+                color=color,
             )
             if not names:
                 print("nothing selected")
@@ -462,7 +469,10 @@ def main(argv: list[str] | None = None) -> None:
                 bare, mp = _bare(name), _marketplace_for(name)
                 if plugin_install.force_refetch(bare, mp):
                     spec = f"{bare}@{mp}" if mp else bare
-                    print(f"🧹 cache cleared for {spec} — forcing a fresh fetch")
+                    print(
+                        f"cache cleared for {spec} — forcing a fresh fetch",
+                        file=sys.stderr,
+                    )
         # An always-on plugin is user scope by design, the only case `pinky` writes there: no
         # scope table, so it stays out of the shared one below.
         keep_scope = [n for n in names if _bare(n) in plugin_install.KEEP_USER_SCOPE]
@@ -476,11 +486,19 @@ def main(argv: list[str] | None = None) -> None:
             written = plugin_install.set_status_lines(
                 plugin_install.resolve_install_path(bare, mp)
             )
+            tick = style.paint("✓", style.GREEN, color=color)
+            print(
+                f"{tick} {bare} kept at user scope (always-on) → ~/.claude/settings.json"
+            )
             if written:
                 print(
-                    f"status line wired ({', '.join(written)}) → ~/.claude/settings.json"
+                    style.paint(
+                        f"  status line wired ({', '.join(written)})"
+                        " → ~/.claude/settings.json",
+                        style.DIM,
+                        color=color,
+                    )
                 )
-            print(f"{bare} kept at user scope (always-on) → ~/.claude/settings.json")
         if not regular:
             return
         # One plugin × target table and one plan for the whole batch; a prior enable shows up
@@ -509,7 +527,12 @@ def main(argv: list[str] | None = None) -> None:
             written = plugin_install.set_status_lines(install_path)
             if written:
                 print(
-                    f"status line wired ({', '.join(written)}) → ~/.claude/settings.json"
+                    style.paint(
+                        f"  status line wired ({', '.join(written)})"
+                        " → ~/.claude/settings.json",
+                        style.DIM,
+                        color=color,
+                    )
                 )
             if plugin_install.ships_lsp_server(install_path):
                 plugin_install.ensure_lsp_tool_enabled()
@@ -521,7 +544,8 @@ def main(argv: list[str] | None = None) -> None:
         except ValueError as exc:
             print(exc, file=sys.stderr)
             raise SystemExit(1) from exc
-        print(f"output-style {args.output_style!r} installed → {target}")
+        tick = style.paint("✓", style.GREEN, color=color)
+        print(f"{tick} output-style {args.output_style!r} installed → {target}")
         return
 
     if args.theme is not None:
@@ -530,7 +554,8 @@ def main(argv: list[str] | None = None) -> None:
         except ValueError as exc:
             print(exc, file=sys.stderr)
             raise SystemExit(1) from exc
-        print(f"theme {args.theme!r} installed → {target}")
+        tick = style.paint("✓", style.GREEN, color=color)
+        print(f"{tick} theme {args.theme!r} installed → {target}")
         return
 
     if args.rules is not None:
@@ -539,9 +564,7 @@ def main(argv: list[str] | None = None) -> None:
         plan = distribute_all_plugin_rules(
             workspace, apply=False, user_rules_dir=user_rules_dir
         )
-        print_all_plugin_rules_report(
-            plan, verbose=args.verbose, color=style.use_color()
-        )
+        print_all_plugin_rules_report(plan, verbose=args.verbose, color=color)
         has_changes = any(
             report.has_changes
             for by_target in plan.values()
@@ -554,19 +577,20 @@ def main(argv: list[str] | None = None) -> None:
                 print("\nNon-interactive shell — pass --yes to apply.", file=sys.stderr)
                 raise SystemExit(1)
             if input("\nApply this plan? [y/N] ").strip().lower() != "y":
-                print("Cancelled.")
+                print("cancelled.")
                 return
         distribute_all_plugin_rules(
             workspace, apply=True, user_rules_dir=user_rules_dir
         )
-        print("\nApplied.")
+        print(style.paint("applied.", style.GREEN, color=color))
         return
 
     # From-zero mode: create a new repo already governed (git init + develop, then distribute).
     if args.new_repo:
         if args.type and not args.scaffold:
             print(
-                "--type requires --scaffold (it picks which manifest --scaffold writes)."
+                "--type requires --scaffold (it picks which manifest --scaffold writes).",
+                file=sys.stderr,
             )
             raise SystemExit(1)
         new_repo(args.new_repo, args)
@@ -577,9 +601,10 @@ def main(argv: list[str] | None = None) -> None:
         run_distribution(args)
         return
 
-    print("pinky workspace setup — no mode flag given.")
+    print("pinky workspace setup — no mode flag given.", file=sys.stderr)
     print(
         "Run `pinky --help` (cli_pinky.py) for the sub-command list, or pass a flag directly: "
-        "--new-repo, --repo/--all (distribute), --rules (workspace rules), --check-drift."
+        "--new-repo, --repo/--all (distribute), --rules (workspace rules), --check-drift.",
+        file=sys.stderr,
     )
     raise SystemExit(1)

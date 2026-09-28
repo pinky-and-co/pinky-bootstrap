@@ -59,6 +59,42 @@ def test_install_output_style_copies_file_and_sets_settings_key(isolated_home):
     assert data["outputStyle"] == "Skim-and-push"
 
 
+def test_cli_output_style_install_prints_the_exact_report(
+    isolated_home, monkeypatch, capsys
+):
+    """`pinky`-level whole-output oracle, color off — the report names the preset and its
+    target. The real installer runs; only the home and the ledger are redirected."""
+    from setup import cli
+    from setup import state_file as state_file_module
+
+    monkeypatch.setattr(
+        state_file_module, "STATE_FILE_PATH", isolated_home / "state.json"
+    )
+
+    cli.main(["--output-style", "skim-and-push"])
+
+    assert capsys.readouterr().out == (
+        "✓ output-style 'skim-and-push' installed → "
+        f"{isolated_home / '.claude' / 'output-styles' / 'skim-and-push.md'}\n"
+    )
+
+
+def test_cli_theme_install_prints_the_exact_report(isolated_home, monkeypatch, capsys):
+    from setup import cli
+    from setup import state_file as state_file_module
+
+    monkeypatch.setattr(
+        state_file_module, "STATE_FILE_PATH", isolated_home / "state.json"
+    )
+
+    cli.main(["--theme", "lisible"])
+
+    assert capsys.readouterr().out == (
+        "✓ theme 'lisible' installed → "
+        f"{isolated_home / '.claude' / 'themes' / 'lisible.json'}\n"
+    )
+
+
 def test_install_output_style_unknown_name_raises():
     with pytest.raises(ValueError, match="bidule"):
         install_output_style("bidule")

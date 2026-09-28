@@ -193,7 +193,9 @@ def test_sync_user_file_appends_a_new_entry_on_yes(tmp_path, monkeypatch):
     }
 
 
-def test_sync_user_file_writes_nothing_on_no(tmp_path, monkeypatch):
+def test_sync_user_file_writes_nothing_on_no(tmp_path, monkeypatch, capsys):
+    """Whole-output oracle, color off — plan, then the declined outcome's own word
+    (the input() prompt itself never prints under a canned input)."""
     user_file = tmp_path / "curated.toml"
     monkeypatch.setattr("builtins.input", lambda *_: "n")
 
@@ -203,6 +205,11 @@ def test_sync_user_file_writes_nothing_on_no(tmp_path, monkeypatch):
 
     assert written is False
     assert not user_file.exists()
+    assert capsys.readouterr().out == (
+        f"New marketplace(s) to remember in {user_file}:\n"
+        "  + mp (owner/repo)\n"
+        "cancelled.\n"
+    )
 
 
 def test_sync_user_file_skips_the_prompt_under_yes(tmp_path, monkeypatch):
@@ -247,6 +254,27 @@ def test_sync_user_file_preserves_an_existing_remove_block(tmp_path, monkeypatch
         "entries": [{"marketplace": "fresh", "source": "owner/fresh-plugins"}],
         "remove": [{"marketplace": "claude-code-lsps"}],
     }
+
+
+def test_sync_user_file_stdout_is_the_exact_plan_confirm_report(
+    tmp_path, monkeypatch, capsys
+):
+    """Whole-string oracle, color off — plan, `[y/N]`, report in the plan's own words."""
+    user_file = tmp_path / "curated.toml"
+    monkeypatch.setattr("builtins.input", lambda *_: "y")
+
+    written = plugin_curated.sync_user_file(
+        [CuratedEntry("mp", "owner/repo")], user_path=user_file
+    )
+
+    assert written is True
+    # the input() prompt itself never prints under a canned input — stdout is the plan
+    # plus the report
+    assert capsys.readouterr().out == (
+        f"New marketplace(s) to remember in {user_file}:\n"
+        "  + mp (owner/repo)\n"
+        f"✓ saved → {user_file}\n"
+    )
 
 
 def test_sync_user_file_refuses_to_overwrite_a_broken_file(

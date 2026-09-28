@@ -22,7 +22,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from . import plugin_install
+from . import plugin_install, style
 
 _DEPTH_LABELS = {
     0: "workspace root",
@@ -132,22 +132,33 @@ def run_marketplace_wizard(
     every scope this call enables — the same gap `statusLine` closes for a status-line plugin.
     `None` (every pre-existing caller) skips this step, never guesses.
 
-    Never guesses in a non-interactive shell (no tty) — errors instead, same discipline as the
-    `--rules` confirmation flow in `setup/cli.py`.
+    Never guesses in a non-interactive shell (no tty) — errors instead, same discipline
+    as the `--rules` confirmation flow in `setup/cli.py`. The placement this wizard does
+    is a decision, not a value some flag carries: no option replaces the questions, so
+    the refusal names the need (a terminal), never a flag.
     """
     if not sys.stdin.isatty():
         print(
-            "Non-interactive shell — plugin scope needs a terminal to ask.",
+            "Non-interactive shell — the placement wizard needs a terminal.",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
+    color = style.use_color()
     ships_lsp = install_path is not None and plugin_install.ships_lsp_server(
         install_path
     )
 
     if not skip_scope_question:
-        scope = input("Scope — (u)ser or (p)roject? [u/p]: ").strip().lower()
+        scope = (
+            input(
+                style.paint(
+                    "Scope — (u)ser or (p)roject? [u/p]: ", style.BOLD, color=color
+                )
+            )
+            .strip()
+            .lower()
+        )
         if scope == "u":
             # l'appelant installe au scope user : rien à écrire ici.
             if ships_lsp:
@@ -158,7 +169,9 @@ def run_marketplace_wizard(
             raise SystemExit(1)
 
     depth_prompt = " / ".join(f"{d}={label}" for d, label in _DEPTH_LABELS.items())
-    depth_answer = input(f"Depth — {depth_prompt}: ").strip()
+    depth_answer = input(
+        style.paint(f"Depth — {depth_prompt}: ", style.BOLD, color=color)
+    ).strip()
     try:
         depth = int(depth_answer)
     except ValueError:
@@ -175,7 +188,13 @@ def run_marketplace_wizard(
 
     for i, target in enumerate(targets):
         print(f"  {i}) {target.name}")
-    choice = input("Pick one or more targets (indices, space-separated): ").strip()
+    choice = input(
+        style.paint(
+            "Pick one or more targets (indices, space-separated): ",
+            style.BOLD,
+            color=color,
+        )
+    ).strip()
     try:
         picked = _parse_indices(choice, len(targets))
     except ValueError as exc:
@@ -183,9 +202,10 @@ def run_marketplace_wizard(
         raise SystemExit(1) from None
 
     roots = [targets[i] for i in picked]
+    tick = style.paint("✓", style.GREEN, color=color)
     for root in roots:
         plugin_install.enable_at_project(plugin_id, root, marketplace)
-        print(f"Enabled {plugin_id} at {root}")
+        print(f"{tick} enabled {plugin_id} at {root}")
     # `ENABLE_LSP_TOOL` is a single user-scope key — write it once, not once per target.
     if ships_lsp and roots:
         plugin_install.ensure_lsp_tool_enabled()

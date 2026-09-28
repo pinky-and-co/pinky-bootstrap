@@ -88,7 +88,7 @@ def test_ctrl_c_exits_cleanly_with_no_traceback(monkeypatch, capsys):
         cli_pinky.main(["claude-plugin", "install", "pc-x"])
 
     assert exc.value.code == 130
-    assert "Interrupted" in capsys.readouterr().err
+    assert capsys.readouterr().err == "cancelled.\n"
 
 
 def _captured_argv(monkeypatch):
@@ -182,16 +182,17 @@ def test_every_subcommand_explains_itself():
                 )
 
 
-def test_a_subjects_emoji_is_one_zsh_completion_can_print():
-    """The completion menu shows each subject's description through zsh's `${(V)…}`, which spells
+def test_every_command_emoji_is_one_zsh_completion_can_print():
+    """The completion menu shows each command's description through zsh's `${(V)…}`, which spells
     out as `\\U0001f9e9` any character its libc does not know as printable — macOS's does not know the
-    emoji added after Unicode 10 (🧩, 🩺, 🧰…). Stay below U+1F900."""
+    emoji added after Unicode 10 (🧩, 🩺, 🧰…). Stay below U+1F900, subjects and verbs alike —
+    `pinky repo <TAB>` lists the verbs the same way."""
     parser = cli_pinky_impl.build_parser()
     for path, command in _walk_commands(parser):
-        if len(path) != 1:
-            continue
         leading = command.description[0]
-        assert ord(leading) < 0x1F900, f"{path[0]}: {leading!r} (U+{ord(leading):04X})"
+        assert ord(leading) < 0x1F900, (
+            f"{' '.join(path)}: {leading!r} (U+{ord(leading):04X})"
+        )
 
 
 def test_help_lists_exactly_the_subjects_of_the_grid():

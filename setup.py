@@ -10,7 +10,13 @@ Implementation lives in the setup/ package (precommit, cli — see the split-set
 kanban card); this file is a thin entrypoint only.
 """
 
+import sys
+
 from setup.cli import main
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("cancelled.", file=sys.stderr)
+        sys.exit(130)

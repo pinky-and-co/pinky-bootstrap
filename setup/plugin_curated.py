@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_catalog, tui
+from . import plugin_catalog, style, tui
 from .common import PACKAGE_DIR
 
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
@@ -194,12 +194,16 @@ def sync_user_file(
     user_path: Path | None = None,
     *,
     yes: bool = False,
+    color: bool = False,
 ) -> bool:
     """`new_entries` this run just used (typically freshly `claude plugin marketplace
     add`ed) that are not yet in the user's curated file — show the diff, ask `[y/N]`,
     append and write if confirmed. A no-op, nothing printed, when every one of `new_entries` is
     already there. Returns whether anything was written. Refuses (prints why, writes nothing) when
-    the file exists but fails to parse — never silently replaces content it could not read."""
+    the file exists but fails to parse — never silently replaces content it could not read.
+
+    `color` paints the plan the way `setup/doctor.py` does — off by default, so a caller
+    that never passes it sees byte-identical output."""
     path = user_path or USER_CURATED_PATH
     try:
         user_data = _load_toml_strict(path)
@@ -220,14 +224,20 @@ def sync_user_file(
     if not to_add:
         return False
     print(f"New marketplace(s) to remember in {path}:")
+    plus = style.paint("+", style.GREEN, color=color)
     for e in to_add:
-        print(f"  + {e.marketplace} ({e.source})")
-    if not yes and input("Save? [y/N] ").strip().lower() != "y":
-        print("left unsaved.")
+        print(f"  {plus} {e.marketplace} ({e.source})")
+    if (
+        not yes
+        and input(style.paint("Save? [y/N] ", style.BOLD, color=color)).strip().lower()
+        != "y"
+    ):
+        print("cancelled.")
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_curated_toml(current + to_add, removes), encoding="utf-8")
-    print(f"saved → {path}")
+    tick = style.paint("✓", style.GREEN, color=color)
+    print(f"{tick} saved → {path}")
     return True
 
 
@@ -238,6 +248,7 @@ def resolve_no_name_selection(
     user_path: Path | None = None,
     yes: bool = False,
     dry_run: bool = False,
+    color: bool = False,
     picker: Callable[..., list[bool]] | None = None,
 ) -> list[str]:
     """`install`/`enable` with no plugin name, end to end: the
@@ -296,9 +307,11 @@ def resolve_no_name_selection(
         )
         return names
 
-    prompt = (
+    prompt = style.paint(
         "Also add marketplace(s): "
-        f"{', '.join(e.marketplace for e in unregistered)}? [y/N] "
+        f"{', '.join(e.marketplace for e in unregistered)}? [y/N] ",
+        style.BOLD,
+        color=color,
     )
     confirmed = yes or (sys.stdin.isatty() and input(prompt).strip().lower() == "y")
     if not confirmed:
@@ -319,5 +332,5 @@ def resolve_no_name_selection(
             added.append(entry)
             names.extend(expand_entry(entry))
     if added:
-        sync_user_file(added, user_path, yes=yes)
+        sync_user_file(added, user_path, yes=yes, color=color)
     return names
