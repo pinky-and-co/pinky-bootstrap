@@ -24,7 +24,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import state_file
+from . import state_file, style
 from .common import SCRIPT_DIR, find_workspace_root
 
 LIVE_DOCS_SRC = SCRIPT_DIR / "live-docs"
@@ -288,6 +288,55 @@ def status(
         return "installed" if install_dir.is_dir() else None
 
     return state_file.status_of(_LEDGER_TOOLING, _tooling_reader)
+
+
+def render_install_report(result: InstallResult, *, color: bool = False) -> str:
+    """The `pinky live-docs install` report: where the tooling landed, the mounts, the service.
+
+    `color` paints the tick and dims the detail lines the way `setup/doctor.py` does — off by
+    default, byte-identical output.
+    """
+    tick = style.paint("✓", style.GREEN, color=color)
+    lines = [
+        f"{tick} live-docs installed → {result.install_dir}",
+        style.paint(
+            f"  mounts: {', '.join(result.mounts) or '(none found)'}",
+            style.DIM,
+            color=color,
+        ),
+        style.paint(f"  service: {result.service}", style.DIM, color=color),
+    ]
+    if result.service != "loaded":
+        lines.append(
+            style.paint(
+                f"  `pinky live-docs serve` to view (http://{SERVE_ADDR})",
+                style.DIM,
+                color=color,
+            )
+        )
+    return "\n".join(lines)
+
+
+def render_status_report(status: state_file.EntryStatus, *, color: bool = False) -> str:
+    """The one-line `pinky live-docs status` answer — a tick for ours, a warning for
+    something else at the same path, plain text for absent."""
+    if status is state_file.EntryStatus.ABSENT:
+        return "live-docs: absent"
+    if status is state_file.EntryStatus.PRESENT_NOT_MINE:
+        return (
+            f"{style.paint('⚠', style.BOLD, color=color)} "
+            "live-docs: present but not posed by pinky"
+        )
+    return f"{style.paint('✓', style.GREEN, color=color)} live-docs: posed by pinky"
+
+
+def render_uninstall_report(removed: list[str], *, color: bool = False) -> str:
+    """The `pinky live-docs uninstall` report — every path removed, named, or why none."""
+    if not removed:
+        return "nothing pinky posed to remove"
+    lines = [f"{style.paint('removed:', style.BOLD, color=color)}"]
+    lines += [f"  {path}" for path in removed]
+    return "\n".join(lines)
 
 
 def uninstall(

@@ -23,7 +23,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_install, state_file
+from . import plugin_install, state_file, style
 from .plugin_scope import list_targets_at_depth, run_marketplace_wizard
 
 _USER_CLAUDE = Path.home() / ".claude"
@@ -254,13 +254,15 @@ def keeps_user_scope(state: PluginState) -> bool:
     return state.ships_status_line or _is_always_on(state.plugin_id)
 
 
-def _print_plugin_block(state: PluginState) -> None:
+def _print_plugin_block(state: PluginState, *, color: bool = False) -> None:
     """One plugin's aggregated state — shared by the bare report and the `--apply` loop."""
-    print(f"\n=== {state.plugin_id} ===")
-    print(
-        "  enabled at:      "
-        + (", ".join(state.enabled_at) if state.enabled_at else "(nowhere — ghost)")
+    print(f"\n=== {style.paint(state.plugin_id, style.BOLD, color=color)} ===")
+    enabled = (
+        ", ".join(state.enabled_at)
+        if state.enabled_at
+        else style.paint("(nowhere — ghost)", style.RED_BOLD, color=color)
     )
+    print(f"  enabled at:      {enabled}")
     if state.disabled_at:
         print("  disabled at:     " + ", ".join(state.disabled_at))
     print(
@@ -268,7 +270,7 @@ def _print_plugin_block(state: PluginState) -> None:
         + (
             ", ".join(state.installed_scopes)
             if state.installed_scopes
-            else "(not in the registry)"
+            else style.paint("(not in the registry)", style.DIM, color=color)
         )
     )
     if state.ships_status_line:
@@ -279,20 +281,21 @@ def _print_plugin_block(state: PluginState) -> None:
         print("  required by:     " + ", ".join(state.required_by))
 
 
-def print_audit_report(audit: dict[str, PluginState]) -> None:
+def print_audit_report(audit: dict[str, PluginState], *, color: bool = False) -> None:
     """Print the bare `pinky claude-plugin list` audit — one block per plugin, facts only.
 
     Takes the already-computed audit, so "n'écrit rien" holds by construction: this function
     only reaches `print`. Facts only, every plugin, no filtering and no recommendation — where
     it is enabled / disabled / has files, and whether it ships a status line. The `--apply` loop
     is what proposes a target; the per-plugin placement recommendation is a human decision,
-    never coded here.
+    never coded here. `color` paints headers and the ghost flag the way `setup/doctor.py`
+    does — off by default, byte-identical output.
     """
     if not audit:
         print("No plugin found in any settings file or the install registry.")
         return
     for state in audit.values():
-        _print_plugin_block(state)
+        _print_plugin_block(state, color=color)
 
 
 # ── `--apply`: place each plugin, purge every enable that does not match ────────
@@ -523,12 +526,13 @@ def apply_reconcile(workspace_root: Path) -> None:
         raise SystemExit(1)
 
     label_map = label_to_settings(workspace_root)
+    color = style.use_color()
     for spec, state in audit_plugins(workspace_root).items():
         recorded = state_file.posed_value(_DECISION_PREFIX + spec)
         if recorded is not None and _decision_still_holds(recorded, state, label_map):
             continue
 
-        _print_plugin_block(state)
+        _print_plugin_block(state, color=color)
         plugin_id, marketplace = _spec_parts(spec)
         default = "u" if keeps_user_scope(state) else "s"
         if state.ships_status_line:
@@ -547,7 +551,11 @@ def apply_reconcile(workspace_root: Path) -> None:
             )
         raw = (
             input(
-                f"  target — (u)ser / (p)roject / (x) uninstall / (s)kip [{default}]: "
+                style.paint(
+                    f"  target — (u)ser / (p)roject / (x) uninstall / (s)kip [{default}]: ",
+                    style.BOLD,
+                    color=color,
+                )
             )
             .strip()
             .lower()
@@ -580,7 +588,13 @@ def apply_reconcile(workspace_root: Path) -> None:
             purge_other_enables(spec, state, label_map, keep={str(r) for r in roots})
             decision = "project:" + ",".join(sorted(str(r) for r in roots))
         elif answer == "x":
-            if input(f"  uninstall {spec} everywhere? [y/N]: ").strip().lower() not in (
+            if input(
+                style.paint(
+                    f"  uninstall {spec} everywhere? [y/N]: ",
+                    style.BOLD,
+                    color=color,
+                )
+            ).strip().lower() not in (
                 "y",
                 "yes",
             ):

@@ -1459,7 +1459,7 @@ def run_distribution(args) -> None:
         interactive=sys.stdin.isatty(),
         ask=input,
     ):
-        print("Cancelled.")
+        print("cancelled.")
         return
 
     statuses: list[tuple[str, str]] = []

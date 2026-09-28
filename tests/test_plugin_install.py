@@ -502,18 +502,25 @@ def test_refresh_keeps_going_after_a_failed_fetch(home, monkeypatch, capsys):
 
 
 def test_render_refresh_report():
+    """Whole-string oracle, color off — the report a pipe or a test runner sees."""
     outcomes = [
         plugin_install.RefreshOutcome("pc-git", "refreshed"),
         plugin_install.RefreshOutcome("pc-nope", "absent"),
         plugin_install.RefreshOutcome("pc-core", "failed"),
     ]
     assert plugin_install.render_refresh_report(outcomes) == (
-        "✅ pc-git   refreshed\n"
-        "•  pc-nope  not installed — nothing to refresh\n"
-        "❌ pc-core  fetch failed (see the error above)\n"
+        "✓ pc-git   refreshed\n"
+        "• pc-nope  not installed — nothing to refresh\n"
+        "✗ pc-core  fetch failed (see the error above)\n"
         "\n"
         "Running sessions keep the old build until /reload-plugins."
     )
+
+
+def test_render_refresh_report_paints_only_when_color_is_on():
+    outcomes = [plugin_install.RefreshOutcome("pc-git", "refreshed")]
+    painted = plugin_install.render_refresh_report(outcomes, color=True)
+    assert painted.startswith("\x1b[32m✓\x1b[0m pc-git"), painted
 
 
 def test_render_refresh_report_when_nothing_matched():

@@ -236,6 +236,21 @@ def test_keep_user_scope_plugin_stays_at_user_and_skips_the_wizard(env, monkeypa
     assert not _uninstalled(env.sim)
 
 
+def test_keep_user_scope_install_stdout_is_the_exact_report(env, monkeypatch, capsys):
+    """Whole-string oracle, color off — one tick summary line per always-on plugin."""
+    monkeypatch.setattr(plugin_install, "KEEP_USER_SCOPE", frozenset({"pc-snow"}))
+    monkeypatch.setattr(
+        "builtins.input", lambda *_: pytest.fail("the wizard must not run")
+    )
+
+    cli.main(["--plugin", "pc-snow"])
+
+    assert capsys.readouterr().out == (
+        f"Workspace: {env.ws} (via test)\n"
+        "✓ pc-snow kept at user scope (always-on) → ~/.claude/settings.json\n"
+    )
+
+
 def test_pc_autodiscovery_is_declared_keep_user_scope():
     assert "pc-autodiscovery" in plugin_install.KEEP_USER_SCOPE
 
@@ -319,7 +334,8 @@ def test_force_busts_the_cache_dir_and_refetches_it(env, monkeypatch, capsys):
     cli.main(["--plugin", "pc-snow", "--marketplace", "mp", "--force"])
 
     assert not install.exists()
-    assert "cache cleared for pc-snow@mp" in capsys.readouterr().out
+    # a progress notice on the way to the report, not the report itself
+    assert "cache cleared for pc-snow@mp" in capsys.readouterr().err
     assert _user_installs(env.sim)[0] == [
         "claude",
         "plugin",
@@ -433,6 +449,33 @@ def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
         "type": "command",
         "command": f'python3 "{plugin_dir / "scripts" / "statusline.py"}"',
     }
+
+
+# ── the --rules confirm flow: the shared outcome vocabulary ───────────────────────────────
+
+
+def test_rules_plan_declined_prints_cancelled_and_writes_nothing(
+    tmp_path, monkeypatch, capsys
+):
+    """A plan with real changes, declined at the `[y/N]` — whole-output oracle on
+    `cancelled.`, and the apply pass never runs."""
+    applied: list[bool] = []
+    report = SimpleNamespace(has_changes=True)
+    plan = {"pc-x": {tmp_path / "ws": report}}
+
+    def fake_distribute(workspace, apply, user_rules_dir=None):
+        applied.append(apply)
+        return plan
+
+    monkeypatch.setattr(cli, "distribute_all_plugin_rules", fake_distribute)
+    monkeypatch.setattr(cli, "print_all_plugin_rules_report", lambda *a, **k: None)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: "n")
+
+    cli.main(["--rules", str(tmp_path / "ws")])
+
+    assert capsys.readouterr().out == "cancelled.\n"
+    assert applied == [False]
 
 
 # ── no name: the curated/installed picker (install/enable), "all installed" (disable) ──────

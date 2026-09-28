@@ -340,6 +340,41 @@ def test_report_on_an_empty_audit_says_so(capsys):
     assert "No plugin found" in capsys.readouterr().out
 
 
+def test_report_block_paints_only_when_color_is_on(capsys):
+    """The audit's `color` param tripwire — bold header, red-bold ghost, ANSI only on."""
+    state = plugin_reconcile.PluginState(
+        plugin_id="pc-x@mp",
+        marketplace="mp",
+        enabled_at=(),
+        disabled_at=(),
+        installed_scopes=(),
+        ships_status_line=False,
+    )
+    print_audit_report({"pc-x@mp": state}, color=True)
+    out = capsys.readouterr().out
+    assert "\x1b[1mpc-x@mp\x1b[0m" in out, out
+    assert "\x1b[1;31m(nowhere — ghost)\x1b[0m" in out, out
+
+
+def test_report_block_is_the_exact_rendered_text(capsys):
+    """Whole-string oracle, color off — the audit block `pinky claude-plugin list` prints."""
+    state = plugin_reconcile.PluginState(
+        plugin_id="pc-x@mp",
+        marketplace="mp",
+        enabled_at=(),
+        disabled_at=("user",),
+        installed_scopes=("user",),
+        ships_status_line=False,
+    )
+    print_audit_report({"pc-x@mp": state})
+    assert capsys.readouterr().out == (
+        "\n=== pc-x@mp ===\n"
+        "  enabled at:      (nowhere — ghost)\n"
+        "  disabled at:     user\n"
+        "  files installed: user\n"
+    )
+
+
 # ── stale_labels — the rescope preview, with and without disabled scopes ────
 
 

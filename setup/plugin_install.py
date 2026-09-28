@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from typing import Literal
 from pathlib import Path
 
-from . import state_file
+from . import state_file, style
 
 _PLUGINS_DIR = Path.home() / ".claude" / "plugins"
 _REGISTRY = _PLUGINS_DIR / "installed_plugins.json"
@@ -399,17 +399,21 @@ def refresh_plugins(
 
 
 _REFRESH_LABELS = {
-    "refreshed": ("✅", "refreshed"),
-    "absent": ("• ", "not installed — nothing to refresh"),
-    "failed": ("❌", "fetch failed (see the error above)"),
+    "refreshed": ("✓", style.GREEN, "refreshed"),
+    "absent": ("•", style.DIM, "not installed — nothing to refresh"),
+    "failed": ("✗", style.RED_BOLD, "fetch failed (see the error above)"),
 }
 
 
-def render_refresh_report(outcomes: list[RefreshOutcome]) -> str:
+def render_refresh_report(
+    outcomes: list[RefreshOutcome], *, color: bool = False
+) -> str:
     """The per-plugin report `pinky claude-plugin refresh` prints.
 
     Args:
         outcomes: what `refresh_plugins` returned.
+        color: Paint each status mark the way `setup/doctor.py` does — off by default, so
+            a caller that never passes it sees byte-identical output.
 
     Returns:
         One aligned line per plugin plus the reload reminder, or a single line when nothing
@@ -419,8 +423,9 @@ def render_refresh_report(outcomes: list[RefreshOutcome]) -> str:
         return "nothing to refresh — no plugin installed from a local (directory) marketplace"
     width = max(len(o.spec) for o in outcomes)
     lines = [
-        f"{_REFRESH_LABELS[o.status][0]} {o.spec.ljust(width)}  {_REFRESH_LABELS[o.status][1]}"
+        f"{style.paint(mark, code, color=color)} {o.spec.ljust(width)}  {label}"
         for o in outcomes
+        for mark, code, label in [_REFRESH_LABELS[o.status]]
     ]
     return "\n".join(
         [*lines, "", "Running sessions keep the old build until /reload-plugins."]

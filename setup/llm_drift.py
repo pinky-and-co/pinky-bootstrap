@@ -20,12 +20,14 @@ import math
 import re
 import shutil
 import subprocess
+import sys
 import tokenize
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import style
 from .common import CORE_PRECOMMIT_DIR
 from .precommit import discover_repos
 
@@ -333,7 +335,10 @@ def _reformat(repo: Path, files: list[Path]) -> None:
     """Re-sort imports and reformat files with prek's ruff, as their next commit would require."""
     uvx = shutil.which("uvx")
     if uvx is None:
-        print(f"  ⚠️ uvx not found — run ruff format yourself in {repo.name}")
+        print(
+            f"  ⚠️ uvx not found — run ruff format yourself in {repo.name}",
+            file=sys.stderr,
+        )
         return
     ruff = f"ruff@{ruff_version()}"
     names = [str(path) for path in files]
@@ -401,52 +406,79 @@ def _k(tokens: int) -> str:
     return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
 
 
-def format_scan(scan: RepoScan) -> list[str]:
-    """Human report of one repo's scan: header, one line per finding, per-kind counts.
+def format_scan(scan: RepoScan, *, color: bool = False) -> list[str]:
+    """Human report of one repo's scan: repo header, findings grouped by file, per-kind counts.
 
     Args:
         scan: A repo scan.
+        color: Bold the repo and file headers the way `setup/doctor.py` does — off by
+            default, byte-identical output.
 
     Returns:
-        The report lines.
+        The report lines. A file's findings sit under a `path · count` header in findings
+        order; the kind column stays on a finding line only when the report carries more
+        than one kind — with a single kind it says nothing new. Skipped files are not
+        report lines — `run` says them on stderr, a diagnostic about the scan, not a
+        finding.
     """
     weight = scan.weight
     share = 100 * weight.comment_lines / weight.lines if weight.lines else 0.0
     lines = [
-        f"== {scan.repo.name} · {scan.files} .py · {share:.1f} % comment lines · "
+        f"{style.paint(f'== {scan.repo.name}', style.BOLD, color=color)} · "
+        f"{scan.files} .py · {share:.1f} % comment lines · "
         f"≈{_k(weight.tokens)} tokens"
     ]
-    lines += [f"  {f.path}:{f.line}  {f.kind}  {f.text}" for f in scan.findings]
-    lines += [f"  skipped (does not parse): {path}" for path in scan.skipped]
+    kinds = {f.kind for f in scan.findings}
+    by_path: dict[Path, list[Finding]] = {}
+    for finding in scan.findings:
+        by_path.setdefault(finding.path, []).append(finding)
+    if by_path:
+        lines.append("")
+    for path, findings in by_path.items():
+        lines.append(style.paint(f"{path} · {len(findings)}", style.BOLD, color=color))
+        for f in findings:
+            where = f"{f.line}  {f.kind}  " if len(kinds) > 1 else f"{f.line}  "
+            lines.append(f"  {where}{f.text}")
     counts = Counter(f.kind for f in scan.findings)
     summary = " · ".join(
         f"{kind.name} {counts[kind.name]}" for kind in DRIFT_KINDS if counts[kind.name]
     )
-    lines.append(f"  {summary or 'no drift'}")
+    if summary:
+        lines.append("")
+        lines.append(f"  {style.paint(summary, style.DIM, color=color)}")
+    else:
+        tick = style.paint("✓", style.GREEN, color=color)
+        lines.append(f"  {tick} {style.paint('no drift', style.DIM, color=color)}")
     return lines
 
 
-def format_fix(fix: RepoFix, *, dry_run: bool) -> str:
-    """One-line human report of a repo fix: files changed, lines removed, tokens saved per read.
+def format_fix(fix: RepoFix, *, dry_run: bool, color: bool = False) -> str:
+    """Human report of a repo fix: the summary line, then every changed file named.
 
     Args:
         fix: A repo fix.
         dry_run: Whether the fix was computed without writing.
+        color: Bold the repo name the way `setup/doctor.py` does — off by default,
+            byte-identical output.
 
     Returns:
-        The report line.
+        The report — a summary line plus one line per changed file; a diff-shaped report
+        names the file, never a bare count.
     """
     if not fix.changed:
-        return f"{fix.repo.name} · nothing to fix"
+        tick = style.paint("✓", style.GREEN, color=color)
+        return f"{tick} {style.paint(f'{fix.repo.name} · nothing to fix', style.DIM, color=color)}"
     saved = fix.before.tokens - fix.after.tokens
     share = 100 * saved / fix.total.tokens if fix.total.tokens else 0.0
     count = len(fix.changed)
     line = (
-        f"{fix.repo.name} · {count} file{'' if count == 1 else 's'} · "
+        f"{style.paint(fix.repo.name, style.BOLD, color=color)} · "
+        f"{count} file{'' if count == 1 else 's'} · "
         f"−{fix.before.lines - fix.after.lines} lines · "
         f"≈−{_k(saved)} tokens per read (−{share:.1f} % of the repo)"
     )
-    return line + (" · dry-run, nothing written" if dry_run else "")
+    line += " · dry-run, nothing written" if dry_run else ""
+    return line + "".join(f"\n  {path}" for path in fix.changed)
 
 
 def scans_to_json(scans: list[RepoScan]) -> str:
@@ -524,8 +556,12 @@ def run(
         1 when no repo was selected, a kind is unknown or unfixable, or a file was skipped;
         0 otherwise.
     """
+    color = style.use_color()
     if not repos:
-        print("llm-drift: no repo — pass --repo NAME or --all, or run it inside a repo")
+        print(
+            "llm-drift: no repo — pass --repo NAME or --all, or run it inside a repo",
+            file=sys.stderr,
+        )
         return 1
     try:
         if action == "scan":
@@ -533,9 +569,14 @@ def run(
             report = (
                 scans_to_json(scans)
                 if as_json
-                else "\n".join(line for scan in scans for line in format_scan(scan))
+                else "\n".join(
+                    line for scan in scans for line in format_scan(scan, color=color)
+                )
             )
             print(report)
+            for scan in scans:
+                for path in scan.skipped:
+                    print(f"  skipped (does not parse): {path}", file=sys.stderr)
             return 1 if any(scan.skipped for scan in scans) else 0
         fixes = [
             fix_repo(repo, name, dry_run=dry_run)
@@ -543,10 +584,13 @@ def run(
             for name in (kinds or ["comments"])
         ]
     except (KeyError, ValueError) as exc:
-        print(f"llm-drift: {exc.args[0]}")
+        print(f"llm-drift: {exc.args[0]}", file=sys.stderr)
         return 1
     for fix in fixes:
-        print(format_fix(fix, dry_run=dry_run))
+        print(format_fix(fix, dry_run=dry_run, color=color))
         for path in fix.skipped:
-            print(f"  skipped (does not parse, or its program would change): {path}")
+            print(
+                f"  skipped (does not parse, or its program would change): {path}",
+                file=sys.stderr,
+            )
     return 1 if any(fix.skipped for fix in fixes) else 0

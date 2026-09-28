@@ -190,6 +190,23 @@ def test_wizard_project_scope_enables_at_the_single_picked_target(
     assert not any("user" in c for c, _ in sim.calls)
 
 
+def test_wizard_stdout_is_the_exact_rendered_flow(sim, tmp_path, monkeypatch, capsys):
+    """Whole-string oracle, color off — prompts, target list, one tick line per root."""
+    root_ws = _workspace(tmp_path)
+    _canned_input(monkeypatch, ["p", "2", "0"])
+
+    run_marketplace_wizard(root_ws, "pc-snow")
+
+    # the input() prompts themselves never print under a canned input — stdout is the
+    # target list plus one tick line per root
+    assert capsys.readouterr().out == (
+        "  0) bootstrap\n"
+        "  1) pinky-core\n"
+        "  2) pinky-snowpark\n"
+        f"✓ enabled pc-snow at {root_ws / 'bootstrap'}\n"
+    )
+
+
 def test_wizard_project_scope_never_touches_other_targets(sim, tmp_path, monkeypatch):
     root_ws = _workspace(tmp_path)
     _canned_input(monkeypatch, ["p", "2", "1"])
@@ -272,10 +289,18 @@ def test_wizard_user_scope_issues_no_claude_call_at_all(sim, tmp_path, monkeypat
     assert sim.calls == []
 
 
-def test_wizard_non_interactive_shell_errors_instead_of_guessing(monkeypatch, tmp_path):
+def test_wizard_non_interactive_shell_errors_instead_of_guessing(
+    monkeypatch, tmp_path, capsys
+):
+    """Whole-message oracle: the refusal names the need, never a flag — no option
+    replaces this wizard's questions (its one living caller, `reconcile --apply`,
+    has no --scope)."""
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
     with pytest.raises(SystemExit):
         run_marketplace_wizard(tmp_path, "pc-statusline")
+    assert capsys.readouterr().err == (
+        "Non-interactive shell — the placement wizard needs a terminal.\n"
+    )
 
 
 def test_wizard_unknown_scope_answer_errors(sim, tmp_path, monkeypatch):
