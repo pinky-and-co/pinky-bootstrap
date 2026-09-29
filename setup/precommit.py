@@ -316,6 +316,10 @@ VENDOR_MAP = {
         "plugins/pc-autodiscovery/hooks/pending_user_action.py",
         "plugins/pc-kanban/skills/chantier/scripts/pc_kanban_pending_user_action.py",
     ],
+    "direct_command_runner.py": [
+        "plugins/pc-git/hooks/pc_git_direct_command_runner.py",
+        "plugins/pc-kanban/hooks/pc_kanban_direct_command_runner.py",
+    ],
 }
 VENDOR_MANIFEST_NAME = ".vendor-manifest.json"
 
