@@ -2,7 +2,7 @@
 title: "0005"
 ---
 # ADR-0005 — `CLAUDE.md`/`AGENTS.md` : import ou symlink selon le niveau, comme prévu au sketch §4.1
-Status: accepted
+Status: superseded by [ADR-0009](0009-agents-md-regenere-par-le-plugin-sans-symlink.md)
 Date: 2026-08-20
 
 ## Context
