@@ -27,7 +27,7 @@ from collections.abc import Callable
 import argcomplete
 from argcomplete.shell_integration import shellcode
 
-from . import agentic_assets, plugin_catalog
+from . import plugin_catalog
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .llm_drift import DRIFT_KINDS, SCAN_KINDS_DEFAULT
@@ -78,28 +78,6 @@ def _scripts_index() -> str:
     return "\n".join(lines)
 
 
-def _assets_epilog() -> str:
-    """`<name> — description` for every installable output-style and theme — the answer to "what
-    does --output-style/--theme NAME actually do", without leaving the terminal."""
-    sections = [
-        (
-            "🎨 Available output-styles (pinky claude-config-preset install output-style NAME):",
-            "\n".join(
-                f"  {a.name:<12} {a.description}"
-                for a in agentic_assets.discover_output_styles()
-            ),
-        ),
-        (
-            "🖌️  Available themes (pinky claude-config-preset install theme NAME):",
-            "\n".join(
-                f"  {a.name:<12} {a.description}"
-                for a in agentic_assets.discover_themes()
-            ),
-        ),
-    ]
-    return "\n\n".join(f"{title}\n{body}" for title, body in sections if body)
-
-
 def _epilog() -> str:
     """Top-level `--help` epilog: the Claude Code commands index, then the standalone scripts."""
     sections = [
@@ -131,10 +109,6 @@ def cmd_distribute(args: argparse.Namespace) -> None:
         argv.append("--all")
     if args.commit:
         argv.append("--commit")
-    if args.agents_md:
-        argv.append("--agents-md")
-    if args.standalone:
-        argv.append("--standalone")
     if args.dry_run:
         argv.append("--dry-run")
     if args.yes:
@@ -280,12 +254,6 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         setup_main(argv)
     else:
         setup_main(["--plugins-reconcile-apply"])
-
-
-def cmd_claude_config_preset(args: argparse.Namespace) -> None:
-    """Translate `claude-config-preset install <type> <name>` to `--output-style` / `--theme`."""
-    setup_main([f"--{args.kind}", args.name])
-    _run_doctor_advisory()
 
 
 def cmd_install(args: argparse.Namespace) -> None:
@@ -570,30 +538,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     verbs = _subject(
         sub,
-        "claude-config-preset",
-        "🎨 install a preset into ~/.claude: an output style or a theme",
-        [
-            "pinky claude-config-preset install output-style skim-and-push",
-            "pinky claude-config-preset install theme lisible",
-        ],
-        extra=_assets_epilog(),
-    )
-    p = _add(
-        verbs,
-        "install",
-        "copy a preset to ~/.claude and set the matching setting",
-        ["pinky claude-config-preset install theme lisible  # one named theme"],
-    )
-    p.add_argument(
-        "kind",
-        choices=["output-style", "theme"],
-        help="the kind of preset",
-    )
-    p.add_argument("name", help="the preset, from the list below")
-    p.set_defaults(func=cmd_claude_config_preset)
-
-    verbs = _subject(
-        sub,
         "live-docs",
         "📖 live board/log viewer — install it, serve it, check its status, or remove it",
         [
@@ -675,16 +619,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--commit",
         action="store_true",
         help="commit the distributed files in each repo",
-    )
-    p.add_argument(
-        "--agents-md",
-        action="store_true",
-        help="also (re)render AGENTS.md at workspace/group/repo level",
-    )
-    p.add_argument(
-        "--standalone",
-        action="store_true",
-        help="with --agents-md --repo NAME: one-time extraction gesture (see setup.py --help)",
     )
     p.add_argument(
         "--dry-run", action="store_true", help="print what would change, write nothing"

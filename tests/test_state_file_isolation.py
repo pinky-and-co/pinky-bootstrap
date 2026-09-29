@@ -1,8 +1,7 @@
 """Guard: the suite must never write the machine's real installer ledger.
 
 `state_file.STATE_FILE_PATH` is resolved at import from `Path.home()`. Without a suite-wide
-override, every test that reaches `record_posed` (via `enable_plugin`, `set_status_lines`,
-`generate_agents_md`, ...) appends tmp paths to the real `~/.claude/pinky-install-state.json`.
+override, every test that reaches `record_posed` (via `enable_plugin`, `set_status_lines`, ...) appends tmp paths to the real `~/.claude/pinky-install-state.json`.
 The autouse fixture in `conftest.py` redirects it — this test proves the redirect is in force.
 
 Deliberately carries no isolation of its own: it reads `STATE_FILE_PATH` as the rest of the

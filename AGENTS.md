@@ -25,7 +25,7 @@ never stays for continuity's sake. Two consequences that are easy to get backwar
   That is a migration to schedule, not a missing slot.
 
 Covered here as of 2026-08-25, each for the same reason — customisation presets with no plugin
-slot: output styles, themes, rules.
+slot: rules.
 
 ## Branch strategy
 

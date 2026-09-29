@@ -170,7 +170,7 @@ def _registered_install(
 
 def _merge_user_settings(updates: dict[str, object]) -> None:
     """Merge `updates` into `~/.claude/settings.json` — read what's there, set only these keys,
-    same discipline as `plugin_scope.enable_plugin` and `agentic_assets._install`."""
+    same discipline as `plugin_scope.enable_plugin`."""
     data = (
         json.loads(_USER_SETTINGS.read_text(encoding="utf-8"))
         if _USER_SETTINGS.is_file()

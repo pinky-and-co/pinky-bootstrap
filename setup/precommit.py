@@ -22,7 +22,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .agents_md import generate_agents_md, write_standalone_agents_md_recorded
 from .common import (
     CORE_CI_DIR,
     CORE_HOOKS_DIR,
@@ -1428,16 +1427,6 @@ def run_distribution(args) -> None:
         )
         sys.exit(1)
 
-    if getattr(args, "standalone", False):
-        if not getattr(args, "agents_md", False):
-            print("--standalone requires --agents-md.")
-            sys.exit(1)
-        if args.all or not args.repo:
-            print(
-                "--standalone requires --repo <name> (never --all — one repo at a time)."
-            )
-            sys.exit(1)
-
     print("Hooks distribution" + (" (dry-run)" if args.dry_run else ""))
     print("=" * 52)
     _MISSING_TOOLS.clear()
@@ -1479,20 +1468,6 @@ def run_distribution(args) -> None:
             status = commit_distribution(repo, dirty_before=dirty_before)
             statuses.append((repo.name, status))
             print(f"  commit  {status}")
-
-    if getattr(args, "agents_md", False) and not args.dry_run:
-        if getattr(args, "standalone", False):
-            written = [
-                write_standalone_agents_md_recorded(
-                    repos[0], workspace_root=WORKSPACE_ROOT
-                )
-            ]
-        else:
-            written = generate_agents_md(repos, workspace_root=WORKSPACE_ROOT)
-        print("\nAGENTS.md")
-        print("-" * 52)
-        for path in written:
-            print(f"  ✓ {path.relative_to(WORKSPACE_ROOT)}")
 
     print("\nDone." + ("  Nothing written (dry-run)." if args.dry_run else ""))
     if statuses:

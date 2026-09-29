@@ -15,4 +15,3 @@
 
 | Source | What we took | License | Where it lands |
 |---|---|---|---|
-| smixs/awesome-claude-output-styles, `output-styles/adhd.md` | Rules 1-3 and 6-7 verbatim (upstream 1-3, 7-8); rules 4-5 rewrite upstream 4-5; upstream 6 folded into rule 8, which replaces upstream's rules 9-10 (depth-request override, bare-artefact output) with a status-marker convention; rules 9-11 and the concision line are local | MIT (repo LICENSE, verified 2026-08-19) | `agentic-harness/output-styles/skim-and-push.md` (renamed from upstream `adhd`) |
