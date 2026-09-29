@@ -23,8 +23,7 @@ from .common import AGENTIC_HARNESS_DIR
 RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
 TARGET_REL = ".claude/rules"
 INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
-# A user override has RULES_DIR's "<plugin>/<file>.md" shape, beside the other user-scope
-# customisation pinky writes (output styles, themes).
+# A user override has RULES_DIR's "<plugin>/<file>.md" shape.
 USER_RULES_DIR = Path.home() / ".claude" / "rules"
 EXCLUDE_SUFFIX = ".md.exclude"
 

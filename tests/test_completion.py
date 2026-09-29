@@ -84,7 +84,6 @@ def claude_dir(tmp_path):
 def test_the_subjects_are_completed():
     assert set(_complete("pinky ")) >= {
         "claude-plugin",
-        "claude-config-preset",
         "live-docs",
         "repo",
         "install",

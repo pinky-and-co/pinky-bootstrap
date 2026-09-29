@@ -609,7 +609,6 @@ def test_cmd_doctor_delegates_the_flag(monkeypatch):
     [
         ["install"],
         ["claude-plugin", "install", "pc-snow"],
-        ["claude-config-preset", "install", "theme", "x"],
     ],
 )
 def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):

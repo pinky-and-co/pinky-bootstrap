@@ -33,7 +33,6 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     for name in (
         "claude-plugin",
-        "claude-config-preset",
         "live-docs",
         "repo",
         "install",
@@ -131,20 +130,6 @@ def test_distribute_dispatch_all(monkeypatch):
     assert calls == [["--all"]]
 
 
-def test_distribute_dispatch_agents_md(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["repo", "distribute", "--repo", "pinky-core", "--agents-md"])
-    assert calls == [["--repo", "pinky-core", "--agents-md"]]
-
-
-def test_distribute_dispatch_agents_md_standalone(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(
-        ["repo", "distribute", "--repo", "pinky-core", "--agents-md", "--standalone"]
-    )
-    assert calls == [["--repo", "pinky-core", "--agents-md", "--standalone"]]
-
-
 def test_llm_drift_dispatch_scan(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(
@@ -201,7 +186,6 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     assert set(sub.choices) == {
         "claude-plugin",
-        "claude-config-preset",
         "live-docs",
         "repo",
         "install",
@@ -380,13 +364,6 @@ def test_claude_plugin_disable_with_no_name_forwards_bare_plugin_disable_flag(
     assert calls == [["--plugin-disable"]]
 
 
-def test_claude_config_preset_install_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["claude-config-preset", "install", "theme", "lisible"])
-    cli_pinky.main(["claude-config-preset", "install", "output-style", "skim-and-push"])
-    assert calls == [["--theme", "lisible"], ["--output-style", "skim-and-push"]]
-
-
 def test_live_docs_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["live-docs", "install"])
@@ -412,13 +389,11 @@ def test_drift_dispatch(monkeypatch):
     "argv",
     [
         ["install", "--plugin", "pc-x"],
-        ["install", "--output-style", "skim-and-push"],
-        ["install", "--theme", "lisible"],
         ["install", "--live-docs"],
     ],
 )
 def test_install_no_longer_takes_the_options_that_moved_to_their_subject(argv, capsys):
-    """`pinky install` is the machine bootstrap: plugin, preset and viewer moved to their own
+    """`pinky install` is the machine bootstrap: plugin and viewer moved to their own
     subject, so their old options fail."""
     with pytest.raises(SystemExit) as exc:
         cli_pinky.main(argv)
