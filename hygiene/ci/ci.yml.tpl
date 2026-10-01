@@ -64,9 +64,10 @@ jobs:
         # sur pinky-core, chantier 0024). L'export force pip-audit à lire le VRAI arbre résolu.
         # Bloquant : une CVE détectée fait échouer le job. Un scan qui ne bloque rien n'est qu'un
         # log de plus, ignoré comme tout log jusqu'à l'incident.
+        __AUDIT_FLAGS_COMMENT__
         run: |
           uv export --frozen --all-extras --all-groups --format requirements-txt --no-hashes -o /tmp/pip-audit-requirements.txt
-          uvx pip-audit -r /tmp/pip-audit-requirements.txt
+          uvx pip-audit__AUDIT_FLAGS__ -r /tmp/pip-audit-requirements.txt
 
       - name: Tests
         # Commande surchargeable : `pytest` ne convient qu'aux repos dont la suite est en Python.

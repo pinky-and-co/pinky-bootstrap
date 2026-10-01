@@ -327,6 +327,16 @@ CI_PYTHON_VERSION_PLACEHOLDER = "__PYTHON_VERSION__"
 CI_INSTALL_CMD_PLACEHOLDER = "__INSTALL_CMD__"
 CI_TESTS_CMD_PLACEHOLDER = "__TESTS_CMD__"
 CI_D1_DATABASE_PLACEHOLDER = "__D1_DATABASE__"
+# La ligne entière (indentation et saut de ligne compris) : sans override, elle disparaît sans
+# laisser de ligne blanche dans le step.
+CI_AUDIT_FLAGS_COMMENT_PLACEHOLDER = "        __AUDIT_FLAGS_COMMENT__\n"
+CI_AUDIT_FLAGS_PLACEHOLDER = "__AUDIT_FLAGS__"
+
+CI_AUDIT_FLAGS = " --disable-pip --no-deps"
+CI_AUDIT_FLAGS_COMMENT = (
+    "        # --disable-pip --no-deps : l'export est entièrement épinglé, on audite le lock tel quel.\n"
+    "        # pip re-résoudrait les bornes des paquets et rejetterait un `override-dependencies` d'uv.\n"
+)
 
 CI_DEFAULT_INSTALL_CMD = "uv sync --locked --no-sources --group dev"
 
@@ -443,6 +453,26 @@ def _d1_database_name(repo: Path) -> str | None:
     return match.group(1) if match else None
 
 
+def _uv_overrides_dependencies(repo: Path) -> bool:
+    """True when the repo's own ``[tool.uv] override-dependencies`` is a non-empty list.
+
+    pip re-resolves package bounds and rejects a uv override, so such a repo's audit has to run
+    ``--disable-pip --no-deps``. A missing, unreadable or invalid pyproject, or no ``[tool.uv]``
+    table, is False.
+    """
+    pyproject = repo / "pyproject.toml"
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return False
+    tool = data.get("tool")
+    uv = tool.get("uv") if isinstance(tool, dict) else None
+    if not isinstance(uv, dict):
+        return False
+    overrides = uv.get("override-dependencies")
+    return isinstance(overrides, list) and bool(overrides)
+
+
 def _render_ci_template(repo: Path, template: Path) -> str | None:
     """Fill a `hygiene/ci/*.tpl` workflow for ``repo``, or None when the repo has no derivable
     Python version pin (see ``_python_version_pin`` — no ``pyproject.toml`` or no
@@ -458,6 +488,14 @@ def _render_ci_template(repo: Path, template: Path) -> str | None:
     text = template.read_text(encoding="utf-8")
     text = text.replace(CI_PYTHON_VERSION_PLACEHOLDER, python_version)
     text = text.replace(CI_INSTALL_CMD_PLACEHOLDER, install_cmd)
+    audit_overrides = _uv_overrides_dependencies(repo)
+    text = text.replace(
+        CI_AUDIT_FLAGS_COMMENT_PLACEHOLDER,
+        CI_AUDIT_FLAGS_COMMENT if audit_overrides else "",
+    )
+    text = text.replace(
+        CI_AUDIT_FLAGS_PLACEHOLDER, CI_AUDIT_FLAGS if audit_overrides else ""
+    )
     return text.replace(CI_TESTS_CMD_PLACEHOLDER, tests_cmd)
 
 
