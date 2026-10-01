@@ -1,6 +1,6 @@
 # How to provision the multi-provider model pool
 
-*Update date : 2026-09-27 00:49*
+*Update date : 2026-10-01 13:50*
 
 `pc-core`'s `adversarial`, `panel` and `pool_check` MCP tools read a pool of non-Claude models from
 the `model_pool` key of `settings.pinky.json` — the same file, and the same ascending resolution
@@ -13,8 +13,8 @@ Every remote model is called through `pi`: `pi -p --model <provider>/<model>`. T
 models to use; pi knows *where* they are (its built-in providers, or `~/.pi/agent/models.json`).
 Keys stay in the keychain: the `keys` array of the same `settings.pinky.json` (see
 `setup-declarative-secrets.md`) is resolved once per run and handed to each pi call as environment
-variables — for Bash through `load_secrets`, for the MCP server through `secret_env`, since that
-process never receives `$CLAUDE_ENV_FILE`. pi's own `auth.json` is not needed.
+variables, by `secret_env` inside the MCP server process — never exported to a session env. pi's
+own `auth.json` is not needed.
 
 ## Files
 
@@ -136,7 +136,8 @@ pi --list-models <search>
 ```
 
 lists the models pi can reach, with their provider — only for providers whose key it resolves, so
-run it with the `keys` variables in its environment (a fresh shell where `load_secrets` ran). An
+run it with the provider key it must resolve exported in that shell (for example
+`export GROQ_API_KEY=$(security find-generic-password -s GROQ_API_KEY -w)`). An
 aggregator's `:free` suffix is not predictable from the model's own naming — check it there rather
 than guessing.
 

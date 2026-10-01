@@ -1,16 +1,15 @@
 # How to declare a secret resolved on demand
 
-*Update date : 2026-09-27 15:00*
+*Update date : 2026-10-01 13:50*
 
-`pc-core`'s `load_secrets.py` (a `SessionStart` hook) reads the `keys` array of
-`settings.pinky.json`. A `literal` entry is exported as `export <env>=<value>` into
-`$CLAUDE_ENV_FILE` at boot, into every Bash command's environment for the rest of the session. A
-`macos_keychain` entry — every secret goes through this reader — is never exported there:
-`resolve_env_exports` filters it out before boot, so no keychain round trip happens at
-`SessionStart` at all. It is resolved only when pc-core's own MCP-server process (behind
-`adversarial`, `panel`, `pool_check`) calls `secret_env()`, right before starting a `pi` subprocess
-— the value then lives only in that subprocess's own `env=`, never in the session's Bash
-environment. This is the general-purpose sibling of the `model_pool` key (`setup-model-pool.md`) —
+`pc-core`'s `load_secrets.py` reads the `keys` array of `settings.pinky.json`. A key is resolved
+only when pc-core's own MCP-server process (behind `adversarial`, `panel`, `pool_check`) calls
+`secret_env()`, right before starting a `pi` subprocess — the value then lives only in that
+subprocess's own `env=`, never exported to a session env. A non-secret value (an account id, an endpoint) does not belong in
+`keys`: put it in the `env` block of the user-level `settings.json`, which reaches hooks and MCP servers
+too. That block is read when Claude Code starts, so a change applies to the next session. Never put a
+credential there: it is plain text and every process of the session inherits it.
+This is the general-purpose sibling of the `model_pool` key (`setup-model-pool.md`) —
 `keys` covers any provider credential a `pi` call needs.
 
 Scope note: `secret_env()` resolves every declared key in one call, not just the one a given `pi`
@@ -44,12 +43,9 @@ shows up.
 - `service` — the keychain item's service name (whatever you pick when you create it, below).
 - `env` — the environment variable name pc-core hands to the `pi` subprocess that needs it — never
   exported into the session's own Bash environment.
-- `reader` — `macos_keychain` and `literal` are both wired. `macos_keychain` (every secret goes
-  here) resolves on demand, inside pc-core's own process, right before a pi call — never at
-  `SessionStart`. `literal` (never a secret) is the one reader `resolve_env_exports` exports into
-  `$CLAUDE_ENV_FILE` at `SessionStart`, into every Bash command's environment for the session — see
-  `load_secrets.py`'s own docstring for that split. An unwired reader (`aws_secretsmanager`, ...)
-  fails loud on stderr wherever it is resolved, and leaves that variable unset — never a silent gap.
+- `reader` — `macos_keychain` is the wired reader: it resolves on demand, inside pc-core's own
+  process, right before a pi call. An unwired reader (`aws_secretsmanager`, ...) fails loud on
+  stderr wherever it is resolved, and leaves that variable unset — never a silent gap.
 
 ## Creating, updating, deleting a key
 
