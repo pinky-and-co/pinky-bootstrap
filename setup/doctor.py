@@ -394,12 +394,6 @@ def check_keys(
         name = entry.get("env")
         if not name:
             continue
-        if entry.get("reader") == "literal":
-            # La valeur est dans le fichier : ni env ni trousseau à interroger.
-            ok = bool(entry.get("value"))
-            detail = "" if ok else f"add a 'value' to the literal entry for {name}"
-            checks.append(Check("key", name, ok, detail))
-            continue
         service = entry.get("service", name)
         ok = bool(environ.get(name)) or lookup(service)
         detail = (
