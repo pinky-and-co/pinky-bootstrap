@@ -6,6 +6,7 @@
     "pyright@claude-code-lsps": true,
     "pc-delegate@pinky-agentic-plugins": true,
     "pc-kanban@pinky-agentic-plugins": true,
-    "pc-core@pinky-agentic-plugins": true
+    "pc-core@pinky-agentic-plugins": true,
+    "pc-rtk@pinky-agentic-plugins": true
   }
 }

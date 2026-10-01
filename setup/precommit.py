@@ -318,6 +318,7 @@ VENDOR_MAP = {
     "direct_command_runner.py": [
         "plugins/pc-git/hooks/pc_git_direct_command_runner.py",
         "plugins/pc-kanban/hooks/pc_kanban_direct_command_runner.py",
+        "plugins/pc-rtk/hooks/pc_rtk_direct_command_runner.py",
     ],
 }
 VENDOR_MANIFEST_NAME = ".vendor-manifest.json"
