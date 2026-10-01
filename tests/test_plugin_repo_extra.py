@@ -102,6 +102,14 @@ def test_check_vendor_checksum_regex_covers_the_spawn_workers_copy(tmp_path):
     assert "pc_kanban_spawn_plugin_scope_lib" in _plugin_repo_config(tmp_path)
 
 
+def test_check_vendor_checksum_regex_covers_every_direct_command_runner_copy(tmp_path):
+    """Every `direct_command_runner.py` copy in `VENDOR_MAP` must be named in the `files:` regex,
+    so a hand edit of any of them trips the gate."""
+    cfg = _plugin_repo_config(tmp_path)
+    for target in setup.VENDOR_MAP["direct_command_runner.py"]:
+        assert Path(target).stem in cfg
+
+
 def test_check_vendor_checksum_hook_present(tmp_path):
     """A vendored file
     (policy_lib.py, secret_patterns.py, …) must be checked against its source checksum at commit

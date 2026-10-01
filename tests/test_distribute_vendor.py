@@ -93,3 +93,17 @@ def test_dry_run_writes_nothing(tmp_path, monkeypatch):
 
     assert not (tmp_path / "plugins/pc-core/hooks/policy_lib.py").exists()
     assert not (tmp_path / ".vendor-manifest.json").exists()
+
+
+def test_distributes_the_direct_command_runner_to_pc_rtk(tmp_path):
+    (tmp_path / "plugins/pc-rtk/hooks").mkdir(parents=True)
+
+    precommit_mod.distribute_vendor(tmp_path, dry_run=False)
+
+    copy_rel = "plugins/pc-rtk/hooks/pc_rtk_direct_command_runner.py"
+    src_content = (
+        precommit_mod.CORE_VENDOR_DIR / "direct_command_runner.py"
+    ).read_bytes()
+    assert (tmp_path / copy_rel).read_bytes() == src_content
+    manifest = json.loads((tmp_path / ".vendor-manifest.json").read_text())
+    assert manifest == {copy_rel: hashlib.sha256(src_content).hexdigest()}
