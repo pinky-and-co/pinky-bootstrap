@@ -35,7 +35,6 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
         "claude-plugin",
         "live-docs",
         "repo",
-        "install",
         "doctor",
         "directives",
     ):
@@ -188,7 +187,6 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
         "claude-plugin",
         "live-docs",
         "repo",
-        "install",
         "doctor",
         "directives",
         "completion",
@@ -197,7 +195,16 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
 
 @pytest.mark.parametrize(
     "old_name",
-    ["plugins", "rules", "new-repo", "distribute", "drift", "llm-drift", "docs"],
+    [
+        "plugins",
+        "rules",
+        "new-repo",
+        "distribute",
+        "drift",
+        "llm-drift",
+        "docs",
+        "install",
+    ],
 )
 def test_a_retired_top_level_name_is_an_unknown_command(old_name, capsys):
     with pytest.raises(SystemExit) as exc:
@@ -236,22 +243,21 @@ def test_llm_drift_dispatch_fix(monkeypatch):
     assert calls == [["--llm-drift", "fix", "--repo", "pinky-core", "--dry-run"]]
 
 
-def test_install_dispatch_default(monkeypatch):
-
+def test_claude_plugin_rules_dispatch_default(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install"])
+    cli_pinky.main(["claude-plugin", "rules"])
     assert calls == [["--rules"]]
 
 
-def test_install_dispatch_yes(monkeypatch):
+def test_claude_plugin_rules_dispatch_yes(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install", "--yes"])
+    cli_pinky.main(["claude-plugin", "rules", "--yes"])
     assert calls == [["--rules", "--yes"]]
 
 
-def test_install_dispatch_dry_run(monkeypatch):
+def test_claude_plugin_rules_dispatch_dry_run(monkeypatch):
     calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["install", "--dry-run", "--yes"])
+    cli_pinky.main(["claude-plugin", "rules", "--dry-run", "--yes"])
     assert calls == [["--rules", "--dry-run", "--yes"]]
 
 
@@ -383,22 +389,6 @@ def test_drift_dispatch(monkeypatch):
     calls = _captured_argv(monkeypatch)
     cli_pinky.main(["repo", "drift"])
     assert calls == [["--check-drift"]]
-
-
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["install", "--plugin", "pc-x"],
-        ["install", "--live-docs"],
-    ],
-)
-def test_install_no_longer_takes_the_options_that_moved_to_their_subject(argv, capsys):
-    """`pinky install` is the machine bootstrap: plugin and viewer moved to their own
-    subject, so their old options fail."""
-    with pytest.raises(SystemExit) as exc:
-        cli_pinky.main(argv)
-    assert exc.value.code == 2
-    assert "unrecognized arguments" in capsys.readouterr().err
 
 
 def test_repo_exposes_new_distribute_drift_and_llm_drift():

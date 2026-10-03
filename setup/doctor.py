@@ -13,7 +13,8 @@ skill runs and `Bash` fails `command not found` — so this checks them once, up
   environment or the macOS keychain.
 
 `pinky doctor` exits non-zero when a prerequisite is missing (a diagnostic meant to be actionable,
-CI-usable). `pinky install` calls it advisory — a missing prerequisite never fails the install.
+CI-usable). `pinky claude-plugin install` calls it advisory — a missing prerequisite never fails
+the install.
 Read-only unless asked: `--fix` runs `brew`/`npm` for a missing binary and, for the shell completion,
 adds two lines to `~/.zshrc` after showing them and asking.
 """
@@ -640,7 +641,7 @@ def run_doctor(
     """Run every check, print the report, return the number of missing prerequisites.
 
     The caller decides what a non-zero count means: ``pinky doctor`` turns it into the exit code,
-    ``pinky install`` ignores it (advisory).
+    ``pinky claude-plugin install`` ignores it (advisory).
     """
     checks = collect_checks(plugins=plugins, settings_pinky_path=settings_pinky_path)
     print(format_report(checks, verbose=verbose, color=style.use_color()))

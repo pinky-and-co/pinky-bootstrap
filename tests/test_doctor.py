@@ -587,22 +587,15 @@ def test_cmd_doctor_delegates_the_flag(monkeypatch):
     assert calls == [["--doctor"], ["--doctor", "--fix"], ["--doctor", "--verbose"]]
 
 
-@pytest.mark.parametrize(
-    "install_args",
-    [
-        ["install"],
-        ["claude-plugin", "install", "pc-snow"],
-    ],
-)
-def test_pinky_install_calls_doctor_advisory(monkeypatch, install_args):
-    """Every install path runs the preflight, and a missing prerequisite never raises —
-    `claude-plugin install` most of all: it activates a plugin whose prerequisites are new."""
+def test_claude_plugin_install_calls_doctor_advisory(monkeypatch):
+    """`claude-plugin install` runs the preflight, and a missing prerequisite never raises: it
+    activates a plugin whose prerequisites are new."""
     monkeypatch.setattr(cli_pinky, "setup_main", lambda argv: None)
     ran: list[bool] = []
-    # renvoie 3 (prérequis manquants) — `cmd_install` doit l'ignorer, jamais lever
+    # renvoie 3 (prérequis manquants) — l'install doit l'ignorer, jamais lever
     monkeypatch.setattr(doctor, "run_doctor", lambda **kw: ran.append(True) or 3)
 
-    cli_pinky.main(install_args)
+    cli_pinky.main(["claude-plugin", "install", "pc-snow"])
 
     assert ran == [True]
 

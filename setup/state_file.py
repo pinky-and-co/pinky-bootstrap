@@ -1,4 +1,4 @@
-"""setup/state_file.py — the `pinky install` ledger: what it POSED, so a later run knows what it
+"""setup/state_file.py — pinky's install ledger: what it POSED, so a later run knows what it
 owns.
 
 Records not just Y/N but the path and value written for each entry. On Y->N, removal happens only

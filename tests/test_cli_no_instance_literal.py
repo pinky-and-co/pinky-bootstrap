@@ -1,4 +1,4 @@
-"""`pinky install` ne nomme aucun repo ni aucune org codés en dur.
+"""L'installeur pinky ne nomme aucun repo ni aucune org codés en dur.
 
 En rejouant l'install d'un tiers de bout en bout : la commande imprimait
 `git clone git@github.com:<PINKY_ORG>/pinky-core` à CHAQUE rendu. Sur une machine d'une autre org,

@@ -1,4 +1,4 @@
-"""setup/live_docs.py — install the live board/log viewer as a `pinky install` asset.
+"""setup/live_docs.py — install the live board/log viewer as a pinky-installed asset.
 
 The viewer is a small MkDocs site (`live-docs/hooks.py` renders a Jira-style board from a
 chantier's column folders; `mkdocs.yml` + `stylesheets/board.css`). Those three files are the only
@@ -9,7 +9,7 @@ leak. Everything the viewer *shows* is mounted locally at install time as symlin
 `pinky live-docs install` copies the tooling there, generates the mounts, and on macOS loads a
 launchd agent so the site is served after every boot. Off macOS there is no service — the tooling
 is installed and `pinky live-docs serve` runs it live. Same `setup.state_file` ledger as every other
-`pinky install` asset, so `--status` and removal work the same way.
+pinky-installed asset, so `--status` and removal work the same way.
 """
 
 from __future__ import annotations
@@ -203,7 +203,7 @@ def install(
     """Copy the tooling, generate the board mounts, and (macOS) load the launchd agent.
 
     Records the install dir and the plist in `setup.state_file`, so `status` / removal work like
-    every other `pinky install` asset. Idempotent — a re-run re-copies the tooling and refreshes
+    every other pinky-installed asset. Idempotent — a re-run re-copies the tooling and refreshes
     the mounts (a board added since is picked up).
 
     On macOS, refuses with `LiveDocsConflict` if a plist pinky did not pose already sits at
