@@ -1,6 +1,8 @@
 ---
 paths:
   - "**/docs/adr/**"
+_load_conditions:
+  - "if you are adding, superseding or editing an ADR"
 ---
 # docs/adr/ — Architecture Decision Records
 

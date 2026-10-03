@@ -537,3 +537,644 @@ def test_enable_path_restores_the_copy_once_the_ancestor_is_dropped(
 
     assert reports[group] == rules_mod.RulesReport(added=["kanban-proactivity.md"])
     assert (group / ".claude/rules/kanban-proactivity.md").exists()
+
+
+LAZY_BODY = "# Tests\n\nBody line.\n"
+LAZY_SOURCE = (
+    "---\n"
+    "paths:\n"
+    '  - "**/*.py"\n'
+    "_load_conditions:\n"
+    '  - "a Python file"\n'
+    "  - any test\n"
+    "---\n\n" + LAZY_BODY
+)
+
+
+def _stub_text(
+    ws: Path, name: str = "tests.md", conditions: str = "a Python file or any test"
+) -> str:
+    content = (ws / ".claude/rules-content" / name).resolve()
+    return f"Your FIRST action, {conditions}, MUST be to `Read` `{content}` in full.\n"
+
+
+def _lazy(source: Path, text: str = LAZY_SOURCE) -> None:
+    (source / "tests.md").write_text(text, encoding="utf-8")
+
+
+def test_rule_without_load_conditions_is_copied_byte_identical(source, tmp_path):
+    text = '---\npaths:\n  - "x"\n---\n\nbody\n'
+    (source / "plain.md").write_text(text, encoding="utf-8")
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/plain.md").read_text(encoding="utf-8") == text
+    assert not (ws / ".claude/rules-content").exists()
+
+
+def test_lazy_rule_with_paths_writes_stub_and_content(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report.added == ["tests.md"]
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n---\n\n' + _stub_text(ws)
+    )
+
+
+def test_lazy_rule_without_paths_has_a_stub_with_no_frontmatter(source, tmp_path):
+    _lazy(source, '---\n_load_conditions:\n  - "the kanban board"\n---\n\nBody\n')
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == _stub_text(
+        ws, conditions="the kanban board"
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == "Body\n"
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "if you are fixing a bug, extending or modifying code, or reviewing code",
+        "before adding an ADR",
+        "Python files",
+    ],
+)
+def test_free_clause_is_accepted_and_spliced_into_the_stub(source, tmp_path, clause):
+    _lazy(source, f'---\n_load_conditions:\n  - "{clause}"\n---\n\nBody\n')
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == _stub_text(
+        ws, conditions=clause
+    )
+
+
+def test_a_long_clause_is_accepted(source, tmp_path):
+    clause = "if you are " + "x" * 200
+    _lazy(source, f"---\n_load_conditions:\n  - {clause}\n---\n\nBody\n")
+
+    report = rules_mod.distribute_rules(source, tmp_path / "ws")
+
+    assert report == rules_mod.RulesReport(added=["tests.md"])
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [],  # empty list
+        ['""'],  # blank item
+        ["''"],
+        ['"   "'],
+        ['"if you edit `code`"'],  # backtick breaks the stub's own quoting
+        ['"when the build is red."'],  # the frame owns the punctuation
+        ['"if you edit,"'],
+        ['"if you edit;"'],
+        ['"if you edit:"'],
+        ["> folded scalar"],  # YAML indicators are not supported
+        ["| literal scalar"],
+        ["&anchor if you edit"],
+        ["*alias"],
+        ["!tag if you edit"],
+        ["if you edit\n    continued on the next line"],  # truncated clause
+    ],
+)
+def test_invalid_condition_is_refused_and_nothing_is_written(source, tmp_path, items):
+    body = "".join(f"  - {c}\n" for c in items).replace("\\n", "\n")
+    _lazy(source, f"---\n_load_conditions:\n{body}---\n\nBody\n")
+    ws = tmp_path / "ws"
+
+    with pytest.raises(ValueError, match="tests.md"):
+        rules_mod.distribute_rules(source, ws)
+
+    assert not (ws / ".claude").exists()
+
+
+def test_a_trailing_punctuation_error_says_the_frame_adds_its_own_comma(
+    source, tmp_path
+):
+    _lazy(source, '---\n_load_conditions:\n  - "if you edit,"\n---\n\nBody\n')
+
+    with pytest.raises(ValueError, match="frame adds its own comma") as exc:
+        rules_mod.distribute_rules(source, tmp_path / "ws")
+
+    assert "tests.md" in str(exc.value) and "if you edit," in str(exc.value)
+
+
+def test_a_quoted_item_is_stripped_after_unquoting(source, tmp_path):
+    _lazy(source, '---\n_load_conditions:\n  - " x "\n---\n\nBody\n')
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == _stub_text(
+        ws, conditions="x"
+    )
+
+
+def test_multi_item_stub_joins_items_with_or(source, tmp_path):
+    _lazy(source, "---\n_load_conditions:\n  - A\n  - B\n---\n\nBody\n")
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    content = (ws / ".claude/rules-content/tests.md").resolve()
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        f"Your FIRST action, A or B, MUST be to `Read` `{content}` in full.\n"
+    )
+
+
+def test_a_blank_item_among_valid_ones_is_refused(source, tmp_path):
+    _lazy(source, '---\n_load_conditions:\n  - "if you edit"\n  - ""\n---\n\nBody\n')
+
+    with pytest.raises(ValueError, match="tests.md"):
+        rules_mod.distribute_rules(source, tmp_path / "ws")
+
+
+def test_invalid_condition_error_names_the_condition(source, tmp_path):
+    _lazy(source, "---\n_load_conditions:\n  - if you edit `x`\n---\n\nBody\n")
+
+    with pytest.raises(ValueError, match="if you edit `x`"):
+        rules_mod.distribute_rules(source, tmp_path / "ws")
+
+
+def test_lazy_rule_is_idempotent(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    second = rules_mod.distribute_rules(source, ws)
+
+    assert second.unchanged == ["tests.md"]
+    assert not second.has_changes
+
+
+def test_editing_conditions_is_modified_with_new_stub(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    _lazy(source, LAZY_SOURCE.replace("any test", "the CI config"))
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report.modified == ["tests.md"]
+    assert "a Python file or the CI config" in (
+        ws / ".claude/rules/tests.md"
+    ).read_text(encoding="utf-8")
+
+
+def test_editing_only_the_body_is_modified(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    _lazy(source, LAZY_SOURCE.replace("Body line.", "New line."))
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report.modified == ["tests.md"]
+    assert "New line." in (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_lazy_becoming_eager_deletes_the_stale_content_file(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+    (ws / ".claude/rules-content/ghost.md").write_text("x\n", encoding="utf-8")
+
+    _lazy(source, "# Tests\n")
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report == rules_mod.RulesReport(modified=["tests.md"], purged=["ghost.md"])
+    assert not (ws / ".claude/rules-content/tests.md").exists()
+    assert not (ws / ".claude/rules-content/ghost.md").exists()
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == "# Tests\n"
+
+
+def test_lazy_becoming_eager_plan_reports_modified_only(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    _lazy(source, "# Tests\n")
+    plan = rules_mod.distribute_rules(source, ws, apply=False)
+
+    assert plan == rules_mod.RulesReport(modified=["tests.md"])
+    assert (ws / ".claude/rules-content/tests.md").exists()
+
+
+def test_eager_becoming_lazy_rewrites_stub_and_creates_content(source, tmp_path):
+    _lazy(source, "# Tests\n")
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    _lazy(source)
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report == rules_mod.RulesReport(modified=["tests.md"])
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n---\n\n' + _stub_text(ws)
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+
+
+def test_orphan_in_rules_content_is_purged(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    content = ws / ".claude/rules-content"
+    content.mkdir(parents=True)
+    (content / "ghost.md").write_text("x\n", encoding="utf-8")
+
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report == rules_mod.RulesReport(added=["tests.md"], purged=["ghost.md"])
+    assert not (content / "ghost.md").exists()
+    assert (content / "tests.md").exists()
+
+
+def test_lazy_plan_writes_nothing(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+
+    plan = rules_mod.distribute_rules(source, ws, apply=False)
+
+    assert plan.added == ["tests.md"]
+    assert not (ws / ".claude").exists()
+
+
+def test_distribute_all_plugin_rules_handles_a_lazy_rule(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-a").mkdir(parents=True)
+    (rules_dir / "pc-a" / "tests.md").write_text(LAZY_SOURCE, encoding="utf-8")
+    (rules_dir / "pc-b").mkdir()
+    (rules_dir / "pc-b" / "other.md").write_text("other\n", encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    installed_plugins_file(
+        {"pc-a@m": [{"scope": "user"}], "pc-b@m": [{"scope": "user"}]}
+    )
+    ws = tmp_path / "workspace"
+
+    result = rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=tmp_path / "u")
+
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+    assert (
+        (ws / ".claude/rules/tests.md")
+        .read_text(encoding="utf-8")
+        .endswith(_stub_text(ws))
+    )
+    assert result["pc-a"][ws].added == ["tests.md"]
+    # the sibling pass must not purge pc-a's content file
+    assert result["pc-b"][ws].purged == []
+    assert (ws / ".claude/rules-content/tests.md").exists()
+
+
+def test_withdrawing_a_lazy_rule_removes_its_content_file(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+
+    report = rules_mod._withdraw_sources(["tests.md"], ws)
+
+    assert report.purged == ["tests.md"]
+    assert not (ws / ".claude/rules/tests.md").exists()
+    assert not (ws / ".claude/rules-content/tests.md").exists()
+
+
+# ── lazy rules: review fixes ──
+
+
+def test_stub_read_path_is_the_absolute_resolved_content_path(source, tmp_path):
+    (source / "x.md").write_text(
+        '---\n_load_conditions:\n  - "a file"\n---\n\nB\n', encoding="utf-8"
+    )
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    expected = str((ws / ".claude/rules-content/x.md").resolve())
+    assert expected in (ws / ".claude/rules/x.md").read_text(encoding="utf-8")
+    assert (ws / ".claude/rules/x.md").read_text(encoding="utf-8") == (
+        f"Your FIRST action, a file, MUST be to `Read` `{expected}` in full.\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "---\n_load_conditions:\n  - a file\n\nBody\n",  # fence never closed
+        "----\n_load_conditions:\n  - a file\n---\n\nBody\n",  # not a fence
+        "---foo\n_load_conditions:\n  - a file\n---\n\nBody\n",  # not a fence
+        "---\n_load_conditions:\n  - a file\n----\n\nBody\n",  # closing is not a fence
+    ],
+)
+def test_malformed_frontmatter_is_refused_not_copied_eagerly(source, tmp_path, text):
+    _lazy(source, text)
+    ws = tmp_path / "ws"
+
+    with pytest.raises(ValueError, match="tests.md: unclosed frontmatter"):
+        rules_mod.distribute_rules(source, ws)
+
+    assert not (ws / ".claude").exists()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\ufeff---\npaths:\n  - x\n---\n\nBody\n",  # BOM + valid frontmatter
+        "---\n\nBody\n\n---\n",  # a horizontal rule closes the block
+        "---\nA horizontal rule opens this file.\n\nBody\n",  # never closed
+        "----\nBody\n",  # four dashes
+        "---foo\nBody\n",
+        "---\npaths:\n  - x\n--- \u00a0x\n\nBody\n",  # closing line is not a fence
+        "\ufeff---\nno closing fence\n",
+        "\ufeff----\nBody\n",
+    ],
+)
+def test_eager_rule_is_copied_verbatim_whatever_its_first_line(source, tmp_path, text):
+    (source / "plain.md").write_text(text, encoding="utf-8")
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/plain.md").read_bytes() == text.encode("utf-8")
+    assert not (ws / ".claude/rules-content").exists()
+
+
+def test_eager_rule_with_trailing_space_fences_is_copied_verbatim(source, tmp_path):
+    text = "--- \t\npaths:\n  - x\n---  \n\nBody\n"
+    (source / "plain.md").write_text(text, encoding="utf-8")
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/plain.md").read_bytes() == text.encode("utf-8")
+    assert not (ws / ".claude/rules-content").exists()
+
+
+def test_one_unparseable_eager_rule_does_not_abort_the_distribution(source, tmp_path):
+    (source / "odd.md").write_text("---\nNo closing fence.\n", encoding="utf-8")
+    (source / "tests.md").write_text(LAZY_SOURCE, encoding="utf-8")
+    ws = tmp_path / "ws"
+
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report.added == ["odd.md", "tests.md"]
+    assert (ws / ".claude/rules/odd.md").read_text(encoding="utf-8") == (
+        "---\nNo closing fence.\n"
+    )
+
+
+def test_lazy_rule_with_a_bom_is_distributed(source, tmp_path):
+    _lazy(source, "\ufeff" + LAZY_SOURCE)
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n---\n\n' + _stub_text(ws)
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+
+
+def test_lazy_rule_with_trailing_space_fences_is_distributed(source, tmp_path):
+    _lazy(source, LAZY_SOURCE.replace("---\n", "---  \t\n"))
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n---\n\n' + _stub_text(ws)
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+
+
+def test_same_line_comment_on_the_key_is_accepted(source, tmp_path):
+    _lazy(
+        source,
+        '---\n_load_conditions:  # note\n  - "a file"\n---\n\nBody\n',
+    )
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == _stub_text(
+        ws, conditions="a file"
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == "Body\n"
+
+
+def test_inline_value_with_a_comment_is_still_refused(source, tmp_path):
+    _lazy(source, "---\n_load_conditions: a file  # note\n---\n\nBody\n")
+
+    with pytest.raises(ValueError, match="block-style list required"):
+        rules_mod.distribute_rules(source, tmp_path / "ws")
+
+
+@pytest.mark.parametrize(
+    "item", ['["a file"]', "a Python file", '["a file", "an IDE setting"]']
+)
+def test_inline_load_conditions_requires_a_block_list(source, tmp_path, item):
+    _lazy(source, f"---\n_load_conditions: {item}\n---\n\nBody\n")
+
+    with pytest.raises(ValueError, match="tests.md.*block-style list required"):
+        rules_mod.distribute_rules(source, tmp_path / "ws")
+
+
+def test_comment_lines_inside_paths_block_do_not_truncate_it(source, tmp_path):
+    _lazy(
+        source,
+        "---\n"
+        "paths:\n"
+        '  - "**/*.py"\n'
+        "# a full-line comment\n"
+        "\n"
+        "  # an indented comment\n"
+        '  - "**/*.toml"\n'
+        "_load_conditions:\n"
+        '  - "a file"\n'
+        "---\n\nBody\n",
+    )
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n  - "**/*.toml"\n---\n\n'
+        + _stub_text(ws, conditions="a file")
+    )
+
+
+def test_comments_inside_load_conditions_are_skipped_and_stripped(source, tmp_path):
+    _lazy(
+        source,
+        "---\n"
+        "_load_conditions:\n"
+        '  - "a Python file"  # quoted, noted\n'
+        "  # a comment line\n"
+        "\n"
+        "  - any test # unquoted, noted\n"
+        "  - the C# sources\n"
+        "---\n\nBody\n",
+    )
+    ws = tmp_path / "ws"
+
+    rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == _stub_text(
+        ws, conditions="a Python file or any test or the C# sources"
+    )
+
+
+def test_missing_content_file_alone_is_modified(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+    (ws / ".claude/rules-content/tests.md").unlink()
+
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report == rules_mod.RulesReport(modified=["tests.md"])
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+
+
+def test_missing_stub_alone_is_added(source, tmp_path):
+    _lazy(source)
+    ws = tmp_path / "ws"
+    rules_mod.distribute_rules(source, ws)
+    (ws / ".claude/rules/tests.md").unlink()
+
+    report = rules_mod.distribute_rules(source, ws)
+
+    assert report == rules_mod.RulesReport(added=["tests.md"])
+    assert (
+        (ws / ".claude/rules/tests.md")
+        .read_text(encoding="utf-8")
+        .endswith(_stub_text(ws))
+    )
+
+
+def test_content_is_written_before_the_stub(source, tmp_path, monkeypatch):
+    """A crash while writing the stub must not leave a stub pointing at a missing file."""
+    _lazy(source)
+    ws = tmp_path / "ws"
+    real_write_text = Path.write_text
+
+    def crash_on_stub(self, *args, **kwargs):
+        if self.parent.name == "rules":
+            raise OSError("disk full")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", crash_on_stub)
+
+    with pytest.raises(OSError, match="disk full"):
+        rules_mod.distribute_rules(source, ws)
+
+    assert (ws / ".claude/rules-content/tests.md").exists()
+    assert not (ws / ".claude/rules/tests.md").exists()
+
+
+def test_sibling_owned_content_file_is_not_purged(tmp_path):
+    ws = tmp_path / "ws"
+    content = ws / ".claude/rules-content"
+    content.mkdir(parents=True)
+    (content / "x.md").write_text("body\n", encoding="utf-8")
+    (content / "ghost.md").write_text("x\n", encoding="utf-8")
+
+    report = rules_mod._distribute_sources({}, ws, sibling_owned=frozenset({"x.md"}))
+
+    assert report == rules_mod.RulesReport(purged=["ghost.md"])
+    assert (content / "x.md").exists()
+    assert not (content / "ghost.md").exists()
+
+
+def _two_plugins_one_lazy(tmp_path, monkeypatch):
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-a").mkdir(parents=True)
+    (rules_dir / "pc-a" / "a.md").write_text("A\n", encoding="utf-8")
+    (rules_dir / "pc-b").mkdir()
+    (rules_dir / "pc-b" / "tests.md").write_text(LAZY_SOURCE, encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+
+
+def test_disable_path_protects_a_sibling_plugins_lazy_content(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    _two_plugins_one_lazy(tmp_path, monkeypatch)
+    installed_plugins_file(
+        {"pc-a@m": [{"scope": "user"}], "pc-b@m": [{"scope": "user"}]}
+    )
+    ws = tmp_path / "ws"
+    rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=tmp_path / "u")
+    ws = ws.resolve()
+
+    reports = rules_mod.rules_report_for_plugin_at_targets(
+        "pc-a",
+        [],
+        [ws],
+        ws,
+        user_rules_dir=tmp_path / "u",
+        active_dirs_by_plugin={"pc-b": [ws]},
+    )
+
+    assert reports == {ws: rules_mod.RulesReport(purged=["a.md"])}
+    assert not (ws / ".claude/rules/a.md").exists()
+    assert (
+        (ws / ".claude/rules/tests.md")
+        .read_text(encoding="utf-8")
+        .endswith(_stub_text(ws))
+    )
+    assert (ws / ".claude/rules-content/tests.md").read_text(
+        encoding="utf-8"
+    ) == LAZY_BODY
+
+
+def test_lazy_rule_in_a_covered_target_is_withdrawn_and_ancestor_stub_is_absolute(
+    tmp_path, monkeypatch, installed_plugins_file
+):
+    rules_dir = tmp_path / "rules"
+    (rules_dir / "pc-a").mkdir(parents=True)
+    (rules_dir / "pc-a" / "tests.md").write_text(LAZY_SOURCE, encoding="utf-8")
+    monkeypatch.setattr(rules_mod, "RULES_DIR", rules_dir)
+    ws, group = tmp_path / "ws", tmp_path / "ws" / "group"
+    installed_plugins_file(
+        {"pc-a@m": [{"scope": "project", "projectPath": str(p)} for p in (ws, group)]}
+    )
+    (group / ".claude/rules").mkdir(parents=True)
+    (group / ".claude/rules-content").mkdir(parents=True)
+    (group / ".claude/rules/tests.md").write_text("stale stub\n", encoding="utf-8")
+    (group / ".claude/rules-content/tests.md").write_text("stale\n", encoding="utf-8")
+
+    result = rules_mod.distribute_all_plugin_rules(ws, user_rules_dir=tmp_path / "u")
+
+    assert result["pc-a"][group] == rules_mod.RulesReport(purged=["tests.md"])
+    assert not (group / ".claude/rules/tests.md").exists()
+    assert not (group / ".claude/rules-content/tests.md").exists()
+    assert (ws / ".claude/rules/tests.md").read_text(encoding="utf-8") == (
+        '---\npaths:\n  - "**/*.py"\n---\n\n' + _stub_text(ws)
+    )

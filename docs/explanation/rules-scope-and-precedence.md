@@ -1,5 +1,5 @@
 # Portée de la convention — où une règle s'applique, et qui l'emporte
-*Update date : 2026-08-28 17:21*
+*Update date : 2026-10-03 17:15*
 
 **L'endroit où une règle est installée détermine sa portée.** Appartenir à un plugin indique d'où elle *vient* ; le répertoire dans lequel elle atterrit indique où elle *s'applique*. Une règle de plugin installée dans un répertoire de groupe (`pinky-lib/.claude/rules/`) est inaccessible en dehors de celui-ci — ce qui est ce qui rend un `paths: **/*.py` large correct là plutôt que partout.
 
@@ -23,6 +23,13 @@ lui-même (elle ne peut pas, format absent) — pas de rule sans le plugin qui l
 l'outillage de ce plugin** (elle nomme ses skills/commands/hooks, ou son workflow) ; sinon elle
 reste `rules/pc-core/` (discipline de raisonnement ou d'ingénierie tool-agnostique). Ex :
 `kanban-proactivity.md` → `pc-kanban` ; `verify-diagnosis.md`, `tests.md` → `pc-core`.
+
+**Rule conditionnelle (`_load_conditions`).** Une source dont le frontmatter porte `_load_conditions`
+(liste de propositions libres, validée par `_validated_conditions` dans `setup/rules.py` : non vide,
+une ligne non vide par item, sans backtick) est distribuée en deux fichiers : un stub dans
+`.claude/rules/` (même `paths:`, puis « Your FIRST action, <conditions jointes par " or ">, MUST be to
+`Read` <chemin absolu du corps> in full. ») et le corps dans `.claude/rules-content/`, miroir purgé comme
+`.claude/rules/`. Sans la clé, la rule est copiée telle quelle.
 
 **Purge à périmètre global par cible.** Plusieurs plugins peuvent résoudre vers le même
 `.claude/rules/` (tous les `scope: user` atterrissent à la racine workspace). Le mirror-purge de

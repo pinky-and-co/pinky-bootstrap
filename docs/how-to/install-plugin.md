@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-09-23 11:24*
+*Update date : 2026-10-03 17:15*
 
 ```bash
 pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
@@ -117,7 +117,7 @@ plugin initializes; **not verified today which of these need `/reload-plugins --
 session) vs pick up live**. Until checked case by case, keep reloading for anything beyond editing
 an existing hook/skill script's own logic.
 
-Separately: `.claude/rules/`, `.claude/settings.pinky.json` and anything else `pinky repo distribute`/`pinky
+Separately: `.claude/rules/`, `.claude/rules-content/`, `.claude/settings.pinky.json` and anything else `pinky repo distribute`/`pinky
 rules` renders into a *consuming* repo are a **copy**, made by that CLI step — unrelated to
 marketplace source type. Editing the plugin's source never updates that copy; only rerunning the
 CLI distribution command does, `directory`-source or not.

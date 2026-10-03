@@ -8,11 +8,17 @@ Rules can't travel packaged inside a plugin (the format doesn't exist yet) — t
 the behaviour that WOULD have if they could: a ``rules/<plugin_name>/`` subdirectory here maps to
 wherever that plugin is actually installed, resolved from ``~/.claude/plugins/installed_plugins.json``
 rather than a single fixed workspace path.
+
+A source rule carrying a ``_load_conditions`` frontmatter key is distributed lazily: a short stub
+in ``.claude/rules/`` (same ``paths:``, one Read instruction) and the body in
+``.claude/rules-content/``. The stub is a fixed frame around the rule author's free clause(s) —
+accepted form: see `_validated_conditions`.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,6 +28,7 @@ from .common import AGENTIC_HARNESS_DIR
 
 RULES_DIR = AGENTIC_HARNESS_DIR / "rules"
 TARGET_REL = ".claude/rules"
+CONTENT_REL = ".claude/rules-content"
 INSTALLED_PLUGINS_PATH = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
 # A user override has RULES_DIR's "<plugin>/<file>.md" shape.
 USER_RULES_DIR = Path.home() / ".claude" / "rules"
@@ -50,6 +57,141 @@ class RulesReport:
         return bool(self.added or self.modified or self.purged)
 
 
+_STUB_TEMPLATE = (
+    "Your FIRST action, {conditions}, MUST be to `Read` `{content_path}` in full.\n"
+)
+
+
+def _split_frontmatter(text: str) -> tuple[list[str], str]:
+    """(frontmatter lines without the ``---`` fences, body) — ``([], text)`` with no frontmatter.
+
+    A fence is exactly ``---`` once trailing whitespace is stripped; a BOM before the opening
+    fence is ignored.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].lstrip("\ufeff").rstrip() != "---":
+        return [], text
+    for i in range(1, len(lines)):
+        if lines[i].rstrip() == "---":
+            return lines[1:i], "".join(lines[i + 1 :])
+    return [], text
+
+
+def _key_block(front: list[str], key: str) -> list[str] | None:
+    """The raw lines of `key:` and its indented / ``- `` continuation lines, None when absent."""
+    for i, line in enumerate(front):
+        if line.startswith(f"{key}:"):
+            block = [line]
+            for follow in front[i + 1 :]:
+                if not follow.strip() or follow.lstrip().startswith("#"):
+                    continue
+                if follow[0] in " \t" or follow.startswith("- "):
+                    block.append(follow)
+                else:
+                    break
+            return block
+    return None
+
+
+def _validated_conditions(rule: str, block: list[str]) -> list[str]:
+    """The `_load_conditions` items of a rule, each checked against the accepted form.
+
+    Accepted form of one item — a free clause that completes "Your FIRST action, …, MUST be to
+    Read …"; e.g. `if you are fixing a bug or extending code`:
+
+    - non-blank once stripped, on a single line (an indented continuation line is refused);
+    - no trailing ``,`` ``.`` ``;`` ``:`` — the frame adds its own punctuation around the clause;
+    - no leading YAML indicator ``>`` ``|`` ``&`` ``*`` ``!`` (folded, anchored or tagged
+      scalars are not supported);
+    - no backtick (it would break the stub's own quoting).
+
+    The list must be non-empty, and written block-style: an inline value after the key is
+    refused. Full-line ``#`` comments are skipped, an `` # note`` suffix is stripped, and each
+    item is stripped again after unquoting.
+
+    Args:
+        rule: The rule filename, named in the error.
+        block: The raw `_load_conditions:` line and its list lines.
+
+    Returns:
+        The conditions, unquoted.
+
+    Raises:
+        ValueError: Naming the rule file and the offending condition.
+    """
+    if re.sub(r"\s+#.*$", "", block[0].split(":", 1)[1]).strip():
+        raise ValueError(f"{rule}: _load_conditions: block-style list required")
+    conditions = []
+    for line in block[1:]:
+        item = line.strip()
+        if not item.startswith("-"):
+            raise ValueError(
+                f"{rule}: invalid _load_conditions line {item!r} — "
+                "a continuation line is not supported, one '- item' per line"
+            )
+        item = item[1:].strip()
+        quoted = re.fullmatch(r"""(["'])(.*)\1(?:\s+#.*)?""", item)
+        conditions.append(
+            (quoted[2] if quoted else re.sub(r"\s+#.*$", "", item)).strip()
+        )
+    if not conditions:
+        raise ValueError(f"{rule}: _load_conditions is empty")
+    for cond in conditions:
+        problem = (
+            "blank item"
+            if not cond
+            else "ends with punctuation, the frame adds its own comma"
+            if cond[-1] in ",.;:"
+            else "starts with a YAML indicator (> | & * !), not supported"
+            if cond[0] in ">|&*!"
+            else "contains a backtick"
+            if "`" in cond
+            else None
+        )
+        if problem:
+            raise ValueError(
+                f"{rule}: invalid _load_conditions entry {cond!r} — {problem}"
+            )
+    return conditions
+
+
+def _render_rule(name: str, text: str, content_path: Path) -> tuple[str, str | None]:
+    """(text of `.claude/rules/<name>`, text of `.claude/rules-content/<name>` or None).
+
+    A source without `_load_conditions` is copied as-is, whatever its first line. With it, the rules file is a regenerated
+    stub (the source's `paths:` block + the Read instruction naming `content_path`, absolute: a
+    session started in a child directory loads this ancestor's rules) and the content file is the
+    body.
+
+    Args:
+        name: The rule filename.
+        text: The source rule text.
+        content_path: Resolved absolute path of the rule's `.claude/rules-content/` file.
+
+    Returns:
+        The stub (or the source verbatim) and the content body (None when not lazy).
+
+    Raises:
+        ValueError: The text carries a `_load_conditions:` line but its frontmatter does not
+            parse — it would otherwise be copied eagerly, defeating the lazy load.
+    """
+    front, body = _split_frontmatter(text)
+    if (
+        not front
+        and body == text
+        and any(line.startswith("_load_conditions:") for line in text.splitlines())
+    ):
+        raise ValueError(f"{name}: unclosed frontmatter")
+    block = _key_block(front, "_load_conditions")
+    if block is None:
+        return text, None
+    conditions = " or ".join(_validated_conditions(name, block))
+    paths = _key_block(front, "paths")
+    stub = "---\n" + "".join(paths) + "---\n\n" if paths else ""
+    stub += _STUB_TEMPLATE.format(conditions=conditions, content_path=content_path)
+    return stub, body.lstrip("\r\n")
+
+
 def _distribute_sources(
     sources: Mapping[str, Path],
     target_root: Path,
@@ -62,39 +204,68 @@ def _distribute_sources(
     shipped+user merge (`_merged_sources`) both funnel through, so the diff/purge logic is written
     once.
 
+    A source carrying `_load_conditions` lands as a stub in `.claude/rules/` plus its body in
+    `.claude/rules-content/` (see `_render_rule`); it is "modified" when either differs.
+
     The target is a mirror of `sources`: a file with no matching entry is purged — unless it is in
     `sibling_owned`, i.e. owned by another plugin that resolves to the same target. Without that
     exemption, two plugins landing in one `.claude/rules/` purge each other's rules on alternate
-    passes.
+    passes. `.claude/rules-content/` is mirrored the same way, owned by the lazy sources only.
     """
-    target = target_root.expanduser().resolve() / TARGET_REL
+    base = target_root.expanduser().resolve() / ".claude"
+    target = base / "rules"
+    content_dir = base / "rules-content"
+
+    # Render everything first: an invalid rule raises before anything is written.
+    rendered = {
+        name: _render_rule(name, src.read_text(encoding="utf-8"), content_dir / name)
+        for name, src in sorted(sources.items())
+    }
     if apply:
         target.mkdir(parents=True, exist_ok=True)
 
     added: list[str] = []
     modified: list[str] = []
     unchanged: list[str] = []
-    for name, src in sorted(sources.items()):
+    for name, (stub, content) in rendered.items():
         dst = target / name
-        payload = src.read_text(encoding="utf-8")
-        if dst.exists():
-            # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
-            # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
-            if dst.read_text(encoding="utf-8") == payload:
-                unchanged.append(name)
-                continue
-            modified.append(name)
-        else:
-            added.append(name)
+        cdst = content_dir / name
+        # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
+        # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
+        stub_same = dst.exists() and dst.read_text(encoding="utf-8") == stub
+        content_same = (
+            not cdst.exists()
+            if content is None
+            else cdst.exists() and cdst.read_text(encoding="utf-8") == content
+        )
+        if stub_same and content_same:
+            unchanged.append(name)
+            continue
+        (modified if dst.exists() else added).append(name)
         if apply:
-            dst.write_text(payload, encoding="utf-8")
+            # Content first: a crash never leaves a stub pointing at a missing file. A stale
+            # content file (lazy → eager) is removed by the mirror pass below.
+            if content is not None and not content_same:
+                content_dir.mkdir(parents=True, exist_ok=True)
+                cdst.write_text(content, encoding="utf-8")
+            if not stub_same:
+                dst.write_text(stub, encoding="utf-8")
 
     owned = set(sources) | sibling_owned
+    lazy = {name for name, (_, content) in rendered.items() if content is not None}
     purged: list[str] = []
     if target.is_dir():
         for f in sorted(target.glob("*.md")):
             if f.name not in owned:
                 purged.append(f.name)
+                if apply:
+                    f.unlink()
+    if content_dir.is_dir():
+        for f in sorted(content_dir.glob("*.md")):
+            if f.name not in lazy | sibling_owned:
+                # A name with a source here is reported as modified, not as "no source left".
+                if f.name not in owned and f.name not in purged:
+                    purged.append(f.name)
                 if apply:
                     f.unlink()
 
@@ -115,10 +286,16 @@ def _withdraw_sources(
     """Remove only the files named `names` from `<target_root>/.claude/rules/` — never a mirror
     purge: a covered target may hold its own hand-written rules, which no plugin owns."""
     target = target_root.expanduser().resolve() / TARGET_REL
-    purged = sorted(name for name in names if (target / name).is_file())
+    content = target_root.expanduser().resolve() / CONTENT_REL
+    purged = sorted(
+        name
+        for name in names
+        if (target / name).is_file() or (content / name).is_file()
+    )
     if apply:
         for name in purged:
-            (target / name).unlink()
+            (target / name).unlink(missing_ok=True)
+            (content / name).unlink(missing_ok=True)
     return RulesReport(purged=purged)
 
 
