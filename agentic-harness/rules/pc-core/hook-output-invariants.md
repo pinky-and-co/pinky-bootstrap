@@ -1,6 +1,8 @@
 ---
 paths:
   - "plugins/**/hooks/**"
+_load_conditions:
+  - "if you are writing or modifying a plugin hook"
 ---
 # Hook output invariants — no context bloat
 *Update date : 2026-07-04 19:50*

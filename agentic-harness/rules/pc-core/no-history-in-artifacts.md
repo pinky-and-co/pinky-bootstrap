@@ -1,3 +1,7 @@
+---
+_load_conditions:
+  - "if you are writing a code comment, a rule, a doc file, a card or a memory entry"
+---
 # No narrated history — in code, rules, or docs
 
 A comment, rule, or doc file describes **current state and actionable instruction**. It is read

@@ -1,12 +1,15 @@
 ---
 paths:
   - "**/*.py"
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+  - "**/*.sh"
+_load_conditions:
+  - "if you are fixing a bug, extending or modifying code, or writing tests"
 ---
 # Test convention
-
-Fires on the first `.py` read, which precedes writing code in every real workflow. `minimal-code.md`
-stays always-on and points here, so the obligation survives even in a session that never reads an
-existing module.
 
 ## Bug workflow
 

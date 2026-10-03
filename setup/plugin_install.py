@@ -20,7 +20,8 @@ One thing `claude plugin install` does not do that this workspace needs: the mai
 `agent` and `subagentStatusLine` there — so a plugin that ships a status line
 still needs an explicit `statusLine` entry pointing at its installed script. That entry is an
 absolute path with the plugin version in it, so `set_status_lines` re-resolves it from the install
-registry (never a guessed path) on every `pinky install` run — the replayable-converger model.
+registry (never a guessed path) on every `pinky claude-plugin install` run — the replayable-converger
+model.
 Re-run after `claude plugin update <plugin>`.
 """
 

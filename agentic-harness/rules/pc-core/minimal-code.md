@@ -6,6 +6,8 @@ paths:
   - "**/*.js"
   - "**/*.jsx"
   - "**/*.sh"
+_load_conditions:
+  - "if you are about to write or modify code"
 ---
 # Minimal-code convention
 

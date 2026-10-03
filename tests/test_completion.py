@@ -86,7 +86,6 @@ def test_the_subjects_are_completed():
         "claude-plugin",
         "live-docs",
         "repo",
-        "install",
         "doctor",
         "directives",
     }

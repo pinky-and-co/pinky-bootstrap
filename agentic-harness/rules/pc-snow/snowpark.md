@@ -3,6 +3,8 @@ paths:
   - "**/*.py"
   - "**/stored_procedures/**"
   - "**/tasks/**"
+_load_conditions:
+  - "if you are writing, modifying or reviewing Snowpark code, a stored procedure or a task"
 ---
 # Snowpark Python conventions
 

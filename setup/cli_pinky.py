@@ -204,7 +204,8 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
     """Translate `claude-plugin <verb>` to `setup.cli`'s plugin flags.
 
     `install` fetches the plugin then runs the scope wizard (`--plugin`); `refresh` clears and
-    refetches the cache with no question (`--plugins-refresh`); `list` is the audit
+    refetches the cache with no question (`--plugins-refresh`); `rules` distributes the plugins'
+    rules into the workspace (`--rules`); `list` is the audit
     report, `who` the provenance report, `reconcile` the interactive placer, `enable`/`disable`
     the plugin x target table (or `--scope` to skip it).
     """
@@ -233,6 +234,13 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         if args.marketplace:
             argv += ["--marketplace", args.marketplace]
         setup_main(argv)
+    elif args.verb == "rules":
+        argv = ["--rules"]
+        if args.dry_run:
+            argv.append("--dry-run")
+        if args.yes:
+            argv.append("--yes")
+        setup_main(argv)
     elif args.verb == "list":
         setup_main(["--plugins-who"] if args.who else ["--plugins-reconcile"])
     elif args.verb in ("enable", "disable"):
@@ -254,18 +262,6 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         setup_main(argv)
     else:
         setup_main(["--plugins-reconcile-apply"])
-
-
-def cmd_install(args: argparse.Namespace) -> None:
-    """Replayable installer that converges this machine's setup: the workspace rules, then the
-    prerequisites report."""
-    argv = ["--rules"]
-    if args.dry_run:
-        argv.append("--dry-run")
-    if args.yes:
-        argv.append("--yes")
-    setup_main(argv)
-    _run_doctor_advisory()
 
 
 def _examples(lines: list[str]) -> str:
@@ -335,6 +331,7 @@ def build_parser() -> argparse.ArgumentParser:
         [
             "pinky claude-plugin install pc-kanban  # download + the scope wizard",
             "pinky claude-plugin refresh  # refetch every locally-developed plugin",
+            "pinky claude-plugin rules  # distribute the plugins' rules into the workspace",
             "pinky claude-plugin list  # where each plugin is enabled",
             "pinky claude-plugin list --who  # which session ran each install",
         ],
@@ -439,6 +436,25 @@ def build_parser() -> argparse.ArgumentParser:
             help="the marketplace for every bare plugin name",
         ),
         _complete_marketplace,
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+    p = _add(
+        verbs,
+        "rules",
+        "distribute the installed plugins' rules into the workspace's .claude/rules/ — replayable",
+        [
+            "pinky claude-plugin rules  # show the plan, ask, then copy",
+            "pinky claude-plugin rules --dry-run  # show the plan, write nothing",
+        ],
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="print the plan and stop, never ask"
+    )
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="apply the plan without asking (required in a non-interactive shell)",
     )
     p.set_defaults(func=cmd_claude_plugin)
     p = _add(
@@ -687,26 +703,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="with scan: JSON snapshot instead of the report",
     )
     p.set_defaults(func=cmd_llm_drift)
-
-    p = _add(
-        sub,
-        "install",
-        "🚀 replayable installer — the workspace rules, then the prerequisites report",
-        [
-            "pinky install  # distribute the rules, then the doctor",
-            "pinky install --dry-run  # show the rules plan, write nothing",
-        ],
-    )
-    p.add_argument(
-        "--dry-run", action="store_true", help="print the plan and stop, never ask"
-    )
-    p.add_argument(
-        "--yes",
-        "-y",
-        action="store_true",
-        help="apply the plan without asking (required in a non-interactive shell)",
-    )
-    p.set_defaults(func=cmd_install)
 
     p = _add(
         sub,

@@ -1,3 +1,7 @@
+---
+_load_conditions:
+  - "if you are asked to apply the same change to N repos, modules or files"
+---
 # Applying one convention to N targets
 
 Repeating the same change across repos, modules or files is **dispatched work**, never a loop in

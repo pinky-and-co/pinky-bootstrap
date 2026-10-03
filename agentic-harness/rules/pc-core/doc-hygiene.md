@@ -2,6 +2,8 @@
 paths:
   - "**/docs/**/*.md"
   - "**/README.md"
+_load_conditions:
+  - "if you are writing or modifying documentation"
 ---
 # Documentation conventions — doc files
 

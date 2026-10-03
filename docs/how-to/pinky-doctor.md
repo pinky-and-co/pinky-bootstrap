@@ -6,7 +6,7 @@ pinky doctor
 ```
 
 Reports the prerequisites the plugins on this machine assume but no manifest declares, then exits
-non-zero if any is missing. Read-only — it writes no config and no `pinky install` ledger entry.
+non-zero if any is missing. Read-only — it writes no config and no entry in pinky's install ledger.
 
 ## What it checks
 
@@ -42,17 +42,17 @@ runs nothing.
 formula (`markitdown`, `prek` — installed another way) fails visibly there, which is the signal to
 install it yourself.
 
-## Inside `pinky install`
+## Inside `pinky claude-plugin install`
 
-Every `pinky install` path runs `pinky doctor` at the end — `--plugin` included, since that is the
-path that activates a plugin whose prerequisites are new. There it is **advisory**: the report
-prints, but a missing prerequisite never fails the install and never undoes an activated plugin.
+`pinky claude-plugin install` runs `pinky doctor` at the end, since that is the path that activates
+a plugin whose prerequisites are new. There it is **advisory**: the report prints, but a missing
+prerequisite never fails the install and never undoes an activated plugin.
 
 ## Exit code
 
 `pinky doctor` (not `--fix`) exits `1` when any MUST prerequisite is missing, `0` otherwise — so it
-can gate a CI step or a machine-provisioning script. The advisory call inside `pinky install` does
-not propagate that code.
+can gate a CI step or a machine-provisioning script. The advisory call inside
+`pinky claude-plugin install` does not propagate that code.
 
 ## What this does not do
 

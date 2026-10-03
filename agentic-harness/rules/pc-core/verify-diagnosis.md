@@ -1,3 +1,7 @@
+---
+_load_conditions:
+  - "if a card, ticket or ADR you are about to act on states a cause or an absence, or you are about to rely on an unmeasured premise"
+---
 # A written diagnosis is a hypothesis, not a finding
 
 A card, ticket or ADR often arrives with a **cause** already written down, and a plan built on top
