@@ -52,7 +52,7 @@ def main() -> int:
             f"⚠️  [JS-STRUCT] {filepath}: large app.js with no engine.js/core.js next to it"
         )
         print(
-            "   💡 Extract business logic into engine.js — see AGENT_JS_CONVENTIONS.md"
+            "   💡 Extract business logic into engine.js — see pc-craft:code-conventions"
         )
     return 0
 

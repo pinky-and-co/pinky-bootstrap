@@ -55,7 +55,7 @@ def main() -> int:
         n = _inline_script_count(filepath)
         if n:
             print(f"⚠️  [HTML-JS] {filepath}: {n} inline <script> block(s) with a body")
-            print("   💡 Move JS to a .js file — see AGENT_JS_CONVENTIONS.md")
+            print("   💡 Move JS to a .js file — see pc-craft:code-conventions")
     return 0
 
 

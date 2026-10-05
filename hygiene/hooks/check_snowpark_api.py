@@ -341,7 +341,7 @@ def main() -> int:
             "group_by, drop_duplicates, with_column, to_pandas, "
             "union_all, union_by_name, union_all_by_name, …"
         )
-        print("   🤖 Agents: AGENT_SNOWFLAKE_CORE_API.md · AGENT_SNOWFLAKE_SNOWPARK.md")
+        print("   🤖 Skills: pc-snow:snowflake · pc-snow:snowpark")
     return 1 if failed else 0
 
 
