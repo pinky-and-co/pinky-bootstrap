@@ -120,8 +120,9 @@ def scaffold_product(target: Path, repo_type: str = "lib") -> list[Path]:
 
     ``repo_type`` picks the manifest (the only thing that varies): ``lib``/``data`` get a
     ``pyproject.toml`` (``data`` additionally declares a snowpark dependency, and gets an empty
-    ``resources/`` — the subtree shape itself is an instance convention, not this public engine's
-    to invent, see `AGENT_YAML_AUDIT.md`); ``web`` gets a ``package.json`` and no ``pyproject.toml``;
+    ``resources/`` — the subtree shape itself is an instance convention, declared in each
+    instance's ``.claude/settings.pinky.json`` under ``file_placement``); ``web`` gets a
+    ``package.json`` and no ``pyproject.toml``;
     ``tooling`` gets neither — ``python-lint`` picks it up on its own once real ``.py`` lands.
     """
     name = target.name

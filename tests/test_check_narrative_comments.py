@@ -1,4 +1,4 @@
-"""check_narrative_comments.py — warn-only detector of history narrated in comments and docstrings."""
+"""check_narrative_comments.py — blocking detector of history narrated in comments and docstrings."""
 
 import importlib.util
 import subprocess
@@ -117,7 +117,7 @@ def test_unparsable_file_is_skipped(tmp_path):
     assert _scan("def (:\n    # 2026-07-24\n", tmp_path) == []
 
 
-def test_findings_print_path_and_line_and_never_block(tmp_path):
+def test_findings_print_path_and_line_and_block(tmp_path):
     f = tmp_path / "sample.py"
     f.write_text("a = 1  # decided 2026-07-24\n", encoding="utf-8")
     run = subprocess.run(
@@ -127,21 +127,30 @@ def test_findings_print_path_and_line_and_never_block(tmp_path):
         text=True,
         encoding="utf-8",
     )
-    assert run.returncode == 0
+    assert run.returncode == 1
     assert (
         run.stdout.splitlines()[0]
         == f"⚠️  [NARRATIVE] {f}:1: date: # decided 2026-07-24"
     )
 
 
+def test_clean_file_passes_silently(tmp_path):
+    f = tmp_path / "sample.py"
+    f.write_text("a = 1  # read and/or write, e.g. twice\n", encoding="utf-8")
+    run = subprocess.run(
+        [sys.executable, str(HOOK), str(f)],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert run.returncode == 0
+    assert run.stdout == ""
+
+
 def test_warn_only_hooks_are_verbose(tmp_path):
     yaml = pytest.importorskip("yaml")
     cfg = yaml.safe_load(setup.build_precommit_config(tmp_path, ["web"]))
     hooks = {hook["id"]: hook for repo in cfg["repos"] for hook in repo["hooks"]}
-    for pcid in (
-        "check-narrative-comments",
-        "js-file-size",
-        "js-structure",
-        "html-inline-js",
-    ):
+    for pcid in ("js-file-size", "js-structure", "html-inline-js"):
         assert hooks[pcid].get("verbose") is True
