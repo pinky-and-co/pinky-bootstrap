@@ -138,8 +138,37 @@ def test_python_failure_output_has_no_progress_dots_but_keeps_the_failure(tmp_pa
     )
     lines = (run.stdout + run.stderr).splitlines()
     assert run.returncode == 1
-    assert not [ln for ln in lines if re.fullmatch(r"[.sxXFE]+ *(\[ *\d+%\])?", ln)]
+    assert not [ln for ln in lines if re.fullmatch(_PROGRESS_LINE, ln)]
     assert any(ln.startswith("FAILED tests/test_x.py::test_x") for ln in lines)
+
+
+_PROGRESS_LINE = r"[.sxXFE]+ *(\[ *\d+%\])?"
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _failing_suite_output(tmp_path: Path, **env: str) -> list[str]:
+    write_py_suite(tmp_path, passing=False)
+    base = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "FORCE_COLOR")}
+    run = subprocess.run(
+        [_resolve_bash(), str(HOOK)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**base, **env},
+    )
+    return (run.stdout + run.stderr).splitlines()
+
+
+def test_force_color_keeps_pytest_colored_and_still_drops_the_progress(tmp_path):
+    lines = _failing_suite_output(tmp_path, FORCE_COLOR="1")
+    assert any(_ANSI.search(ln) for ln in lines)
+    assert not [ln for ln in lines if re.fullmatch(_PROGRESS_LINE, _ANSI.sub("", ln))]
+
+
+def test_no_color_keeps_pytest_plain(tmp_path):
+    lines = _failing_suite_output(tmp_path, NO_COLOR="1", FORCE_COLOR="1")
+    assert not any(_ANSI.search(ln) for ln in lines)
 
 
 @needs_node
