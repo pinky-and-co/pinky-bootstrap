@@ -101,8 +101,20 @@ def test_findings_print_path_line_and_fail(tmp_path):
         encoding="utf-8",
     )
     assert run.returncode == 1
-    assert run.stdout.splitlines()[0] == (
-        f"❌ [LATEX] Raw LaTeX notation instead of Unicode symbol in: {f} (lines: 1)"
+    assert run.stdout == (
+        f"{f} (1)\n"
+        "\n"
+        "  LATEX raw LaTeX notation instead of a Unicode symbol\n"
+        f"   --> {f}:1:1\n"
+        "    |\n"
+        "  1 | $\\rightarrow$\n"
+        "    | ^^^^^^^^^^^^^\n"
+        "    |\n"
+        "    = help: replace the command with its Unicode character (e.g. `\\rightarrow` → `→`)\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+        "help: likely source: a local LLM (Gemma/Ollama) falling back to its training notation "
+        "on long, freely-composed text\n"
     )
 
 

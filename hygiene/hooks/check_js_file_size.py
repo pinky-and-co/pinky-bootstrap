@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+from _report import Diagnostic, emit
+
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -37,15 +39,19 @@ def main() -> int:
     """Warn on every `.js` argument over `JS_MAX_LINES`; always exits 0 (warn-only)."""
     if _is_disabled():
         return 0
-    for filepath in sys.argv[1:]:
-        if not filepath.endswith(".js") or filepath.endswith(".min.js"):
-            continue
-        n = _line_count(filepath)
-        if n > JS_MAX_LINES:
-            print(f"⚠️  [JS-SIZE] {filepath}: {n} lines (> {JS_MAX_LINES})")
-            print(
-                "   💡 Extract business logic into engine.js — see pc-craft:code-conventions"
-            )
+    findings = [
+        Diagnostic(
+            "JS-SIZE",
+            f"{n} lines (> {JS_MAX_LINES})",
+            filepath,
+            help="extract business logic into engine.js — see pc-craft:code-conventions",
+            severity="warning",
+        )
+        for filepath in sys.argv[1:]
+        if filepath.endswith(".js") and not filepath.endswith(".min.js")
+        if (n := _line_count(filepath)) > JS_MAX_LINES
+    ]
+    emit(findings)
     return 0
 
 

@@ -85,4 +85,9 @@ def test_call_blocks_the_commit(tmp_path):
         encoding="utf-8",
     )
     assert run.returncode == 1
-    assert run.stdout.splitlines()[0] == f"❌ [SNOWPARK-API] {f}:1: {_call_msg('P')}"
+    assert run.stdout.splitlines()[:4] == [
+        f"{f} (1)",
+        "",
+        f"  SNOWPARK-API {_call_msg('P')}",
+        f"   --> {f}:1:1",
+    ]

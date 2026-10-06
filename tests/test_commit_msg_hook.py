@@ -8,6 +8,7 @@ un fichier temporaire, lance le hook comme git le lance (`bash commit-msg <file>
 que sur le code de sortie ; un cas de rejet fige aussi la sortie complète du hook (oracle, `core/rules/base/tests.md`).
 """
 
+import os
 import shutil
 import subprocess
 import sys
@@ -82,9 +83,9 @@ def test_accepted(tmp_path, message):
 
 # (message, fragment attendu dans la sortie) — le fragment prouve QUE le rejet vient du bon check.
 REJECTED = [
-    pytest.param("♻️ refactor!:", "Invalid commit format", id="bang-empty-description"),
+    pytest.param("♻️ refactor!:", "invalid commit format", id="bang-empty-description"),
     pytest.param(
-        "♻️ refactor !: rename x", "Invalid commit format", id="space-before-bang"
+        "♻️ refactor !: rename x", "invalid commit format", id="space-before-bang"
     ),
     pytest.param(
         "💥 breaking: rename upload_packages signature",
@@ -93,17 +94,17 @@ REJECTED = [
     ),
     pytest.param(
         "🐛 fix: handle missing region\n\nBREAKING CHANGE: ab",
-        "Malformed BREAKING CHANGE footer",
+        "malformed BREAKING CHANGE footer",
         id="footer-too-short",
     ),
     pytest.param(
         "🐛 fix: handle missing region\n\nBreaking change: the region field is now required.",
-        "Malformed BREAKING CHANGE footer",
+        "malformed BREAKING CHANGE footer",
         id="footer-wrong-case",
     ),
     pytest.param(
         "🐛 fix: handle missing region\n\nBREAKING-CHANGE: the region field is now required.",
-        "Malformed BREAKING CHANGE footer",
+        "malformed BREAKING CHANGE footer",
         id="footer-hyphen-form",
     ),
 ]
@@ -124,8 +125,95 @@ def test_malformed_footer_full_output(tmp_path):
         "🐛 fix: handle missing region\n\nBreaking change: the region field is now required.",
     )
     assert result.returncode == 1
+    msg_file = tmp_path / "COMMIT_EDITMSG"
     assert result.stdout == (
-        "❌ Malformed BREAKING CHANGE footer.\n"
-        "   Must be exactly: BREAKING CHANGE: <description>  (one space, both words uppercase)\n"
-        "   BREAKING-CHANGE: and other casings are rejected on purpose — use the space form.\n"
+        f"{msg_file} (1)\n"
+        "\n"
+        "  COMMIT-MSG malformed BREAKING CHANGE footer\n"
+        f"   --> {msg_file}:3:1\n"
+        "    |\n"
+        "  3 | Breaking change: the region field is now required.\n"
+        "    | ^^^^^^^^^^^^^^^^\n"
+        "    |\n"
+        "    = help: must be exactly: BREAKING CHANGE: <description>  (one space, both words uppercase)\n"
+        "            BREAKING-CHANGE: and other casings are rejected on purpose — use the space form\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+    )
+
+
+def test_wrong_type_underlines_the_type_and_suggests_the_right_one(tmp_path):
+    """Oracle : sortie entière d'un emoji associé au mauvais type."""
+    result = run_hook(tmp_path, "✨ fixx: bad")
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    assert result.returncode == 1
+    assert result.stdout == (
+        f"{msg_file} (1)\n"
+        "\n"
+        "  COMMIT-MSG emoji '✨' requires type 'feat', got 'fixx'\n"
+        f"   --> {msg_file}:1:3\n"
+        "    |\n"
+        "  1 | ✨ fixx: bad\n"
+        "    |   ^^^^\n"
+        "    |\n"
+        "    = help: use: ✨ feat: <description>\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+    )
+
+
+def test_force_color_paints_the_report(tmp_path):
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    msg_file.write_text("hello world", encoding="utf-8")
+    env = {**os.environ, "FORCE_COLOR": "1", "TERM": "dumb"}
+    env.pop("NO_COLOR", None)
+    result = subprocess.run(
+        [_resolve_bash(), str(HOOK), str(msg_file)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
+    assert "\x1b[1;31mCOMMIT-MSG\x1b[0m" in result.stdout
+
+
+def test_no_color_wins_over_force_color(tmp_path):
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    msg_file.write_text("hello world", encoding="utf-8")
+    result = subprocess.run(
+        [_resolve_bash(), str(HOOK), str(msg_file)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "FORCE_COLOR": "1", "NO_COLOR": "1"},
+    )
+    assert "\x1b" not in result.stdout
+
+
+def test_unknown_emoji_lists_the_emojis_of_the_typed_type(tmp_path):
+    """Oracle : un emoji inconnu devant un type valide renvoie les emojis de CE type, sans renvoi externe."""
+    result = run_hook(tmp_path, "🙂 docs: tidy the readme")
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    assert result.returncode == 1
+    assert result.stdout == (
+        f"{msg_file} (1)\n"
+        "\n"
+        "  COMMIT-MSG emoji '🙂' not in mapping\n"
+        f"   --> {msg_file}:1:1\n"
+        "    |\n"
+        "  1 | 🙂 docs: tidy the readme\n"
+        "    | ^\n"
+        "    |\n"
+        "    = help: emojis for 'docs': 📝 💡 💬 📄 👥\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+    )
+
+
+def test_unknown_emoji_and_unknown_type_lists_the_types(tmp_path):
+    result = run_hook(tmp_path, "🙂 nope: x thing")
+    assert result.returncode == 1
+    assert (
+        "= help: types: feat fix docs style refactor move perf test revert build chore release"
+        in result.stdout
     )
