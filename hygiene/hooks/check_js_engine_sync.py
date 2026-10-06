@@ -16,6 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _report import Diagnostic, emit
+
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -50,18 +52,22 @@ def main() -> int:
     if _is_disabled():
         return 0
     staged = _staged_files()
-    failed = False
+    findings: list[Diagnostic] = []
     for filepath in sorted(f for f in sys.argv[1:] if f in staged):
         if not filepath.endswith("engine.js") or filepath.endswith(".min.js"):
             continue
         expected = _min_sibling(filepath)
         if expected not in staged:
-            print(f"❌ [JS-ENGINE-SYNC] {filepath} staged but {expected} not updated.")
-            print(
-                f"   💡 Fix: npx terser {filepath} -o {expected} -c -m && git add {expected}"
+            findings.append(
+                Diagnostic(
+                    "JS-ENGINE-SYNC",
+                    f"staged but {expected} not updated",
+                    filepath,
+                    help=f"npx terser {filepath} -o {expected} -c -m && git add {expected}",
+                )
             )
-            failed = True
-    return 1 if failed else 0
+    emit(findings)
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

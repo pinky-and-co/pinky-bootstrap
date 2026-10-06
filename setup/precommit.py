@@ -596,13 +596,19 @@ def _hook_files(repo: Path) -> list[Path]:
     the JS/HTML scripts (they'd sit dead, unreferenced by its config). ``generate_ci_badges.py`` has
     no pre-commit id (CI helper invoked from a workflow, not a hook `entry:`) and is always
     distributed — same for ``render_docs.py`` (imported by ``generate-docs``, not textually
-    referenced in the assembled YAML, so the regex scan above can't find it).
+    referenced in the assembled YAML, so the regex scan above can't find it) — and ``_report.py``, the
+    renderer every hook imports.
     """
     files = [f for f in sorted(CORE_HOOKS_DIR.iterdir()) if f.is_file()]
     referenced = _referenced_hook_scripts(
         build_precommit_config(repo, resolve_extras(repo))
     )
-    always_on = {"generate_ci_badges.py", "render_docs.py", "tool_directives.py"}
+    always_on = {
+        "generate_ci_badges.py",
+        "render_docs.py",
+        "tool_directives.py",
+        "_report.py",
+    }
     return [f for f in files if f.name in referenced or f.name in always_on]
 
 

@@ -11,6 +11,8 @@ import re
 import sys
 from pathlib import Path
 
+from _report import Diagnostic, emit
+
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -49,13 +51,19 @@ def main() -> int:
     """Warn on every `.html` argument that has an inline `<script>` body; always exits 0."""
     if _is_disabled():
         return 0
-    for filepath in sys.argv[1:]:
-        if not filepath.endswith(".html"):
-            continue
-        n = _inline_script_count(filepath)
-        if n:
-            print(f"⚠️  [HTML-JS] {filepath}: {n} inline <script> block(s) with a body")
-            print("   💡 Move JS to a .js file — see pc-craft:code-conventions")
+    findings = [
+        Diagnostic(
+            "HTML-JS",
+            f"{n} inline <script> block(s) with a body",
+            filepath,
+            help="move JS to a .js file — see pc-craft:code-conventions",
+            severity="warning",
+        )
+        for filepath in sys.argv[1:]
+        if filepath.endswith(".html")
+        if (n := _inline_script_count(filepath))
+    ]
+    emit(findings)
     return 0
 
 

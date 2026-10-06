@@ -10,6 +10,8 @@ import os
 import sys
 from pathlib import Path
 
+from _report import Diagnostic, emit
+
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -38,6 +40,7 @@ def main() -> int:
     """Warn on every `app.js` over `APP_MAX_LINES` with no `LOGIC_SIBLINGS` beside it; always exits 0."""
     if _is_disabled():
         return 0
+    findings: list[Diagnostic] = []
     for filepath in sys.argv[1:]:
         if os.path.basename(filepath) != "app.js":
             continue
@@ -48,12 +51,16 @@ def main() -> int:
             os.path.exists(os.path.join(folder, sibling)) for sibling in LOGIC_SIBLINGS
         ):
             continue
-        print(
-            f"⚠️  [JS-STRUCT] {filepath}: large app.js with no engine.js/core.js next to it"
+        findings.append(
+            Diagnostic(
+                "JS-STRUCT",
+                "large app.js with no engine.js/core.js next to it",
+                filepath,
+                help="extract business logic into engine.js — see pc-craft:code-conventions",
+                severity="warning",
+            )
         )
-        print(
-            "   💡 Extract business logic into engine.js — see pc-craft:code-conventions"
-        )
+    emit(findings)
     return 0
 
 

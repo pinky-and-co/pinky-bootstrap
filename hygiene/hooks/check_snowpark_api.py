@@ -68,6 +68,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from _report import Diagnostic, at, emit
+
 # Script autonome, n'importe pas `setup` : la console Windows (cp1252) ne sait pas encoder ✓/⚠.
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -328,21 +330,19 @@ def main() -> int:
     """Fail if any CLI argument contains a banned Snowpark call or alias; returns 1 on any match."""
     if _is_disabled():
         return 0
-    failed = False
-    for filepath in sys.argv[1:]:
-        for line, reason in check_file(Path(filepath)):
-            print(f"❌ [SNOWPARK-API] {filepath}:{line}: {reason}")
-            failed = True
-    if failed:
-        print(
-            "   💡 Prefer Core API over raw SQL. "
-            "Canonical names: bitand/bitor/bitxor, alias, cast, "
-            "equal_null, get_name, filter, sort, minus, "
-            "group_by, drop_duplicates, with_column, to_pandas, "
-            "union_all, union_by_name, union_all_by_name, …"
-        )
-        print("   🤖 Skills: pc-snow:snowflake · pc-snow:snowpark")
-    return 1 if failed else 0
+    findings: list[Diagnostic] = [
+        at("SNOWPARK-API", reason, filepath, line)
+        for filepath in sys.argv[1:]
+        for line, reason in check_file(Path(filepath))
+    ]
+    emit(
+        findings,
+        footer="prefer Core API over raw SQL. Canonical names: bitand/bitor/bitxor, alias, "
+        "cast, equal_null, get_name, filter, sort, minus, group_by, drop_duplicates, "
+        "with_column, to_pandas, union_all, union_by_name, union_all_by_name, …\n"
+        "skills: pc-snow:snowflake · pc-snow:snowpark",
+    )
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

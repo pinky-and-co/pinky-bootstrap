@@ -68,6 +68,11 @@ def test_hook_files_tool_directives_always_included(tmp_path):
     assert "tool_directives.py" in names
 
 
+def test_hook_files_report_renderer_always_included(tmp_path):
+    names = {f.name for f in setup._hook_files(tmp_path)}
+    assert "_report.py" in names
+
+
 def test_hook_files_generate_ci_badges_always_included(tmp_path):
     names = {f.name for f in setup._hook_files(tmp_path)}
     assert "generate_ci_badges.py" in names

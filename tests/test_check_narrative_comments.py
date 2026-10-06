@@ -128,9 +128,17 @@ def test_findings_print_path_and_line_and_block(tmp_path):
         encoding="utf-8",
     )
     assert run.returncode == 1
-    assert (
-        run.stdout.splitlines()[0]
-        == f"⚠️  [NARRATIVE] {f}:1: date: # decided 2026-07-24"
+    assert run.stdout == (
+        f"{f} (1)\n"
+        "\n"
+        "  NARRATIVE narrated history (date)\n"
+        f"   --> {f}:1:8\n"
+        "    |\n"
+        "  1 | a = 1  # decided 2026-07-24\n"
+        "    |        ^^^^^^^^^^^^^^^^^^^^\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+        "help: a comment clarifies, a docstring states behaviour; git holds the history\n"
     )
 
 

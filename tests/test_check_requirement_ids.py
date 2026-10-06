@@ -49,9 +49,17 @@ def test_main_blocks_and_prints_every_finding(tmp_path, monkeypatch, capsys):
 
     assert cri.main() == 1
     assert capsys.readouterr().out == (
-        f"❌ [REQ-ID] {f}:1: FR-0024-51\n"
-        "   💡 1 requirement id(s) — the spec they point to lives outside the repo and is pruned "
-        "after implementation: delete the id, state the behaviour.\n"
+        f"{f} (1)\n"
+        "\n"
+        "  REQ-ID requirement id `FR-0024-51`\n"
+        f"   --> {f}:1:12\n"
+        "    |\n"
+        '  1 | """Does X (FR-0024-51)."""\n'
+        "    |            ^^^^^^^^^^\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+        "help: the spec an id points to lives outside the repo and is pruned after "
+        "implementation: delete the id, state the behaviour\n"
     )
 
 
