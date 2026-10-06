@@ -10,6 +10,7 @@ le faire repasser au vert (preuve par mutation, `core/rules/base/tests.md`).
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -116,6 +117,29 @@ def test_python_suite_passing_passes(tmp_path):
 def test_python_suite_failing_blocks(tmp_path):
     write_py_suite(tmp_path, passing=False)
     assert run_hook(tmp_path) == 1
+
+
+def test_python_failure_output_has_no_progress_dots_but_keeps_the_failure(tmp_path):
+    """Les lignes `....F.. [ 42%]` de pytest ne disent rien que le résumé ne dise mieux : filtrées."""
+    write_py_suite(tmp_path, passing=False)
+    (tmp_path / "tests" / "test_many.py").write_text(
+        "import pytest\n"
+        "@pytest.mark.parametrize('n', range(120))\n"
+        "def test_ok(n):\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    run = subprocess.run(
+        [_resolve_bash(), str(HOOK)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    lines = (run.stdout + run.stderr).splitlines()
+    assert run.returncode == 1
+    assert not [ln for ln in lines if re.fullmatch(r"[.sxXFE]+ *(\[ *\d+%\])?", ln)]
+    assert any(ln.startswith("FAILED tests/test_x.py::test_x") for ln in lines)
 
 
 @needs_node

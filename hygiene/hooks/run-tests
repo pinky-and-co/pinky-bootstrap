@@ -47,8 +47,11 @@ if [ -d tests ]; then
         fi
         # Pas de `-p no:cacheprovider` : les repos configurent déjà cache_dir en pyproject ;
         # désactiver le plugin ferait cracher un PytestConfigWarning à chaque commit.
-        $PY -m pytest -q $COV_FLAG
-        rc=$?
+        # Aucune option pytest ne retire les lignes de progression (`....F.. [ 42%]`, même en -qq) :
+        # on les filtre, le détail des échecs et le résumé restent. Le code de sortie est celui de
+        # pytest, pas du grep.
+        $PY -m pytest -q $COV_FLAG 2>&1 | grep -vE '^[.sxXFE]+ *(\[ *[0-9]+%\])?$'
+        rc=${PIPESTATUS[0]}
         # 5 = aucun test collecté : pas un échec, même catégorie que « pytest absent ».
         # Arrive quand tests/ ne contient que des tests d'un autre langage.
         if [ "$rc" -ne 0 ] && [ "$rc" -ne 5 ]; then
