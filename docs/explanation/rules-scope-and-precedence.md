@@ -22,7 +22,7 @@ lui-même (elle ne peut pas, format absent) — pas de rule sans le plugin qui l
 **Critère de rangement.** Une rule vit sous `rules/<plugin>/` **ssi elle est inerte ou absurde sans
 l'outillage de ce plugin** (elle nomme ses skills/commands/hooks, ou son workflow) ; sinon elle
 reste `rules/pc-core/` (discipline de raisonnement ou d'ingénierie tool-agnostique). Ex :
-`kanban-proactivity.md` → `pc-kanban` ; `verify-diagnosis.md`, `tests.md` → `pc-core`.
+`snowpark.md` → `pc-snow` ; `verify-diagnosis.md`, `tests.md` → `pc-core`.
 
 **Rule conditionnelle (`_load_conditions`).** Une source dont le frontmatter porte `_load_conditions`
 (liste de propositions libres, validée par `_validated_conditions` dans `setup/rules.py` : non vide,

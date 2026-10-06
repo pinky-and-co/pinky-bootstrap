@@ -17,14 +17,14 @@ from setup import rules as rules_mod
 from setup.common import AGENTIC_HARNESS_DIR
 
 
-def test_kanban_proactivity_rule_lives_under_pc_kanban_not_pc_core():
-    """The kanban rule is inert without pc-kanban installed — it must not ship workspace-wide.
+def test_kanban_proactivity_rule_is_distributed_from_neither_pc_kanban_nor_pc_core():
+    """The kanban rule is no longer shipped by ``rules/``.
 
-    It is the only one of the nine
-    ``rules/pc-core/`` files tied to a specific plugin.
+    It now reaches the main session through the pc-kanban plugin's SessionStart hook, so a copy
+    under ``rules/pc-kanban/`` or ``rules/pc-core/`` would load it twice.
     """
     rules_root = AGENTIC_HARNESS_DIR / "rules"
-    assert (rules_root / "pc-kanban" / "kanban-proactivity.md").is_file()
+    assert not (rules_root / "pc-kanban" / "kanban-proactivity.md").exists()
     assert not (rules_root / "pc-core" / "kanban-proactivity.md").exists()
 
 
@@ -418,33 +418,33 @@ def test_a_rules_dir_for_an_uninstalled_plugin_still_writes_nothing_with_a_user_
     assert result["pc-toto"] == {}
 
 
-def test_real_rules_ship_kanban_proactivity_iff_pc_kanban_resolves(
+def test_real_rules_ship_pc_snow_rules_iff_pc_snow_resolves(
     tmp_path, installed_plugins_file
 ):
     """Real ``agentic-harness/rules/`` tree, synthetic ``installed_plugins.json``.
 
-    Proves the re-bucketing outcome end to end: with ``pc-kanban`` resolving to the target the
-    kanban rule lands (and the co-resident ``pc-core`` rules survive); without it, ``pc-kanban``
-    resolves to no target and the kanban rule ships nowhere.
+    Proves the re-bucketing outcome end to end: with ``pc-snow`` resolving to the target its rule
+    lands (and the co-resident ``pc-core`` rules survive); without it, ``pc-snow`` resolves to no
+    target and its rule ships nowhere.
     """
     installed_plugins_file(
         {
             "pc-core@m": [{"scope": "user"}],
-            "pc-kanban@m": [{"scope": "user"}],
+            "pc-snow@m": [{"scope": "user"}],
         }
     )
-    with_kanban = tmp_path / "with-kanban"
-    rules_mod.distribute_all_plugin_rules(with_kanban)
-    landed = {p.name for p in (with_kanban / ".claude/rules").glob("*.md")}
-    assert "kanban-proactivity.md" in landed
-    assert "minimal-code.md" in landed  # pc-core rule not clobbered by pc-kanban's pass
+    with_snow = tmp_path / "with-snow"
+    rules_mod.distribute_all_plugin_rules(with_snow)
+    landed = {p.name for p in (with_snow / ".claude/rules").glob("*.md")}
+    assert "snowpark.md" in landed
+    assert "minimal-code.md" in landed  # pc-core rule not clobbered by pc-snow's pass
 
     installed_plugins_file({"pc-core@m": [{"scope": "user"}]})
-    without_kanban = tmp_path / "without-kanban"
-    result = rules_mod.distribute_all_plugin_rules(without_kanban)
-    assert result["pc-kanban"] == {}
-    landed = {p.name for p in (without_kanban / ".claude/rules").glob("*.md")}
-    assert "kanban-proactivity.md" not in landed
+    without_snow = tmp_path / "without-snow"
+    result = rules_mod.distribute_all_plugin_rules(without_snow)
+    assert result["pc-snow"] == {}
+    landed = {p.name for p in (without_snow / ".claude/rules").glob("*.md")}
+    assert "snowpark.md" not in landed
     assert "minimal-code.md" in landed
 
 
