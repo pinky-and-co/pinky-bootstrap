@@ -188,3 +188,32 @@ def test_no_color_wins_over_force_color(tmp_path):
         env={**os.environ, "FORCE_COLOR": "1", "NO_COLOR": "1"},
     )
     assert "\x1b" not in result.stdout
+
+
+def test_unknown_emoji_lists_the_emojis_of_the_typed_type(tmp_path):
+    """Oracle : un emoji inconnu devant un type valide renvoie les emojis de CE type, sans renvoi externe."""
+    result = run_hook(tmp_path, "🙂 docs: tidy the readme")
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    assert result.returncode == 1
+    assert result.stdout == (
+        f"{msg_file} (1)\n"
+        "\n"
+        "  COMMIT-MSG emoji '🙂' not in mapping\n"
+        f"   --> {msg_file}:1:1\n"
+        "    |\n"
+        "  1 | 🙂 docs: tidy the readme\n"
+        "    | ^\n"
+        "    |\n"
+        "    = help: emojis for 'docs': 📝 💡 💬 📄 👥\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
+    )
+
+
+def test_unknown_emoji_and_unknown_type_lists_the_types(tmp_path):
+    result = run_hook(tmp_path, "🙂 nope: x thing")
+    assert result.returncode == 1
+    assert (
+        "= help: types: feat fix docs style refactor move perf test revert build chore release"
+        in result.stdout
+    )
