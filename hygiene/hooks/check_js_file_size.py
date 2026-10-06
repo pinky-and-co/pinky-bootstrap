@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""[JS-SIZE] Warn when a .js file grows past the size threshold (warn-only, never blocks).
+"""[JS-SIZE] Block when a .js file grows past the size threshold.
 
 A large .js file usually means orchestration and business logic live in the same place — the
-fix is structural (extract the logic), not cosmetic. This hook only warns (exit 0) so it never
-blocks a commit.
+fix is structural (extract the logic), not cosmetic. The hook blocks (exit 1), so the
+agent that grew the file sees it and splits it.
 """
 
 import os
@@ -36,7 +36,7 @@ def _is_disabled() -> bool:
 
 
 def main() -> int:
-    """Warn on every `.js` argument over `JS_MAX_LINES`; always exits 0 (warn-only)."""
+    """Fail on every `.js` argument over `JS_MAX_LINES`."""
     if _is_disabled():
         return 0
     findings = [
@@ -45,14 +45,13 @@ def main() -> int:
             f"{n} lines (> {JS_MAX_LINES})",
             filepath,
             help="extract business logic into engine.js — see pc-craft:code-conventions",
-            severity="warning",
         )
         for filepath in sys.argv[1:]
         if filepath.endswith(".js") and not filepath.endswith(".min.js")
         if (n := _line_count(filepath)) > JS_MAX_LINES
     ]
     emit(findings)
-    return 0
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

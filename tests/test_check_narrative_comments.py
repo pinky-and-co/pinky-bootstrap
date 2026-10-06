@@ -156,9 +156,9 @@ def test_clean_file_passes_silently(tmp_path):
     assert run.stdout == ""
 
 
-def test_warn_only_hooks_are_verbose(tmp_path):
+def test_blocking_web_hooks_are_not_verbose(tmp_path):
     yaml = pytest.importorskip("yaml")
     cfg = yaml.safe_load(setup.build_precommit_config(tmp_path, ["web"]))
     hooks = {hook["id"]: hook for repo in cfg["repos"] for hook in repo["hooks"]}
     for pcid in ("js-file-size", "js-structure", "html-inline-js"):
-        assert hooks[pcid].get("verbose") is True
+        assert not hooks[pcid].get("verbose")
