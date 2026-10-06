@@ -165,7 +165,7 @@ def test_wrong_type_underlines_the_type_and_suggests_the_right_one(tmp_path):
 def test_force_color_paints_the_report(tmp_path):
     msg_file = tmp_path / "COMMIT_EDITMSG"
     msg_file.write_text("hello world", encoding="utf-8")
-    env = {**os.environ, "FORCE_COLOR": "1"}
+    env = {**os.environ, "FORCE_COLOR": "1", "TERM": "dumb"}
     env.pop("NO_COLOR", None)
     result = subprocess.run(
         [_resolve_bash(), str(HOOK), str(msg_file)],

@@ -18,8 +18,9 @@ COMMIT_MSG=$(head -1 "$COMMIT_MSG_FILE")
 
 # Même rendu que `_report.py` (ruff-style), en bash pur : ce hook n'a pas le droit de dépendre de
 # python. Couleur : `NO_COLOR` coupe, `FORCE_COLOR` / `CLICOLOR_FORCE` forcent, sinon terminal seul.
-if [ -z "$NO_COLOR" ] && [ "$TERM" != "dumb" ] \
-    && { [ -n "$FORCE_COLOR" ] || [ -n "$CLICOLOR_FORCE" ] || [ -t 1 ]; }; then
+if [ -z "$NO_COLOR" ] \
+    && { [ -n "$FORCE_COLOR" ] || [ -n "$CLICOLOR_FORCE" ] \
+        || { [ -t 1 ] && [ "$TERM" != "dumb" ]; }; }; then
     RED=$'\e[1;31m' BLUE=$'\e[1;34m' CYAN=$'\e[1;36m' BOLD=$'\e[1m' DIM=$'\e[2m' RESET=$'\e[0m'
 else
     RED="" BLUE="" CYAN="" BOLD="" DIM="" RESET=""
@@ -158,7 +159,7 @@ case "$EMOJI" in
     🔖) allowed_type="release" ;;
     *)
         fail 1 1 "${#EMOJI}" "emoji '$EMOJI' not in mapping" \
-            "see CLAUDE.md for the full emoji ↔ type table"
+            "the full emoji ↔ type table: skill pc-git:commit-convention"
         ;;
 esac
 
