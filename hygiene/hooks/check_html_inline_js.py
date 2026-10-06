@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""[HTML-JS] Warn on inline <script> blocks with a body in an .html file (warn-only).
+"""[HTML-JS] Block on inline <script> blocks with a body in an .html file.
 
 Inline JS bypasses the file-responsibility split (app.js / engine.js / state.js) and cannot be
 minified/cached. External <script src="..."> and structured-data blocks (JSON-LD / application/json,
-used for SEO/GEO schema markup) are NOT flagged — only real inline JS bodies. Warn-only (exit 0).
+used for SEO/GEO schema markup) are NOT flagged — only real inline JS bodies. Blocks (exit 1).
 """
 
 import os
@@ -48,7 +48,7 @@ def _is_disabled() -> bool:
 
 
 def main() -> int:
-    """Warn on every `.html` argument that has an inline `<script>` body; always exits 0."""
+    """Fail on every `.html` argument that has an inline `<script>` body."""
     if _is_disabled():
         return 0
     findings = [
@@ -57,14 +57,13 @@ def main() -> int:
             f"{n} inline <script> block(s) with a body",
             filepath,
             help="move JS to a .js file — see pc-craft:code-conventions",
-            severity="warning",
         )
         for filepath in sys.argv[1:]
         if filepath.endswith(".html")
         if (n := _inline_script_count(filepath))
     ]
     emit(findings)
-    return 0
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

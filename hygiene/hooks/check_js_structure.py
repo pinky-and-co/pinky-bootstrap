@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""[JS-STRUCT] Warn when app.js is large but no engine/core sibling holds the logic (warn-only).
+"""[JS-STRUCT] Block when app.js is large but no engine/core sibling holds the logic.
 
 The convention: app.js orchestrates UI binding, engine.js / core.js holds pure business logic,
 state.js holds the store. A big app.js with no engine.js / core.js next to it is the signal that
-logic was never extracted. Warn-only (exit 0) — never blocks.
+logic was never extracted. Blocks (exit 1).
 """
 
 import os
@@ -37,7 +37,7 @@ def _is_disabled() -> bool:
 
 
 def main() -> int:
-    """Warn on every `app.js` over `APP_MAX_LINES` with no `LOGIC_SIBLINGS` beside it; always exits 0."""
+    """Fail on every `app.js` over `APP_MAX_LINES` with no `LOGIC_SIBLINGS` beside it."""
     if _is_disabled():
         return 0
     findings: list[Diagnostic] = []
@@ -57,11 +57,10 @@ def main() -> int:
                 "large app.js with no engine.js/core.js next to it",
                 filepath,
                 help="extract business logic into engine.js — see pc-craft:code-conventions",
-                severity="warning",
             )
         )
     emit(findings)
-    return 0
+    return 1 if findings else 0
 
 
 if __name__ == "__main__":

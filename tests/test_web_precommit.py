@@ -1,8 +1,7 @@
 """Web pre-commit extra — detection, assembly, and hook behaviour.
 
 A web repo (package.json, no
-pyproject) gets `extras/web.yaml`; the three warn-only hooks never block; `js-engine-sync` is a
-hard block.
+pyproject) gets `extras/web.yaml`; the four JS/HTML hooks all block.
 """
 
 import subprocess
@@ -98,14 +97,14 @@ def test_js_engine_sync_passes_when_min_staged(tmp_path):
     )
 
 
-def test_warn_hooks_never_block(tmp_path):
+def test_web_hooks_block(tmp_path):
     big = tmp_path / "app.js"
     big.write_text("// line\n" * 300, encoding="utf-8")
     html = tmp_path / "index.html"
     html.write_text("<script>alert(1)</script>", encoding="utf-8")
-    assert _run("check_js_file_size.py", str(big)) == 0
-    assert _run("check_js_structure.py", str(big)) == 0
-    assert _run("check_html_inline_js.py", str(html)) == 0
+    assert _run("check_js_file_size.py", str(big)) == 1
+    assert _run("check_js_structure.py", str(big)) == 1
+    assert _run("check_html_inline_js.py", str(html)) == 1
 
 
 def test_html_inline_js_ignores_jsonld_schema(tmp_path):

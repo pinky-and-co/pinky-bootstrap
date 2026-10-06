@@ -1,10 +1,10 @@
   # ── EXTRA web — HTML/CSS/JS repos (package.json, no pyproject.toml) ────────
   # Conventions: AGENT_JS_CONVENTIONS.md (file responsibilities + minification).
-  # Three warn-only hooks (never block — POC-friendly) + one hard block (engine sync).
+  # All four hooks block: agents are their reader, and a quiet prek hides anything that passes.
   # Each hook is the SOLE hook of its `- repo:` block so the à-la-carte filter removes whole
   # blocks (HOOK_MANIFEST keys: js_file_size / js_structure / html_inline_js / js_engine_sync).
 
-  # Web: .js file size (warn-only)
+  # Web: .js file size
   - repo: local
     hooks:
       - id: js-file-size
@@ -14,9 +14,8 @@
         files: \.js$
         exclude: \.min\.js$
         pass_filenames: true
-        verbose: true
 
-  # Web: app.js without an engine.js/core.js sibling (warn-only)
+  # Web: app.js without an engine.js/core.js sibling
   - repo: local
     hooks:
       - id: js-structure
@@ -26,9 +25,8 @@
         files: \.js$
         exclude: \.min\.js$
         pass_filenames: true
-        verbose: true
 
-  # Web: inline <script> body in .html (warn-only)
+  # Web: inline <script> body in .html
   - repo: local
     hooks:
       - id: html-inline-js
@@ -37,9 +35,8 @@
         language: python
         files: \.html$
         pass_filenames: true
-        verbose: true
 
-  # Web: engine.js staged but engine.min.js not regenerated (HARD BLOCK)
+  # Web: engine.js staged but engine.min.js not regenerated
   - repo: local
     hooks:
       - id: js-engine-sync
