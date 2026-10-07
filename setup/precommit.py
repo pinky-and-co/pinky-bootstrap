@@ -303,7 +303,7 @@ VENDOR_MAP = {
         "plugins/pc-git/hooks/pc_git_policy_lib.py",
     ],
     "secret_patterns.py": [
-        "plugins/pc-core/hooks/secret_patterns.py",
+        "plugins/pc-secrets/hooks/secret_patterns.py",
         "plugins/pc-kanban/hooks/pc_kanban_secret_patterns.py",
     ],
     "plugin_scope_lib.py": [

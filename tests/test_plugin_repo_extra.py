@@ -117,3 +117,19 @@ def test_check_vendor_checksum_hook_present(tmp_path):
     cfg = _plugin_repo_config(tmp_path)
     assert "id: check-vendor-checksum" in cfg
     assert "scripts/hooks/check_vendor_checksum.py" in cfg
+
+
+def test_secret_patterns_home_moved_to_pc_secrets():
+    """`secret_patterns.py` moved from `pc-core` to `pc-secrets` (card 0024).
+    Verify that the vendor map no longer references pc-core for this file."""
+    secret_patterns_targets = setup.VENDOR_MAP["secret_patterns.py"]
+    assert "plugins/pc-secrets/hooks/secret_patterns.py" in secret_patterns_targets, (
+        "secret_patterns.py home must be in pc-secrets"
+    )
+    assert not any("pc-core" in t for t in secret_patterns_targets), (
+        "pc-core must not be in secret_patterns.py targets"
+    )
+    assert (
+        "plugins/pc-kanban/hooks/pc_kanban_secret_patterns.py"
+        in secret_patterns_targets
+    ), "pc-kanban copy must be preserved"
