@@ -1,13 +1,12 @@
 ---
 paths:
   - "**/docs/**/*.md"
-  - "**/README.md"
 _load_conditions:
   - "if you are writing or modifying documentation"
 ---
 # Documentation conventions — doc files
 
-Scoped to `docs/` trees and READMEs. `AGENTS.md`/`CLAUDE.md` are out of scope.
+Scoped to `docs/` trees. `README.md`, `AGENTS.md` and `CLAUDE.md` are out of scope.
 
 ## Update date tag
 
