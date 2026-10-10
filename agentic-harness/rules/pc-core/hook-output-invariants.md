@@ -1,6 +1,6 @@
 ---
 paths:
-  - "plugins/**/hooks/**"
+  - "**/plugins/**/hooks/**"
 _load_conditions:
   - "if you are writing or modifying a plugin hook"
 ---
