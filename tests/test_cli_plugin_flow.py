@@ -448,6 +448,7 @@ def test_a_second_install_with_nothing_to_do_still_rewires_the_status_line(
     assert settings["statusLine"] == {
         "type": "command",
         "command": f'python3 "{plugin_dir / "scripts" / "statusline.py"}"',
+        "refreshInterval": 2,
     }
 
 

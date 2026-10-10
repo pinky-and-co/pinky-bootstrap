@@ -589,3 +589,96 @@ def test_resolve_no_name_selection_survives_a_failed_marketplace_add(
     assert names == []
     assert not user_file.exists()
     assert "failed to add marketplace fresh" in capsys.readouterr().err
+
+
+# ── a bare name published by several curated marketplaces ──────
+
+
+def _two_publishers_of_php_lsp(curated_env, publish_marketplaces):
+    tmp_path, _ = curated_env
+    publish_marketplaces({"mpA": ["php-lsp", "solo"], "mpB": ["php-lsp"]})
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "mpA"\nsource = "o/a"\n\n'
+        '[[entries]]\nmarketplace = "mpB"\nsource = "o/b"\n',
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [("0", ["php-lsp@mpA", "solo@mpA"]), ("1", ["php-lsp@mpB", "solo@mpA"])],
+)
+def test_picker_asks_which_marketplace_for_a_name_two_curated_marketplaces_publish(
+    curated_env, publish_marketplaces, monkeypatch, capsys, answer, expected
+):
+    tmp_path = _two_publishers_of_php_lsp(curated_env, publish_marketplaces)
+    prompts = []
+
+    def fake_input(prompt=""):
+        prompts.append(prompt)
+        return answer
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
+    )
+
+    assert names == expected
+    assert prompts == ["Which marketplace carries php-lsp? "]
+    assert capsys.readouterr().out == "  0) mpA\n  1) mpB\n"
+
+
+def test_picker_qualifies_a_single_publisher_name_without_any_question(
+    curated_env, publish_marketplaces, monkeypatch
+):
+    tmp_path, _ = curated_env
+    publish_marketplaces({"mpA": ["solo"], "mpB": ["other"]})
+    plugin_curated.DEFAULT_CURATED_PATH.write_text(
+        '[[entries]]\nmarketplace = "mpA"\nsource = "o/a"\n\n'
+        '[[entries]]\nmarketplace = "mpB"\nsource = "o/b"\n',
+        encoding="utf-8",
+    )
+
+    def no_prompt(*_):
+        raise AssertionError("a single-publisher name must not ask")
+
+    monkeypatch.setattr("builtins.input", no_prompt)
+
+    names = plugin_curated.resolve_no_name_selection(
+        tmp_path,
+        installed_names=[],
+        user_path=tmp_path / "absent-user.toml",
+        picker=_keep_as_shown,
+    )
+
+    assert names == ["other@mpB", "solo@mpA"]
+
+
+def test_picker_with_yes_exits_on_an_ambiguous_name_and_calls_claude_never(
+    curated_env, publish_marketplaces, monkeypatch, capsys
+):
+    tmp_path = _two_publishers_of_php_lsp(curated_env, publish_marketplaces)
+
+    def no_claude(*a, **kw):
+        raise AssertionError("claude must not be called")
+
+    monkeypatch.setattr(plugin_curated.subprocess, "run", no_claude)
+
+    with pytest.raises(SystemExit) as exc:
+        plugin_curated.resolve_no_name_selection(
+            tmp_path,
+            installed_names=[],
+            user_path=tmp_path / "absent-user.toml",
+            yes=True,
+            picker=_keep_as_shown,
+        )
+
+    assert exc.value.code not in (0, None)
+    err = capsys.readouterr().err
+    assert "php-lsp@mpA" in err
+    assert "php-lsp@mpB" in err

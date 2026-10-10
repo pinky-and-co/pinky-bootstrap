@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-10-03 17:15*
+*Update date : 2026-10-10 19:50*
 
 ```bash
 pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
@@ -23,7 +23,15 @@ the next run already has it. `pinky claude-plugin enable` (no name) opens the sa
 `pinky claude-plugin disable` (no name) skips the list and acts on every currently installed
 plugin directly, through the compact table — only the rows already enabled somewhere, not the
 full plugin × every-known-target grid (which would otherwise run into the hundreds of rows on a
-workspace with several groups/repos).
+workspace with several groups/repos). A name that several curated marketplaces publish, checked in
+that list, or a typed `install <plugin-id>` without `--marketplace` that several known marketplaces
+publish, asks `Which marketplace carries <plugin-id>?` and is qualified with the one you number. With
+`--yes`, a typed name exits non-zero naming each `<plugin-id>@<marketplace>` and installs nothing; with
+no terminal, the no-name list stops earlier in the picker with its own "name the plugin(s)
+explicitly" message, and the `<plugin-id>@<marketplace>` listing belongs to the typed-name paths and
+`--yes`. A typed name that the audit holds no record for (not even a bare one — an audit record is
+decided first, the catalogs are not consulted) and that a single known marketplace publishes goes to
+`claude` qualified (`<plugin-id>@<marketplace>`) instead of bare.
 
 1. **`Workspace: <path> (via <origin>)`** is always the first line — `--workspace` takes priority
    over `PINKY_WORKSPACE_ROOT`, which takes priority over the nearest `*.code-workspace` marker
@@ -48,9 +56,11 @@ workspace with several groups/repos).
 
    **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
    `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
-   (resolved from `installed_plugins.json`, never a guessed path) — whenever the plugin is
-   confirmed on disk exactly where it should be, whether this run applied a change or the table
-   showed nothing left to do. `--dry-run` and a declined plan never confirm anything, so neither
+   (resolved from `installed_plugins.json`, never a guessed path). `statusLine` also receives
+   `refreshInterval: 2` — the line is re-run every 2 seconds, which redraws it after a window
+   resize; a `refreshInterval` already in `~/.claude/settings.json` is kept. Written whenever the
+   plugin is confirmed on disk exactly where it should be, whether this run applied a change or the
+   table showed nothing left to do. `--dry-run` and a declined plan never confirm anything, so neither
    writes it. Re-run after `claude plugin update` — the path carries the plugin version.
 
    `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/

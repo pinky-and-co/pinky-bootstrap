@@ -811,3 +811,69 @@ def test_apply_is_replayable_second_run_is_quiet(apply_world, monkeypatch):
     # only the skipped plugin is revisited; the settled one is not
     assert calls == ["asked"]
     assert _snapshot(user_claude) == after_first
+
+
+# ── resolve_spec — a bare audit key next to qualified ones ──────
+
+
+def test_resolve_spec_ignores_a_bare_audit_key_next_to_one_qualified_key(monkeypatch):
+    def no_prompt(*_):
+        raise AssertionError("one qualified candidate must not ask")
+
+    monkeypatch.setattr("builtins.input", no_prompt)
+    audit = {"p": None, "p@mp": None}
+
+    assert plugin_reconcile.resolve_spec("p", None, audit) == "p@mp"
+
+
+def test_resolve_spec_asks_only_among_qualified_keys_beside_a_bare_one(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: "1")
+    audit = {"p": None, "p@mpA": None, "p@mpB": None}
+
+    assert plugin_reconcile.resolve_spec("p", None, audit) == "p@mpB"
+    assert capsys.readouterr().out == "  0) mpA\n  1) mpB\n"
+
+
+@pytest.mark.parametrize("publishers", [["mpA"], ["mpA", "mpB"]])
+def test_resolve_spec_returns_a_lone_bare_audit_key_before_any_catalog(
+    publish_marketplaces, monkeypatch, publishers
+):
+    publish_marketplaces({m: ["p"] for m in publishers})
+
+    def no_prompt(*_):
+        raise AssertionError("an audit record decides, nothing is asked")
+
+    monkeypatch.setattr("builtins.input", no_prompt)
+
+    assert plugin_reconcile.resolve_spec("p", None, {"p": None}) == "p"
+
+
+@pytest.mark.parametrize("answer", ["-1", "2", "x"])
+def test_choose_marketplace_rejects_an_out_of_range_or_non_numeric_answer(
+    monkeypatch, capsys, answer
+):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda *_: answer)
+
+    with pytest.raises(SystemExit) as exc:
+        plugin_reconcile.choose_marketplace("p", ["mpA", "mpB"])
+
+    assert exc.value.code == 1
+    assert capsys.readouterr().err == f"Invalid choice: {answer!r}\n"
+
+
+def test_choose_marketplace_exits_on_end_of_input(monkeypatch):
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+
+    def eof(*_):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", eof)
+
+    with pytest.raises(SystemExit) as exc:
+        plugin_reconcile.choose_marketplace("p", ["mpA", "mpB"])
+
+    assert exc.value.code == 1

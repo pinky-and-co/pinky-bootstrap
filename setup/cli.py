@@ -118,17 +118,9 @@ def main(argv: list[str] | None = None) -> None:
         "PLUGIN@MARKETPLACE in enabledPlugins)",
     )
     parser.add_argument(
-        "--live-docs",
-        action="store_true",
-        help="install the live board/log viewer — bundled MkDocs tooling copied to "
-        "~/.local/share/pinky/live-docs/, board mounts generated, and (macOS) a launchd agent "
-        "loaded so the site is served after boot",
-    )
-    parser.add_argument(
         "--force",
         action="store_true",
-        help="with --live-docs: replace a launchd agent at the target path even if pinky did not "
-        "pose it (default: refuse and leave it alone). With --plugin: delete the plugin's cache "
+        help="with --plugin: delete the plugin's cache "
         "directory first so the fetch re-pulls the working tree instead of keeping a stale build "
         "(dev-only — see docs/how-to/install-plugin.md)",
     )
@@ -207,15 +199,6 @@ def main(argv: list[str] | None = None) -> None:
         "~/.claude/rules) — with --rules or --plugin-enable/--plugin-disable",
     )
     parser.add_argument(
-        "--live-docs-serve", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--live-docs-uninstall", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--live-docs-status", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
         "--llm-drift",
         choices=["scan", "fix"],
         default=None,
@@ -245,7 +228,7 @@ def main(argv: list[str] | None = None) -> None:
         help="print the inline directive to paste for an error code (E402, [type-arg], B608…), "
         "or the whole table without a code",
     )
-    args, _ = parser.parse_known_args(argv)
+    args = parser.parse_args(argv)
     color = style.use_color()
 
     if args.doctor:
@@ -275,32 +258,6 @@ def main(argv: list[str] | None = None) -> None:
                 as_json=args.json,
             )
         )
-
-    if (
-        args.live_docs
-        or args.live_docs_serve
-        or args.live_docs_uninstall
-        or args.live_docs_status
-    ):
-        from . import live_docs
-
-        if args.live_docs_serve:
-            live_docs.serve()
-            return
-        if args.live_docs_uninstall:
-            removed = live_docs.uninstall()
-            print(live_docs.render_uninstall_report(removed, color=color))
-            return
-        if args.live_docs_status:
-            print(live_docs.render_status_report(live_docs.status(), color=color))
-            return
-        try:
-            result = live_docs.install(force=args.force)
-        except live_docs.LiveDocsConflict as exc:
-            print(exc, file=sys.stderr)
-            raise SystemExit(1) from exc
-        print(live_docs.render_install_report(result, color=color))
-        return
 
     if args.plugins_refresh is not None:
         outcomes = plugin_install.refresh_plugins(

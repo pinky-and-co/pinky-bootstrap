@@ -18,7 +18,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_catalog, style, tui
+from . import plugin_catalog, plugin_reconcile, style, tui
 from .common import PACKAGE_DIR
 
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
@@ -241,6 +241,18 @@ def sync_user_file(
     return True
 
 
+def _qualified(
+    name: str, marketplace_by_name: dict[str, list[str]], *, yes: bool
+) -> str:
+    """`name` as `<name>@<marketplace>` — qualified without a question when one curated marketplace
+    publishes it, `plugin_reconcile.choose_marketplace` when several do, bare when none is known
+    (an already-installed name that stays checked)."""
+    publishers = sorted(marketplace_by_name.get(name, []))
+    if len(publishers) > 1:
+        publishers = [plugin_reconcile.choose_marketplace(name, publishers, yes=yes)]
+    return f"{name}@{publishers[0]}" if publishers else name
+
+
 def resolve_no_name_selection(
     workspace_root: Path,
     installed_names: Iterable[str],
@@ -270,9 +282,8 @@ def resolve_no_name_selection(
         set()
     )  # bare plugin names — the picker's rows, matched against
     # `installed` (also bare, see `plugin_reconcile.enabled_plugin_names`) for the pre-check.
-    # bare name -> the marketplace `expand_entry` qualified it with, so a freshly picked name
-    # goes back out qualified (`pick_plugins`/`build_plugin_pick_rows` stay bare-name generic).
-    marketplace_by_name: dict[str, str] = {}
+    # bare name -> every marketplace that published it; several are asked about, never overwritten.
+    marketplace_by_name: dict[str, list[str]] = {}
     # keyed by marketplace, not by entry: several entries can share one not-yet-registered
     # marketplace, and `marketplace add` must run once for the group, not once per entry.
     marker_to_entries: dict[str, list[CuratedEntry]] = {}
@@ -281,7 +292,9 @@ def resolve_no_name_selection(
             for spec in expand_entry(entry):
                 name, _, entry_marketplace = spec.partition("@")
                 curated_names.add(name)
-                marketplace_by_name[name] = entry_marketplace
+                publishers = marketplace_by_name.setdefault(name, [])
+                if entry_marketplace not in publishers:
+                    publishers.append(entry_marketplace)
         else:
             marker = f"{UNREGISTERED_MARKER}{entry.marketplace}"
             marker_to_entries.setdefault(marker, []).append(entry)
@@ -292,7 +305,7 @@ def resolve_no_name_selection(
     )
     markers = [n for n in picked if n in marker_to_entries]
     names = [
-        f"{n}@{marketplace_by_name[n]}" if n in marketplace_by_name else n
+        _qualified(n, marketplace_by_name, yes=yes)
         for n in picked
         if n not in marker_to_entries and n not in installed
     ]

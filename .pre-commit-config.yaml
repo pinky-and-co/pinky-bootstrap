@@ -218,7 +218,7 @@ repos:
         additional_dependencies: ["mypy==2.0.0", "argcomplete>=3.7.2", "questionary>=2.0.1"]
         types: [python]
         args: [--ignore-missing-imports]
-        files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/
+        files: ^cli_pinky\.py$|^hygiene/|^setup/|^tools/
         # mypy's incremental cache (.mypy_cache/) isn't safe under concurrent access — without
         # this, prek/pre-commit's default file-batch parallelism spawns multiple mypy processes
         # against the same cache dir and one crashes with INTERNAL ERROR (reproduced on
@@ -233,11 +233,11 @@ repos:
     hooks:
       - id: bandit
         pass_filenames: false
-        args: [-r, cli_pinky.py, hygiene/, live-docs/, setup/, tools/, -ll, --skip, B108]
+        args: [-r, cli_pinky.py, hygiene/, setup/, tools/, -ll, --skip, B108]
         # `files:` — see the identical line on interrogate below for why this matters even with
         # `pass_filenames: false` (which only controls what gets PASSED, not whether the hook runs
         # at all).
-        files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/
+        files: ^cli_pinky\.py$|^hygiene/|^setup/|^tools/
 
   # Docstrings: coverage
   - repo: local
@@ -248,7 +248,7 @@ repos:
         language: python
         additional_dependencies: ["interrogate==1.7.0"]
         pass_filenames: false
-        args: [cli_pinky.py, hygiene/, live-docs/, setup/, tools/, --ignore-init-method, --ignore-magic, --ignore-module, --ignore-private]
+        args: [cli_pinky.py, hygiene/, setup/, tools/, --ignore-init-method, --ignore-magic, --ignore-module, --ignore-private]
         # Without a `files:` gate, the hook runs on EVERY commit regardless of what changed
         # (pass_filenames: false + no files:/types: filter = pre-commit's default "matches
         # everything"), always invoking `interrogate <targets> ...` literally. interrogate's CLI
@@ -256,7 +256,7 @@ repos:
         # on a target that does not exist, not a clean skip like mypy/bandit get from an empty
         # `files:` match. `_py_lint_roots` never emits a nonexistent target (it only lists what it
         # found on disk), so this can no longer fire.
-        files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/
+        files: ^cli_pinky\.py$|^hygiene/|^setup/|^tools/
 
   # Docstrings: args/returns match signature
   #
@@ -283,7 +283,7 @@ repos:
         language: python
         additional_dependencies: ["darglint==1.8.1"]
         types: [python]
-        files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/
+        files: ^cli_pinky\.py$|^hygiene/|^setup/|^tools/
 
   # Typed API guard
   - repo: local
@@ -293,7 +293,7 @@ repos:
         entry: python scripts/hooks/check_typed_api.py
         language: python
         types: [python]
-        files: ^cli_pinky\.py$|^hygiene/|^live\-docs/|^setup/|^tools/
+        files: ^cli_pinky\.py$|^hygiene/|^setup/|^tools/
 
   # Weak-assertion ratchet — first hook to target tests/, not src/ (tests.md § generator oracle).
   # Blocks a fragment `assert "x" in <generator(...)>` that has no whole-output equality oracle in

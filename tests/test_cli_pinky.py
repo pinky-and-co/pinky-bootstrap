@@ -1,7 +1,7 @@
 """`cli_pinky.py` — sub-commands over `setup.py`'s flags.
 
-Pins the exact defect measured: `setup.py --help` swallows `--help` as an unknown flag
-(`add_help=False` + `parse_known_args`) and falls into the interactive install branch, which WRITES.
+`setup.py` rejects an unknown flag (`--help` included: `add_help=False` + `parse_args`) with exit 2
+instead of falling into the interactive install branch, which WRITES.
 `cli_pinky.py --help` must exit 0, print the sub-commands, and write nothing.
 
 Dispatch is tested by capturing what each `cmd_*` hands to `setup.cli.main()` — proof the helper
@@ -33,7 +33,6 @@ def test_help_exits_zero_and_writes_nothing(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     for name in (
         "claude-plugin",
-        "live-docs",
         "repo",
         "doctor",
         "directives",
@@ -185,7 +184,6 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     assert set(sub.choices) == {
         "claude-plugin",
-        "live-docs",
         "repo",
         "doctor",
         "directives",
@@ -204,6 +202,7 @@ def test_help_lists_exactly_the_subjects_of_the_grid():
         "llm-drift",
         "docs",
         "install",
+        "live-docs",
     ],
 )
 def test_a_retired_top_level_name_is_an_unknown_command(old_name, capsys):
@@ -370,19 +369,14 @@ def test_claude_plugin_disable_with_no_name_forwards_bare_plugin_disable_flag(
     assert calls == [["--plugin-disable"]]
 
 
-def test_live_docs_dispatch(monkeypatch):
-    calls = _captured_argv(monkeypatch)
-    cli_pinky.main(["live-docs", "install"])
-    cli_pinky.main(["live-docs", "install", "--force"])
-    for verb in ("serve", "status", "uninstall"):
-        cli_pinky.main(["live-docs", verb])
-    assert calls == [
-        ["--live-docs"],
-        ["--live-docs", "--force"],
-        ["--live-docs-serve"],
-        ["--live-docs-status"],
-        ["--live-docs-uninstall"],
-    ]
+def test_setup_main_rejects_the_removed_live_docs_flag(capsys):
+    """`--live-docs` is not parsed: setup_main exits 2 instead of ignoring it."""
+    import setup.cli
+
+    with pytest.raises(SystemExit) as exc:
+        setup.cli.main(["--live-docs"])
+    assert exc.value.code == 2
+    assert "unrecognized arguments: --live-docs" in capsys.readouterr().err
 
 
 def test_drift_dispatch(monkeypatch):
@@ -395,14 +389,6 @@ def test_repo_exposes_new_distribute_drift_and_llm_drift():
     parser = cli_pinky_impl.build_parser()
     verbs = {p[1] for p, _ in _walk_commands(parser) if len(p) == 2 and p[0] == "repo"}
     assert verbs == {"new", "distribute", "drift", "llm-drift"}
-
-
-def test_live_docs_exposes_install_serve_status_and_uninstall():
-    parser = cli_pinky_impl.build_parser()
-    verbs = {
-        p[1] for p, _ in _walk_commands(parser) if len(p) == 2 and p[0] == "live-docs"
-    }
-    assert verbs == {"install", "serve", "status", "uninstall"}
 
 
 def test_claude_plugin_list_dispatch(monkeypatch):

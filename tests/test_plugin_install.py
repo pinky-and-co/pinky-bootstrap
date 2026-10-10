@@ -336,8 +336,55 @@ def test_set_status_lines_writes_both_keys_and_merges(home):
     assert data["statusLine"] == {
         "type": "command",
         "command": f'python3 "{plugin_dir / "scripts" / "statusline.py"}"',
+        "refreshInterval": 2,
     }
-    assert data["subagentStatusLine"]["command"].endswith('subagent_statusline.py"')
+    assert data["subagentStatusLine"] == {
+        "type": "command",
+        "command": f'python3 "{plugin_dir / "scripts" / "subagent_statusline.py"}"',
+    }
+
+
+def test_set_status_lines_keeps_a_refresh_interval_already_present(home):
+    (home / "settings.json").write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "x", "refreshInterval": 5}}
+        ),
+        encoding="utf-8",
+    )
+    plugin_dir = _make_plugin(home / "plugin")
+
+    plugin_install.set_status_lines(plugin_dir)
+
+    data = json.loads((home / "settings.json").read_text())
+    assert data["statusLine"]["refreshInterval"] == 5
+    assert "refreshInterval" not in data["subagentStatusLine"]
+
+
+def test_set_status_lines_keeps_a_falsy_refresh_interval(home):
+    (home / "settings.json").write_text(
+        json.dumps(
+            {"statusLine": {"type": "command", "command": "x", "refreshInterval": 0}}
+        ),
+        encoding="utf-8",
+    )
+    plugin_dir = _make_plugin(home / "plugin")
+
+    plugin_install.set_status_lines(plugin_dir)
+
+    data = json.loads((home / "settings.json").read_text())
+    assert data["statusLine"]["refreshInterval"] == 0
+
+
+def test_set_status_lines_replaces_a_non_dict_status_line(home):
+    (home / "settings.json").write_text(
+        json.dumps({"statusLine": "legacy"}), encoding="utf-8"
+    )
+    plugin_dir = _make_plugin(home / "plugin")
+
+    plugin_install.set_status_lines(plugin_dir)
+
+    data = json.loads((home / "settings.json").read_text())
+    assert data["statusLine"]["refreshInterval"] == 2
 
 
 def test_set_status_lines_records_the_ledger(home):

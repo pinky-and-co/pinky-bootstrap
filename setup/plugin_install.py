@@ -268,7 +268,9 @@ def ensure_lsp_tool_enabled() -> None:
 def set_status_lines(install_path: Path) -> list[str]:
     """If `install_path` ships `scripts/statusline.py`, point `statusLine` (and
     `subagentStatusLine` when the script is there too) at the installed scripts, merged into
-    `~/.claude/settings.json`. Returns the keys written — empty when the plugin has no status line.
+    `~/.claude/settings.json`. `statusLine` also carries `refreshInterval` (2 seconds, so the line
+    redraws on a window resize) unless the user's file already holds one. Returns the keys written —
+    empty when the plugin has no status line.
 
     `subagentStatusLine` is also declared in the plugin's own bundled `settings.json`; writing it
     here as well is deliberate until `${CLAUDE_PLUGIN_ROOT}` expansion inside a bundled
@@ -283,12 +285,24 @@ def set_status_lines(install_path: Path) -> list[str]:
     if sub.is_file():
         scripts["subagentStatusLine"] = sub
 
-    _merge_user_settings(
-        {
-            key: {"type": "command", "command": f'python3 "{path}"'}
-            for key, path in scripts.items()
-        }
+    entries: dict[str, object] = {
+        key: {"type": "command", "command": f'python3 "{path}"'}
+        for key, path in scripts.items()
+    }
+    # `_merge_user_settings` replaces the whole `statusLine` entry, so a value the user already
+    # chose is read back here and carried over; `2` only fills an absent key.
+    existing = (
+        json.loads(_USER_SETTINGS.read_text(encoding="utf-8")).get("statusLine")
+        if _USER_SETTINGS.is_file()
+        else None
     )
+    kept = existing.get("refreshInterval") if isinstance(existing, dict) else None
+    entries["statusLine"] = {
+        "type": "command",
+        "command": f'python3 "{main}"',
+        "refreshInterval": 2 if kept is None else kept,
+    }
+    _merge_user_settings(entries)
     for key, path in scripts.items():
         state_file.record_posed(key, path=str(_USER_SETTINGS), value=str(path))
     return list(scripts)

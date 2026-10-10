@@ -159,14 +159,6 @@ def cmd_doctor(args: argparse.Namespace) -> None:
     )
 
 
-def cmd_live_docs(args: argparse.Namespace) -> None:
-    """Translate `live-docs <verb>` to `setup.cli`'s `--live-docs` / `--live-docs-<verb>`."""
-    if args.verb == "install":
-        setup_main(["--live-docs", *(["--force"] if args.force else [])])
-    else:
-        setup_main([f"--live-docs-{args.verb}"])
-
-
 def _completing(
     action: argparse.Action, completer: Callable[..., list[str]]
 ) -> argparse.Action:
@@ -551,36 +543,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="print the plan and stop, write nothing",
         )
         p.set_defaults(func=cmd_claude_plugin)
-
-    verbs = _subject(
-        sub,
-        "live-docs",
-        "📖 live board/log viewer — install it, serve it, check its status, or remove it",
-        [
-            "pinky live-docs install  # MkDocs tooling, board mounts, launchd service",
-            "pinky live-docs serve  # run the site now, no service",
-            "pinky live-docs status",
-        ],
-    )
-    p = _add(
-        verbs,
-        "install",
-        "install the viewer (MkDocs; on macOS a launchd service)",
-        ["pinky live-docs install  # first time", "pinky live-docs install --force"],
-    )
-    p.add_argument(
-        "--force",
-        action="store_true",
-        help="replace a launchd agent pinky did not install",
-    )
-    p.set_defaults(func=cmd_live_docs)
-    for verb, summary in (
-        ("serve", "run the site live, no service"),
-        ("status", "posed / not-mine / absent"),
-        ("uninstall", "remove what `pinky live-docs install` posed"),
-    ):
-        p = _add(verbs, verb, summary, [f"pinky live-docs {verb}"])
-        p.set_defaults(func=cmd_live_docs)
 
     verbs = _subject(
         sub,

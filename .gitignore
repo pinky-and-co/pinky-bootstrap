@@ -65,12 +65,6 @@ tests/_local/
 # sont versionnés ; settings.local.json est machine-local, worktrees/ est généré.
 .claude/settings.local.json
 .claude/worktrees/
-# live-docs/ ne versionne que les 3 fichiers d'outillage (hooks.py, mkdocs.yml,
-# stylesheets/board.css) — test_bundled_source_carries_only_tooling en est le garde-fou. Les
-# montages de boards vivent sous ~/.local/share/pinky/live-docs/docs/, jamais ici ; ceci couvre
-# le cas d'un `pinky docs serve` lancé par erreur contre le dossier source.
-live-docs/docs/
-
 # Claude Code local session state (permission-change skill), not source
 .claude/.guard-state.json
 .headroom_wrap_settings.lock

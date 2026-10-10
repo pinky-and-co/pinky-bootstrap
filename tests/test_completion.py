@@ -84,11 +84,11 @@ def claude_dir(tmp_path):
 def test_the_subjects_are_completed():
     assert set(_complete("pinky ")) >= {
         "claude-plugin",
-        "live-docs",
         "repo",
         "doctor",
         "directives",
     }
+    assert "live-docs" not in _complete("pinky ")
 
 
 def test_a_subjects_verbs_are_completed():
