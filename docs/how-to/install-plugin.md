@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-10-03 17:15*
+*Update date : 2026-10-10 17:05*
 
 ```bash
 pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
@@ -48,9 +48,11 @@ workspace with several groups/repos).
 
    **A plugin that ships a status line** (`scripts/statusline.py`) gets `statusLine` and
    `subagentStatusLine` written into `~/.claude/settings.json`, pointing at the installed scripts
-   (resolved from `installed_plugins.json`, never a guessed path) — whenever the plugin is
-   confirmed on disk exactly where it should be, whether this run applied a change or the table
-   showed nothing left to do. `--dry-run` and a declined plan never confirm anything, so neither
+   (resolved from `installed_plugins.json`, never a guessed path). `statusLine` also receives
+   `refreshInterval: 2` — the line is re-run every 2 seconds, which redraws it after a window
+   resize; a `refreshInterval` already in `~/.claude/settings.json` is kept. Written whenever the
+   plugin is confirmed on disk exactly where it should be, whether this run applied a change or the
+   table showed nothing left to do. `--dry-run` and a declined plan never confirm anything, so neither
    writes it. Re-run after `claude plugin update` — the path carries the plugin version.
 
    `--force`: delete the plugin's cache directory (`~/.claude/plugins/cache/<marketplace>/<plugin>/
