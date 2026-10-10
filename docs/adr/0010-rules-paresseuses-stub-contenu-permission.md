@@ -2,7 +2,7 @@
 title: "0010"
 ---
 # ADR-0010 — Rules paresseuses : stub présenté, contenu lu à la demande, lecture autorisée par `permissions.allow`
-*Update date : 2026-10-10 21:24*
+*Update date : 2026-10-10 21:28*
 
 Status: accepted
 Date: 2026-10-10
@@ -49,20 +49,18 @@ Le contenu n'est lu que si la lecture est autorisée sans confirmation. Sans per
 ## Decision
 
 1. **Le mécanisme est conservé** : stub présenté, contenu lu à la demande, conditions en texte libre
-   dans `_load_conditions`. Les trois rules à `paths:` (`adr`, `doc-hygiene`,
-   `hook-output-invariants`) le gardent ; tout glob de `paths:` commence par `**/`.
-2. **La permission de lecture est une clé user** posée par la distribution des rules : son plan
-   propose `permissions.allow` dans `~/.claude/settings.json` derrière le `[y/N]` habituel, et une
-   machine neuve l'obtient quand `pinky install` enchaîne cette distribution. Aucune étape manuelle
-   hors du CLI.
-3. **Son périmètre est le workspace** :
+   dans `_load_conditions`. Cinq rules portent `paths:` (`adr`, `doc-hygiene`,
+   `hook-output-invariants`, `minimal-code`, `tests`) ; tout glob de `paths:` commence par `**/`.
+2. **La permission de lecture reste hors du périmètre de pinky**, comme `permissions.allow` et
+   `permissions.deny` le sont depuis ADR-0001 : aucun code de `pinky` n'écrit de `permissions`.
+   C'est une entrée du `~/.claude/settings.json` de l'utilisateur, déjà présente sur le poste de
+   référence parmi ses 43 entrées `allow` :
 
    ```json
    "permissions": { "allow": ["Read(~/Workspaces/pinky/**/.claude/rules-content/**)"] }
    ```
 
-Les points 2 et 3 sont posés sans écrire de code : aujourd'hui la clé se règle à la main. Ils
-valent comme direction ; un ADR ultérieur les remplace si l'implémentation montre un meilleur lieu.
+   Son périmètre est le workspace entier. Une machine neuve l'ajoute à la main.
 
 ## Consequences
 
@@ -73,7 +71,7 @@ valent comme direction ; un ADR ultérieur les remplace si l'implémentation mon
   1,4 % d'entre elles). Rien dans ce mécanisme ne garantit la lecture ; le prompt de
   `card-worker` ne cite aucune rule.
 - Un stub à `paths:` dépend de son glob : un glob mal ancré ne se charge jamais, sans erreur.
-- Sans la clé `permissions.allow`, le mécanisme dégrade silencieusement : stub présenté, contenu
-  jamais lu.
+- Sans l'entrée `permissions.allow`, chaque `Read` d'un contenu de rule demande une confirmation ;
+  si elle n'est pas accordée, la rule n'est pas lue.
 - La mesure compte des octets et des lectures, pas l'utilité d'une lecture. Une mesure à 5 essais
   par condition n'a pas été menée ; les lectures réelles d'une semaine l'ont remplacée.
