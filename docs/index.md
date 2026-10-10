@@ -7,6 +7,7 @@
 - [0005 — `CLAUDE.md`/`AGENTS.md` : import ou symlink selon le niveau](adr/0005-agents-md-symlink-par-niveau.md)
 - [0009 — `AGENTS.md` du workspace et des groupes régénéré par le plugin, sans symlink `CLAUDE.md`](adr/0009-agents-md-regenere-par-le-plugin-sans-symlink.md)
 - [0006 — Council : advisors sur modèles distincts du pool, pas sur personas d'un seul modèle](adr/0006-council-advisors-cross-modele.md)
+- [0010 — Rules paresseuses : stub présenté, contenu lu à la demande, lecture autorisée par `permissions.allow`](adr/0010-rules-paresseuses-stub-contenu-permission.md)
 
 ## How-to
 
