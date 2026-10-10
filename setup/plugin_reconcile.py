@@ -23,7 +23,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import plugin_install, state_file, style
+from . import plugin_catalog, plugin_install, state_file, style
 from .plugin_scope import list_targets_at_depth, run_marketplace_wizard
 
 _USER_CLAUDE = Path.home() / ".claude"
@@ -309,28 +309,70 @@ def _spec_parts(spec: str) -> tuple[str, str | None]:
     return plugin_id, (marketplace or None)
 
 
+def choose_marketplace(
+    plugin_id: str, marketplaces: list[str], *, yes: bool = False
+) -> str:
+    """The one marketplace, among `marketplaces` (several), that carries `plugin_id` — asked by
+    number, never guessed. Shared by the bare-name path (`resolve_spec`) and the curated picker.
+
+    Without a terminal, or under `yes` (which only confirms, it never picks), exits non-zero naming
+    every `<id>@<marketplace>` form: nothing is asked, so nothing is installed.
+    """
+    if yes or not sys.stdin.isatty():
+        forms = ", ".join(f"{plugin_id}@{m}" for m in marketplaces)
+        print(
+            f"{plugin_id} is published by several marketplaces — name one of: {forms}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    for i, name in enumerate(marketplaces):
+        print(f"  {i}) {name}")
+    answer = ""
+    try:
+        answer = input(f"Which marketplace carries {plugin_id}? ").strip()
+        index = int(answer)
+    except (ValueError, EOFError):
+        index = -1
+    if not 0 <= index < len(marketplaces):
+        print(f"Invalid choice: {answer!r}", file=sys.stderr)
+        raise SystemExit(1)
+    return marketplaces[index]
+
+
 def resolve_spec(
-    plugin_id: str, marketplace: str | None, audit: dict[str, PluginState]
+    plugin_id: str,
+    marketplace: str | None,
+    audit: dict[str, PluginState],
+    *,
+    yes: bool = False,
 ) -> str:
     """The audit key (`<id>@<marketplace>`) a `--plugin` name refers to.
 
-    A given marketplace is taken as is. Without one, the audit's keys carrying the bare id decide:
-    one match is the answer, none leaves the bare id (a first install, nothing recorded yet), and
-    several ask the user which marketplace — never a guess.
+    A given marketplace is taken as is, and so is an already-qualified id. Without one, the
+    audit's keys carrying the bare id decide: one match is the answer, several ask the user
+    which marketplace. A name the audit has never seen falls back to the known marketplaces'
+    catalogs: one publisher qualifies it, several ask, none leaves the bare id (nothing known
+    to qualify it with). Never a guess.
     """
     if marketplace:
         return f"{plugin_id}@{marketplace}"
+    if "@" in plugin_id:
+        return plugin_id
     candidates = sorted(key for key in audit if _spec_parts(key)[0] == plugin_id)
-    if len(candidates) <= 1:
-        return candidates[0] if candidates else plugin_id
-    for i, key in enumerate(candidates):
-        print(f"  {i}) {_spec_parts(key)[1]}")
-    answer = input(f"Which marketplace carries {plugin_id}? ").strip()
-    try:
-        return candidates[int(answer)]
-    except (ValueError, IndexError):
-        print(f"Invalid choice: {answer!r}", file=sys.stderr)
-        raise SystemExit(1) from None
+    qualified = [key for key in candidates if "@" in key]
+    if len(qualified) == 1:
+        return qualified[0]
+    if len(qualified) > 1:
+        by_marketplace = {str(_spec_parts(key)[1]): key for key in qualified}
+        return by_marketplace[
+            choose_marketplace(plugin_id, list(by_marketplace), yes=yes)
+        ]
+    if candidates:
+        return candidates[0]
+    publishers = plugin_catalog.marketplaces_publishing(plugin_id)
+    if len(publishers) > 1:
+        publishers = [choose_marketplace(plugin_id, publishers, yes=yes)]
+    return f"{plugin_id}@{publishers[0]}" if publishers else plugin_id
 
 
 def label_to_settings(workspace_root: Path) -> dict[str, Path]:

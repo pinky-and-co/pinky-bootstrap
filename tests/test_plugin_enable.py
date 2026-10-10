@@ -228,6 +228,61 @@ def test_a_local_settings_enable_is_never_a_row(env):
     assert all(not row.checked for row in rows)
 
 
+def _claude_install_calls(env):
+    return [c for c, _ in env.sim.calls if c[:3] == ["claude", "plugin", "install"]]
+
+
+@pytest.mark.parametrize(("answer", "chosen"), [("0", "mpA"), ("1", "mpB")])
+def test_a_bare_name_two_known_catalogs_publish_is_qualified_with_the_chosen_one(
+    env, publish_marketplaces, monkeypatch, answer, chosen
+):
+    publish_marketplaces({"mpA": ["pc-dup"], "mpB": ["pc-dup"]})
+    _canned(monkeypatch, [answer, "y"])
+
+    plugin_enable.run("enable", ["pc-dup"], env.ws, scope=["."])
+
+    assert [c[3] for c in _claude_install_calls(env)] == [f"pc-dup@{chosen}"]
+
+
+def test_a_bare_name_one_known_catalog_publishes_is_qualified_without_a_question(
+    env, publish_marketplaces, monkeypatch
+):
+    publish_marketplaces({"mpA": ["pc-solo"], "mpB": ["other"]})
+    _canned(monkeypatch, ["y"])
+
+    plugin_enable.run("enable", ["pc-solo"], env.ws, scope=["."])
+
+    assert [c[3] for c in _claude_install_calls(env)] == ["pc-solo@mpA"]
+
+
+def test_a_bare_name_two_catalogs_publish_exits_with_yes_and_installs_nothing(
+    env, publish_marketplaces, capsys
+):
+    publish_marketplaces({"mpA": ["pc-dup"], "mpB": ["pc-dup"]})
+
+    with pytest.raises(SystemExit) as exc:
+        plugin_enable.run("enable", ["pc-dup"], env.ws, scope=["."], yes=True)
+
+    assert exc.value.code not in (0, None)
+    err = capsys.readouterr().err
+    assert "pc-dup@mpA" in err
+    assert "pc-dup@mpB" in err
+    assert env.sim.calls == []
+
+
+def test_a_bare_name_two_catalogs_publish_exits_without_a_terminal(
+    env, publish_marketplaces, monkeypatch
+):
+    publish_marketplaces({"mpA": ["pc-dup"], "mpB": ["pc-dup"]})
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+
+    with pytest.raises(SystemExit) as exc:
+        plugin_enable.run("enable", ["pc-dup"], env.ws, scope=["."])
+
+    assert exc.value.code not in (0, None)
+    assert env.sim.calls == []
+
+
 def test_run_accepts_a_pre_qualified_spec_with_no_global_marketplace(env, capsys):
     """The curated picker hands `run` names already qualified as `<id>@<marketplace>` instead of
     changing `run`'s own signature — `resolve_spec` falls back to the bare id it's given verbatim

@@ -41,3 +41,43 @@ def _isolate_installer_ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(
         state_file, "STATE_FILE_PATH", tmp_path / "pinky-install-state.json"
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_plugin_catalog(tmp_path, monkeypatch):
+    """No test may read the machine's real `~/.claude` marketplaces — a bare name's
+    candidates come from the known catalogs, so the real ones would leak into the answer. A test
+    that needs catalogs publishes synthetic ones with `publish_marketplaces`."""
+    import setup.plugin_catalog as plugin_catalog
+
+    monkeypatch.setattr(plugin_catalog, "CLAUDE_DIR", tmp_path / "no-claude-dir")
+
+
+@pytest.fixture
+def publish_marketplaces(tmp_path, monkeypatch):
+    """`publish(<marketplace> -> [plugin names])` registers synthetic marketplaces — a
+    `known_marketplaces.json` plus one `.claude-plugin/marketplace.json` each — under a tmp
+    `CLAUDE_DIR`."""
+    import json
+
+    import setup.plugin_catalog as plugin_catalog
+
+    claude_dir = tmp_path / "synthetic-claude"
+
+    def publish(catalogs: dict[str, list[str]]) -> Path:
+        known = {}
+        for marketplace, names in catalogs.items():
+            checkout = tmp_path / "checkouts" / marketplace
+            (checkout / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+            (checkout / ".claude-plugin" / "marketplace.json").write_text(
+                json.dumps({"plugins": [{"name": n} for n in names]}), encoding="utf-8"
+            )
+            known[marketplace] = {"installLocation": str(checkout)}
+        (claude_dir / "plugins").mkdir(parents=True, exist_ok=True)
+        (claude_dir / "plugins" / "known_marketplaces.json").write_text(
+            json.dumps(known), encoding="utf-8"
+        )
+        monkeypatch.setattr(plugin_catalog, "CLAUDE_DIR", claude_dir)
+        return claude_dir
+
+    return publish

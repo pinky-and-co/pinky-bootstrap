@@ -47,3 +47,20 @@ def known_plugin_names() -> list[str]:
             if isinstance(plugin, dict) and plugin.get("name")
         )
     return sorted(names)
+
+
+def marketplaces_publishing(plugin_id: str) -> list[str]:
+    """Every known marketplace whose local catalog lists `plugin_id`, sorted."""
+    marketplaces = _read_json(CLAUDE_DIR / "plugins" / "known_marketplaces.json")
+    publishers = []
+    for name, entry in marketplaces.items():
+        location = entry.get("installLocation") if isinstance(entry, dict) else None
+        if not location:
+            continue
+        catalog = _read_json(Path(location) / ".claude-plugin" / "marketplace.json")
+        if any(
+            isinstance(plugin, dict) and plugin.get("name") == plugin_id
+            for plugin in catalog.get("plugins", [])
+        ):
+            publishers.append(name)
+    return sorted(publishers)

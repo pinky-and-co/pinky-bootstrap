@@ -710,7 +710,8 @@ def run(
     audit = plugin_reconcile.audit_plugins(workspace_root)
     label_map = plugin_reconcile.label_to_settings(workspace_root)
     specs = [
-        plugin_reconcile.resolve_spec(name, marketplace, audit) for name in plugin_names
+        plugin_reconcile.resolve_spec(name, marketplace, audit, yes=yes)
+        for name in plugin_names
     ]
     states = [audit.get(spec) or _empty_state(spec, marketplace) for spec in specs]
     # Every OTHER plugin's active dirs, by bare id — a named plugin's own entry is overwritten
