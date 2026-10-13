@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 RUNNER = (
     Path(__file__).parent.parent / "hygiene" / "vendor" / "direct_command_runner.py"
 )
@@ -265,3 +267,50 @@ def test_non_ascii_output_survives_a_strict_ascii_stdout(tmp_path):
         env={"PATH": "/usr/bin:/bin", "PYTHONIOENCODING": "ascii:strict"},
     )
     assert (proc.returncode, json.loads(proc.stdout)["reason"]) == (0, "é✅")
+
+
+def _child_session_id(tmp_path, event_extra, ambient=None):
+    """What `CLAUDE_CODE_SESSION_ID` a script started by the runner sees for this event."""
+    script = _script(
+        tmp_path, 'echo "${CLAUDE_CODE_SESSION_ID-absent}"', name="probe.sh"
+    )
+    env = {"PATH": "/usr/bin:/bin"}
+    if ambient is not None:
+        env["CLAUDE_CODE_SESSION_ID"] = ambient
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "--script",
+            str(script),
+            "--interpreter",
+            "bash",
+            "--grammar",
+            json.dumps({"forms": [{"match": [], "emit": []}]}),
+        ],
+        input=json.dumps({"command_args": "", "cwd": str(tmp_path), **event_extra}),
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert proc.returncode == 0
+    return json.loads(proc.stdout)["reason"]
+
+
+def test_runner_forwards_the_event_session_id_to_the_child(tmp_path):
+    assert _child_session_id(tmp_path, {"session_id": "sess-42"}) == "sess-42"
+
+
+def test_runner_event_session_id_wins_over_the_ambient_variable(tmp_path):
+    out = _child_session_id(tmp_path, {"session_id": "sess-42"}, ambient="ambient")
+    assert out == "sess-42"
+
+
+def test_runner_leaves_the_environment_untouched_without_a_session_id(tmp_path):
+    assert _child_session_id(tmp_path, {}) == "absent"
+    assert _child_session_id(tmp_path, {}, ambient="ambient") == "ambient"
+
+
+@pytest.mark.parametrize("bad", ["", None, 7, ["x"]])
+def test_runner_ignores_a_session_id_that_is_not_a_non_empty_string(tmp_path, bad):
+    assert _child_session_id(tmp_path, {"session_id": bad}) == "absent"
