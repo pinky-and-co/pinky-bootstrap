@@ -160,6 +160,45 @@ def _failing_suite_output(tmp_path: Path, **env: str) -> list[str]:
     return (run.stdout + run.stderr).splitlines()
 
 
+def _fake_python(repo: Path, *, importable: str) -> Path:
+    """Pose un `.venv/bin/python` factice qui enregistre les arguments de pytest.
+
+    `-c "import <mod>"` réussit pour les modules de `importable` (séparés par des espaces) et échoue
+    pour les autres ; `-m pytest …` écrit ses arguments dans `argv.txt` et sort en 0.
+    """
+    (repo / "tests").mkdir()
+    venv_bin = repo / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    record = repo / "argv.txt"
+    wrapper = venv_bin / "python"
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "-c" ]; then\n'
+        '  mod="${2#import }"\n'
+        f'  for ok in {importable}; do [ "$mod" = "$ok" ] && exit 0; done\n'
+        "  exit 1\n"
+        "fi\n"
+        f'echo "$@" > "{record}"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    return record
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="enveloppe sh POSIX")
+def test_xdist_installed_spreads_the_suite_over_every_core(tmp_path):
+    record = _fake_python(tmp_path, importable="pytest xdist")
+    assert run_hook(tmp_path) == 0
+    assert "-n auto" in record.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="enveloppe sh POSIX")
+def test_without_xdist_the_suite_runs_in_one_process(tmp_path):
+    record = _fake_python(tmp_path, importable="pytest")
+    assert run_hook(tmp_path) == 0
+    assert "-n" not in record.read_text(encoding="utf-8").split()
+
+
 def test_force_color_keeps_pytest_colored_and_still_drops_the_progress(tmp_path):
     lines = _failing_suite_output(tmp_path, FORCE_COLOR="1")
     assert any(_ANSI.search(ln) for ln in lines)
