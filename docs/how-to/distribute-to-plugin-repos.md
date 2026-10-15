@@ -36,7 +36,7 @@ list):
 |---|---|
 | base | every repo |
 | `python` | has a `pyproject.toml` |
-| `snowflake` | Python repo whose `pyproject.toml` declares a snowflake/snowpark dependency |
+| `snowflake` | Python repo whose `pyproject.toml` names snowflake/snowpark in its dependencies (`[project]`, optional, `[dependency-groups]`) or `[project].keywords` — never in a comment or description |
 | `web` | has a `package.json` and no `pyproject.toml` |
 | `python-lint` | ships `.py` files but has neither `pyproject.toml` nor `package.json` |
 | `plugin-repo` | has a `.claude-plugin/` directory (additive to the others) |

@@ -190,13 +190,44 @@ def _py_lint_interrogate_args(roots: list[str]) -> str:
     return f"[{targets}, --ignore-init-method, --ignore-magic, --ignore-module, --ignore-private]"
 
 
+def _declares_snowflake(pyproject: Path) -> bool:
+    """Whether the pyproject declares Snowflake in a field that classifies the package.
+
+    Read: ``[project].dependencies``, ``optional-dependencies``, ``keywords``, and
+    ``[dependency-groups]``. A comment, a description or a pytest marker that mentions Snowflake in
+    passing does not count. A library run inside a Snowflake warehouse may declare no Snowflake
+    dependency at all (the runtime provides it), hence ``keywords``.
+
+    Args:
+        pyproject: path to the repo's ``pyproject.toml``.
+
+    Returns:
+        True when one of those fields names snowflake or snowpark; False otherwise, an unparsable
+        file included.
+    """
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError:
+        return False
+    project = data.get("project", {})
+    declared = [*project.get("dependencies", []), *project.get("keywords", [])]
+    for group in (
+        *project.get("optional-dependencies", {}).values(),
+        *data.get("dependency-groups", {}).values(),
+    ):
+        declared.extend(item for item in group if isinstance(item, str))
+    return any(
+        "snowflake" in item.lower() or "snowpark" in item.lower() for item in declared
+    )
+
+
 def resolve_extras(repo: Path) -> list[str]:
     """Pick pre-commit extras for a repo from its layout.
 
     - python      : repo is a Python package (has pyproject.toml). NOT keyed on src/:
                     HTML/JS repos (e.g. pinky-studio) also have a src/ but no pyproject,
                     and must NOT get mypy/bandit/darglint — they get base only.
-    - snowflake   : Python repo whose pyproject declares a snowflake/snowpark dep.
+    - snowflake   : Python repo whose pyproject declares a snowflake/snowpark dep or keyword.
     - web         : HTML/CSS/JS repo — package.json present AND no pyproject.toml (so a Python
                     package that also has a package.json stays python, never web).
     - python-lint : repo ships .py files but has neither pyproject.toml nor package.json — a
@@ -226,8 +257,7 @@ def resolve_extras(repo: Path) -> list[str]:
     pyproject = repo / "pyproject.toml"
     if pyproject.exists():
         extras.append("python")
-        text = pyproject.read_text(encoding="utf-8").lower()
-        if "snowflake" in text or "snowpark" in text:
+        if _declares_snowflake(pyproject):
             extras.append("snowflake")
     elif (repo / "package.json").exists():
         extras.append("web")
