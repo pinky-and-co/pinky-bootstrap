@@ -35,9 +35,10 @@ par une skill par domaine, avec le `description` de la skill faisant le travail 
 place de la table.
 
 ### 1.4 Pas de mécanisme de fusion entre plugins
-Aucun mécanisme de dépendance ou de fusion n'existe entre deux plugins/skills — chacun est un
-artefact autonome. Conséquence directe pour la migration :
-- Une valeur **résolue par profil** (ex. langue de chat, branche par défaut) ne doit jamais être
+Un plugin peut déclarer d'autres plugins dans `dependencies` de son `plugin.json`, mais aucun
+mécanisme de fusion n'existe entre deux plugins/skills — le contenu de chacun reste un artefact
+autonome. Conséquence directe pour la migration :
+- Une valeur **propre à un repo** (ex. langue de chat, branche par défaut) ne doit jamais être
   codée en dur dans une skill destinée à être publique — sinon elle fuit une conviction privée
   dans un artefact générique.
 - La bonne coupe : la skill publique porte une **instruction générique** (« suis la politique de
