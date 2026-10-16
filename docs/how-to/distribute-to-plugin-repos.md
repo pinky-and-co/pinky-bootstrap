@@ -1,5 +1,5 @@
 # How to distribute the hygiene to the workspace repos
-*Update date : 2026-09-27 04:33*
+*Update date : 2026-10-15 21:08*
 
 ```bash
 pinky repo distribute (--repo <name> | --all) [--dry-run] [--yes] [--commit]
@@ -75,7 +75,7 @@ them:
 
 | File | What changes |
 |---|---|
-| `pyproject.toml` | `[tool.uv]` gets `exclude-newer` and `required-version`; the rest is untouched |
+| `pyproject.toml` | `[tool.uv]` gets `exclude-newer` and `required-version`; the rest is untouched, `exclude-newer-package` included (each repo owns its exemption map) |
 | `.python-version` | aligned on `requires-python` |
 | `README.md` | the generated sections between markers |
 | `docs/index.md` | regenerated when the repo has a generated index |

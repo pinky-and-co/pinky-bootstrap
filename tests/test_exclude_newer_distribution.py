@@ -6,11 +6,15 @@ absolute date: uv resolves it at every `uv lock` and records `exclude-newer-span
 desync. The generator also pins `required-version` so an older uv fails loudly instead of silently
 ignoring the relative span.
 
+`exclude-newer-package` (the per-package exemption map) belongs to each repo: distribute never
+writes, converts, moves or removes it, in whatever spelling the repo declares it.
+
 Every generator gets a whole-output equality oracle (rules/tests.md): a fragment assertion passes
 on the correct output and on a wrong one.
 """
 
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -24,6 +28,7 @@ _COOLDOWN = (
     precommit_mod.COOLDOWN_COMMENT
     + f'exclude-newer = "{precommit_mod.EXCLUDE_NEWER_SPAN}"\n'
 )
+_MAP = 'exclude-newer-package = { pinky-core = "2999-01-01T00:00:00Z" }\n'
 
 
 def _write(repo: Path, pyproject: str) -> Path:
@@ -173,3 +178,85 @@ def test_returns_none_without_a_pyproject_toml(tmp_path):
     repo = tmp_path / "pinky-fake"
     repo.mkdir()
     assert precommit_mod.render_pyproject_with_cooldown(repo) is None
+
+
+def test_a_hand_written_exemption_map_is_left_alone(tmp_path):
+    """The map is the repo's: whatever it holds and wherever it sits in `[tool.uv]`, distribute
+    keeps it byte for byte beside the window and the required version."""
+    comment = "# Exemption écrite à la main.\n"
+    repo = _write(
+        tmp_path / "pinky-fake",
+        _HEADER + "[tool.uv]\n" + comment + _MAP + 'preview-features = ["x"]\n',
+    )
+    out = precommit_mod.render_pyproject_with_cooldown(repo)
+    assert out == (
+        _HEADER
+        + "[tool.uv]\n"
+        + _REQUIRED
+        + _COOLDOWN
+        + comment
+        + _MAP
+        + 'preview-features = ["x"]\n'
+    )
+    assert out is not None
+    assert tomllib.loads(out)["tool"]["uv"]["exclude-newer-package"] == {
+        "pinky-core": "2999-01-01T00:00:00Z"
+    }
+
+
+def test_a_multiline_exemption_map_is_left_alone(tmp_path):
+    multiline = (
+        'exclude-newer-package = { pinky-core = "2999-01-01T00:00:00Z",\n'
+        '  pinky-snowpark = "2999-01-01T00:00:00Z" }\n'
+    )
+    repo = _write(
+        tmp_path / "pinky-fake",
+        _HEADER + "[tool.uv]\n" + _REQUIRED + _COOLDOWN + multiline,
+    )
+    assert precommit_mod.render_pyproject_with_cooldown(repo) is None
+
+
+def test_an_exemption_subtable_is_left_alone(tmp_path):
+    subtable = '[tool.uv.exclude-newer-package]\npinky-core = "2999-01-01T00:00:00Z"\n'
+    repo = _write(
+        tmp_path / "pinky-fake",
+        _HEADER + "[tool.uv]\n" + 'preview-features = ["x"]\n\n' + subtable,
+    )
+    out = precommit_mod.render_pyproject_with_cooldown(repo)
+    assert out == (
+        _HEADER
+        + "[tool.uv]\n"
+        + _REQUIRED
+        + _COOLDOWN
+        + 'preview-features = ["x"]\n\n'
+        + subtable
+    )
+    assert out is not None
+    assert tomllib.loads(out)["tool"]["uv"]["exclude-newer-package"] == {
+        "pinky-core": "2999-01-01T00:00:00Z"
+    }
+
+
+def test_an_exemption_subtable_without_a_bare_tool_uv_stays_valid_toml(tmp_path):
+    subtable = '[tool.uv.exclude-newer-package]\npinky-core = "2999-01-01T00:00:00Z"\n'
+    repo = _write(tmp_path / "pinky-fake", _HEADER + subtable)
+    out = precommit_mod.render_pyproject_with_cooldown(repo)
+    assert (
+        out
+        == _HEADER
+        + subtable
+        + "\n[tool.uv]\n"
+        + _REQUIRED
+        + _COOLDOWN.rstrip("\n")
+        + "\n"
+    )
+    assert out is not None
+    uv = tomllib.loads(out)["tool"]["uv"]
+    assert uv["exclude-newer"] == "3 days"
+    assert uv["exclude-newer-package"] == {"pinky-core": "2999-01-01T00:00:00Z"}
+
+
+def test_distribution_never_writes_an_exemption_map(repo_with_tool_uv_only):
+    out = precommit_mod.render_pyproject_with_cooldown(repo_with_tool_uv_only)
+    assert out is not None
+    assert "exclude-newer-package" not in out

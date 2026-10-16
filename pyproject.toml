@@ -51,6 +51,10 @@ required-version = ">=0.9.17"
 # republiée sur PyPI. Durée relative : uv la résout au lock, `grep exclude-newer-span
 # uv.lock` dit la fenêtre appliquée. Posée par `pinky repo distribute`, jamais éditée à la main.
 exclude-newer = "3 days"
+# Exemption first-party (chantier 0024) : `exclude-newer-package` sort chaque paquet
+# pinky-and-co de la fenêtre ci-dessus — la map est la forme qu'uv attend (une liste est
+# une erreur de parse). Propre à ce repo : `pinky repo distribute` n'y touche pas.
+exclude-newer-package = { pinky-ai = "2999-01-01T00:00:00Z", pinky-airflow = "2999-01-01T00:00:00Z", pinky-bootstrap = "2999-01-01T00:00:00Z", pinky-connect = "2999-01-01T00:00:00Z", pinky-core = "2999-01-01T00:00:00Z", pinky-provider = "2999-01-01T00:00:00Z", pinky-snowpark = "2999-01-01T00:00:00Z", pinky-streamlit = "2999-01-01T00:00:00Z", pinky-tools = "2999-01-01T00:00:00Z" }
 
 # ── Packaging — flat layout, NOT src/ (ADR-0065 decision 6: src/ + the setup/ → pinky_workspace/
 # rename are a LATER phase, 228 files across the parc reference render_docs.py's distributed copies).
