@@ -16,6 +16,10 @@ Note for whoever extends this file: `render_ci_yml`'s dependency-install/audit s
 only `render_ci_yml` oracles in this file.
 """
 
+import json
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -75,6 +79,201 @@ def test_the_branch_guard_reaches_every_repo(lib_repo, non_lib_repo):
     """Le garde lui-même, pas seulement le fichier qui le porte — c'est ça qui manquait."""
     for repo in (lib_repo, non_lib_repo):
         assert "pr-required-on-main" in precommit_mod.render_prek_yml(repo)
+
+
+# Le faux `gh` applique la VRAIE expression `--jq` du script à une charge JSON : sans cela, le test
+# validerait le format que le faux émet et jamais ce que `gh` imprime (un échec de `jq` sur
+# `files: null` compris).
+_FAKE_GH = """#!/usr/bin/env bash
+echo "$*" >> "$GH_LOG"
+case "$2" in
+  *compare*) [ -n "${FAKE_JSON+x}" ] || exit 1; printf '%s' "$FAKE_JSON" | jq -r "$4" ;;
+  *pulls) echo "$FAKE_PR_COUNT" ;;
+esac
+"""
+
+
+def _compare_payload(files):
+    """The compare API answer for a list of changed files.
+
+    Args:
+        files: Paths, or ready-made file entries (dicts), or a whole payload (dict).
+
+    Returns:
+        The JSON text of the answer.
+    """
+    if isinstance(files, dict):
+        return json.dumps(files)
+    entries = [f if isinstance(f, dict) else {"filename": f} for f in files]
+    return json.dumps({"files": entries})
+
+
+def _run_pr_guard(repo, tmp_path, monkeypatch, files, pr_count="0", before="a" * 40):
+    """Run the `pr-required-on-main` script with a stub `gh` answering the two API calls.
+
+    Args:
+        repo: Repo the workflow is rendered for.
+        tmp_path: Scratch directory holding the stub and its call log.
+        monkeypatch: Used to put the stub first on `PATH`.
+        files: What the compare call answers (see `_compare_payload`); `None` makes it fail.
+        pr_count: Number of pull requests the commit is attached to.
+        before: SHA the push started from.
+
+    Returns:
+        The finished process and the list of `gh` invocations it made.
+    """
+    if shutil.which("jq") is None:
+        pytest.skip("jq is needed to apply the script's --jq expression")
+    steps = yaml.safe_load(precommit_mod.render_prek_yml(repo))["jobs"][
+        "pr-required-on-main"
+    ]["steps"]
+    script = next(s["run"] for s in steps if "pull request" in s["name"])
+    stub = tmp_path / "gh"
+    stub.write_text(_FAKE_GH, encoding="utf-8")
+    stub.chmod(0o755)
+    log = tmp_path / "gh.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    env = {
+        **os.environ,
+        "GH_LOG": str(log),
+        "FAKE_PR_COUNT": pr_count,
+        "BEFORE": before,
+        "SHA": "b" * 40,
+        "REPO": "org/repo",
+    }
+    if files is not None:
+        env["FAKE_JSON"] = _compare_payload(files)
+    done = subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True, check=False
+    )
+    calls = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    return done, calls
+
+
+def test_a_direct_push_of_documentation_alone_passes(
+    non_lib_repo, tmp_path, monkeypatch
+):
+    """Un push direct limité à la doc n'est pas un rouge : la convention l'autorise.
+
+    Args:
+        non_lib_repo: Repo without a pyproject.
+        tmp_path: Scratch directory.
+        monkeypatch: Pytest monkeypatch.
+    """
+    done, calls = _run_pr_guard(
+        non_lib_repo,
+        tmp_path,
+        monkeypatch,
+        [
+            "docs/how-to/x.md",
+            "docs/spec.docx",
+            "docs/budget.xlsx",
+            "docs/img/flow.png",
+            "plugins/x/README.md",
+            "plugins/x/docs/usage.md",
+            "README.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "LICENSE",
+        ],
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert any("compare" in c for c in calls), "la liste de fichiers doit être lue"
+    assert not any(c.endswith("pulls --jq length") for c in calls), (
+        "un push de doc ne doit pas interroger les PR"
+    )
+
+
+_MOVED_OUT_OF_CODE = {
+    "filename": "docs/about.txt",
+    "status": "renamed",
+    "previous_filename": "src/main.py",
+}
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        ["docs/x.md", "src/app.py"],
+        ["notes.md"],
+        ["docs-extra/x.md"],
+        ["README.md.bak"],
+        ["docs/build.py"],
+        ["docs/Makefile"],
+        ["docs/notes.md.bak"],
+        ["plugins/x/docs/gen.py"],
+        [],
+        None,
+        {"files": None},
+        [_MOVED_OUT_OF_CODE],
+    ],
+    ids=[
+        "doc-and-code",
+        "root-md-not-listed",
+        "docs-prefix-only",
+        "suffix",
+        "script-in-docs",
+        "makefile-in-docs",
+        "backup-suffix",
+        "plugin-script-in-docs",
+        "empty",
+        "compare-fails",
+        "files-null",
+        "code-renamed-into-docs",
+    ],
+)
+def test_a_direct_push_with_anything_else_is_still_red(
+    files, non_lib_repo, tmp_path, monkeypatch
+):
+    """Un fichier hors doc, une liste vide, un échec de l'API ou du code déplacé vers `docs/`.
+
+    Le renommage compte : l'API ne liste que le nouveau nom, et `src/main.py` déplacé vers `docs/`
+    disparaîtrait d'un contrôle fait sur ce seul nom.
+
+    Args:
+        files: What the compare call answers, or `None` when it fails.
+        non_lib_repo: Repo without a pyproject.
+        tmp_path: Scratch directory.
+        monkeypatch: Pytest monkeypatch.
+    """
+    done, calls = _run_pr_guard(non_lib_repo, tmp_path, monkeypatch, files)
+
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert any(c.endswith("pulls --jq length") for c in calls), (
+        "le retour au contrôle de PR doit avoir lieu"
+    )
+
+
+def test_a_first_push_is_checked_as_code(non_lib_repo, tmp_path, monkeypatch):
+    """`before` nul (branche neuve) : pas de comparaison possible, donc contrôle de PR.
+
+    Args:
+        non_lib_repo: Repo without a pyproject.
+        tmp_path: Scratch directory.
+        monkeypatch: Pytest monkeypatch.
+    """
+    done, calls = _run_pr_guard(
+        non_lib_repo, tmp_path, monkeypatch, ["docs/x.md"], before="0" * 40
+    )
+
+    assert done.returncode == 1
+    assert not any("compare" in c for c in calls)
+
+
+def test_a_merged_pull_request_still_passes(non_lib_repo, tmp_path, monkeypatch):
+    """Le chemin nominal ne change pas : un commit rattaché à une PR passe.
+
+    Args:
+        non_lib_repo: Repo without a pyproject.
+        tmp_path: Scratch directory.
+        monkeypatch: Pytest monkeypatch.
+    """
+    done, _ = _run_pr_guard(
+        non_lib_repo, tmp_path, monkeypatch, ["src/app.py"], pr_count="1"
+    )
+
+    assert done.returncode == 0
 
 
 def test_ci_yml_no_longer_runs_the_hook_suite(lib_repo):
