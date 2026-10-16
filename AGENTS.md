@@ -55,8 +55,3 @@ orientation only.
   `uv.lock`. The span then slides on its own — nothing to renew, no scheduled job. The only
   moment the cooldown bites is a deliberate `uv lock` (adding or bumping a dependency); review the
   resolution diff in that PR, since nothing else bounds it.
-- `exclude-newer-package` (a map exempting packages from the window, e.g. pinky-and-co's own so a
-  deliberately published dev release resolves at once in a sibling repo's `--no-sources` CI) belongs
-  to each repo: `distribute()` never writes, converts or removes it. Each repo writes its own map
-  by hand in `[tool.uv]` and re-locks when it changes. Nothing validates the names: an entry
-  exempts that package from the cooldown, so only list packages the repo trusts to publish safely.

@@ -75,7 +75,7 @@ them:
 
 | File | What changes |
 |---|---|
-| `pyproject.toml` | `[tool.uv]` gets `exclude-newer` and `required-version`; the rest is untouched, `exclude-newer-package` included (each repo owns its exemption map) |
+| `pyproject.toml` | `[tool.uv]` gets `exclude-newer` and `required-version`; the rest is untouched |
 | `.python-version` | aligned on `requires-python` |
 | `README.md` | the generated sections between markers |
 | `docs/index.md` | regenerated when the repo has a generated index |
