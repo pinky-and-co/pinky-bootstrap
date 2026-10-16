@@ -80,8 +80,9 @@ jobs:
       # On demande donc à l'API si ce SHA est rattaché à une PR — le seul signal qui distingue de
       # façon fiable une fusion d'un push direct, quelle que soit la stratégie de merge.
       #
-      # Exception : un push dont TOUS les fichiers sont de la documentation (la liste de
-      # `branch_paths.sh`, côté pc-git) est un usage permis, pas un rouge. La liste est dupliquée ici
+      # Exception : un push dont TOUS les fichiers sont de la documentation (README et fichiers de
+      # doc à extension sous `docs/`, la même liste que `ci.yml.tpl` et `branch_paths.sh` de pc-git)
+      # est un usage permis, pas un rouge. La liste est dupliquée ici
       # exprès : une divergence ne coûte qu'un faux rouge, jamais un trou. L'API de comparaison ne
       # liste que 300 fichiers — au-delà, on ne sait pas ce qu'on ne voit pas, donc contrôle de PR.
       # `before` nul (branche neuve) ou appel en échec : pas de liste, donc contrôle de PR aussi.
@@ -100,7 +101,7 @@ jobs:
             files=$(gh api "repos/$REPO/compare/$BEFORE...$SHA" --jq '.files[] | .filename, (.previous_filename // empty)' 2>/dev/null || true)
             total=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
             if [ -n "$files" ] && [ "$total" -lt 300 ] \
-              && ! grep -qvE '^(docs/|README\.md$|AGENTS\.md$|CLAUDE\.md$|LICENSE$)' <<<"$files"; then
+              && ! grep -qvE '^(README\.md|AGENTS\.md|CLAUDE\.md|LICENSE|(plugins/[^/]+/)?(README\.md|docs/.+\.(md|rst|txt|docx|xlsx|pptx|pdf|png|jpg|jpeg|gif|svg)))$' <<<"$files"; then
               echo "OK — push direct limité à la documentation ($total fichier(s))."
               exit 0
             fi
