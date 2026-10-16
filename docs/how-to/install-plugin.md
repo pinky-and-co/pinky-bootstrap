@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-10-10 19:50*
+*Update date : 2026-10-17 01:44*
 
 ```bash
 pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
@@ -92,6 +92,27 @@ nothing is written before the plan is confirmed, so an interrupt before that poi
 leaves nothing behind. The one gap: interrupting the *apply* loop itself after picking several
 targets can leave the earlier ones already enabled and the later ones not (no rollback across
 targets — accepted, see the chantier 0024 story's Open questions).
+
+## Launch cortex (CoCo) with this directory's plugins
+
+```bash
+pinky claude-plugin coco [--yes] [--dry-run] [--workspace <path>]
+```
+
+Run it from the repo you want to work on. It computes the plugins Claude Code has active there —
+the same scope chain: the repo, each ancestor (group, workspace root), user last, the nearest
+scope carrying the key winning — then shows one prechecked checkbox line per plugin, its
+`plugin.json` description and cortex's own `plugin validate` verdict on the same line (raw, or
+"validation unavailable"; never a reassuring "OK"). The plan (plugin → directory, unresolved
+`@inline` entries listed as such) asks `[y/N]`, then launches `cortex` with one `--plugin-dir`
+per plugin and `CLAUDE_PROJECT_DIR` set to the repo root. Writes nothing — no settings, no
+marker in the plugins. `--yes` skips both questions (and the validation pass, which only feeds
+the checkbox lines); `--dry-run` prints the command instead of launching.
+
+Same environment in both tools is the goal; what does not work under cortex is tolerated, not
+repaired: cortex must be launched by this command (on its own it loads no plugin), the VS Code
+extension is not covered, model-less commands (`UserPromptExpansion` hooks) go through the
+model, and hook events cortex does not know stay inert.
 
 ## During plugin development — local marketplace instead of GitHub
 
