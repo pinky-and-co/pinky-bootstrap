@@ -1,4 +1,4 @@
-"""Generated files holding hashes — the vendor manifest, docs_identity's engine_commit — pass the secret scanners."""
+"""Generated files holding hashes — the vendor manifest, docs_identity.json — pass the secret scanners."""
 
 import re
 import sys
