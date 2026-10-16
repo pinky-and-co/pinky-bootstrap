@@ -66,7 +66,7 @@ tests/_local/
 .claude/settings.local.json
 .claude/worktrees/
 # Claude Code local session state (permission-change skill), not source
-.claude/.guard-state.json
+.claude/.guard-state.json*
 .headroom_wrap_settings.lock
 
 # Ad-hoc tooling for a cross-session handoff (export to an external tool, reimport its result

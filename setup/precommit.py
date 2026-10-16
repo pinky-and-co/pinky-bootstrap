@@ -428,6 +428,9 @@ def render_pyproject_with_cooldown(repo: Path) -> str | None:
     the file are preserved; the file is never round-tripped through a TOML writer (which would
     drop comments and formatting). ``required-version`` is only inserted when absent from that
     table: a repo that pins a newer floor by hand keeps it.
+
+    ``exclude-newer-package`` (the per-package exemption map) is the repo's own: it is never
+    written, converted, moved or removed here, whatever its spelling.
     """
     pyproject_path = repo / "pyproject.toml"
     if not pyproject_path.exists():

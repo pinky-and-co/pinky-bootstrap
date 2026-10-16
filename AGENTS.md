@@ -41,18 +41,22 @@ orientation only.
   entry to the session transcript (`~/.claude/projects/`) that ran `claude plugin install` at that
   time; an entry no command matches came from a hook or a script (`pc-autodiscovery`, `chantier`,
   `spawn-workers`). Run it before diagnosing an unexpected enable, and read `_AGENT_LOG` first.
-- Every consumer repo's `pyproject.toml` carries `[tool.uv] exclude-newer = "3 days"` — a relative
-  cooldown span (uv ≥ 0.9.17) against a freshly compromised dependency republished on PyPI: uv
-  ignores, at every `uv lock`, any package published in the last 3 days, and records the span
-  itself (not a resolved date) as `exclude-newer-span` in `uv.lock`. Alongside it,
-  `required-version = ">=0.9.17"` so an older uv fails loudly instead of silently ignoring the
-  span. Both are the only keys `distribute()` writes into a file it otherwise only reads
-  (`render_pyproject_with_cooldown` in `setup/precommit.py`). In steady state it writes them once
-  and never again, so a `pinky repo distribute` run passing through for any other reason leaves
-  `pyproject.toml` untouched and cannot desync `uv.lock`. The **one** run that does rewrite it is
-  the migration off the old absolute-date form: on that run `pyproject.toml` moves to the span
-  while `uv.lock` still holds the old timestamp, so each repo needs a one-time `uv lock` (then a
-  PR) before its `uv sync --locked` CI is green again. After that the span slides on its own —
-  nothing to renew, no scheduled job. The only moment the cooldown then bites is a deliberate
-  `uv lock` (adding or bumping a dependency); review the resolution diff in that PR, since nothing
-  else bounds it.
+- Every consumer repo's `pyproject.toml` carries two `[tool.uv]` keys, the only ones
+  `distribute()` writes into a file it otherwise only reads (`render_pyproject_with_cooldown` in
+  `setup/precommit.py`):
+  - `exclude-newer = "3 days"` — a relative cooldown span (uv ≥ 0.9.17) against a freshly
+    compromised dependency republished on PyPI: uv ignores, at every `uv lock`, any package
+    published in the last 3 days, and records the span itself (not a resolved date) as
+    `exclude-newer-span` in `uv.lock`.
+  - `required-version = ">=0.9.17"` — so an older uv fails loudly instead of silently ignoring
+    the span.
+  In steady state `distribute()` writes them once and never again, so a `pinky repo distribute`
+  run passing through for any other reason leaves `pyproject.toml` untouched and cannot desync
+  `uv.lock`. The span then slides on its own — nothing to renew, no scheduled job. The only
+  moment the cooldown bites is a deliberate `uv lock` (adding or bumping a dependency); review the
+  resolution diff in that PR, since nothing else bounds it.
+- `exclude-newer-package` (a map exempting packages from the window, e.g. pinky-and-co's own so a
+  deliberately published dev release resolves at once in a sibling repo's `--no-sources` CI) belongs
+  to each repo: `distribute()` never writes, converts or removes it. Each repo writes its own map
+  by hand in `[tool.uv]` and re-locks when it changes. Nothing validates the names: an entry
+  exempts that package from the cooldown, so only list packages the repo trusts to publish safely.

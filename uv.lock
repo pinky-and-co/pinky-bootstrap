@@ -6,6 +6,17 @@ requires-python = ">=3.12"
 exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
 exclude-newer-span = "P3D"
 
+[options.exclude-newer-package]
+pinky-streamlit = "2999-01-01T00:00:00Z"
+pinky-airflow = "2999-01-01T00:00:00Z"
+pinky-core = "2999-01-01T00:00:00Z"
+pinky-connect = "2999-01-01T00:00:00Z"
+pinky-tools = "2999-01-01T00:00:00Z"
+pinky-ai = "2999-01-01T00:00:00Z"
+pinky-provider = "2999-01-01T00:00:00Z"
+pinky-bootstrap = "2999-01-01T00:00:00Z"
+pinky-snowpark = "2999-01-01T00:00:00Z"
+
 [[package]]
 name = "argcomplete"
 version = "3.7.2"
