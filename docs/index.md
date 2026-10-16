@@ -9,6 +9,7 @@
 - [0006 — Council : advisors sur modèles distincts du pool, pas sur personas d'un seul modèle](adr/0006-council-advisors-cross-modele.md)
 - [0010 — Rules paresseuses : stub présenté, contenu lu à la demande, lecture autorisée par `permissions.allow`](adr/0010-rules-paresseuses-stub-contenu-permission.md)
 - [0011 — `freeze` ne juge plus `Bash` : le garde d'écriture Bash est supprimé](adr/0011-freeze-ne-juge-plus-bash.md)
+- [0012 — Un `/goal` ne verrouille jamais les outils ; amender = prouver l'impossibilité](adr/0012-goal-ne-verrouille-jamais-les-outils.md)
 
 ## How-to
 

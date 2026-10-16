@@ -6,8 +6,11 @@ paths:
   - "**/*.js"
   - "**/*.jsx"
   - "**/*.sh"
+  - "**/skills/**/*.md"
+  - "**/agents/*.md"
+  - "**/rules/**/*.md"
 _load_conditions:
-  - "if you are about to write or modify code"
+  - "if you are about to write or modify code, a skill, an agent or a rule"
 ---
 # Minimal-code convention
 
@@ -21,6 +24,9 @@ the first rung that satisfies the need — the best code is the code you don't w
 5. **An already-installed dependency?** — extend what's pulled in before adding another.
 6. **Can it be one line?** — a comprehension, a built-in call, a one-line expression.
 7. **Only then**: the minimum viable implementation — and no more.
+
+For prose (a skill, agent, rule or card) rung 1 reads: add only what the requested behavior needs —
+no rationale, example or recap of what stays unchanged.
 
 This filters *after* understanding the problem; it never replaces understanding it, and it never trades
 away correctness for brevity.
