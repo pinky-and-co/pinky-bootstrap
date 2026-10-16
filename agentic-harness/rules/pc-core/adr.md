@@ -8,8 +8,8 @@ _load_conditions:
 
 One file per technical decision. Template below in English — the fixed convention (section labels,
 `Status`/`Date` keys, filename slug), same register as this rule itself. The body prose follows the
-profile's `explanation` language axis instead (`fr` for this workspace — see language policy), never
-hardcoded here since a different profile resolves it differently. Carries the same `title:`
+`explanation` language of the repo's language policy instead (`fr` for this workspace), never
+hardcoded here since each repo declares its own. Carries the same `title:`
 frontmatter as `docs/explanation/`/`docs/reference/` files (see `doc-hygiene.md`) — the literal ADR
 number, e.g. `title: "0003"`:
 
