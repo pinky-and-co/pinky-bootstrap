@@ -9,7 +9,6 @@
 
 import difflib
 import filecmp
-import functools
 import hashlib
 import json
 import os
@@ -674,47 +673,16 @@ def _group_docs_identity(repo: Path, workspace_root: Path) -> SuiteIdentity:
     return SuiteIdentity.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
-@functools.lru_cache(maxsize=1)
-def engine_commit() -> str | None:
-    """The pinky-bootstrap commit being distributed, suffixed ``-dirty`` when its tree has changes.
-
-    Computed once per process: a distribution run commits into pinky-bootstrap itself on the way,
-    and every repo of that run must still record the commit it started from.
-
-    Returns:
-        The full commit sha, or None outside a git checkout (an installed wheel).
-    """
-    result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(SCRIPT_DIR),
-            "describe",
-            "--always",
-            "--dirty",
-            "--abbrev=40",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return (result.stdout.strip() or None) if result.returncode == 0 else None
-
-
 def render_docs_identity(identity: SuiteIdentity) -> str:
     """The ``scripts/hooks/docs_identity.json`` text distributed into one repo.
 
     Wraps ``SuiteIdentity.to_json()`` rather than extending it: ``to_json`` lives in
     ``hygiene/hooks/render_docs.py``, the generic engine shipped into every repo, which must stay
     free of routing concerns. ``engine_version`` is written HERE, by the distributor, and read back
-    by ``check_drift``. ``from_dict`` reads ``_FIELDS`` only, so the extra keys are invisible to the
-    commit-time hook that consumes this same file. ``engine_commit`` pins the exact source commit
-    distributed — ``engine_version`` alone does not move between releases.
+    by ``check_drift``. ``from_dict`` reads ``_FIELDS`` only, so the extra key is invisible to the
+    commit-time hook that consumes this same file.
     """
     payload: dict = {"engine_version": engine_version()}
-    commit = engine_commit()
-    if commit:
-        payload["engine_commit"] = commit
     payload.update(json.loads(identity.to_json()))
     return json.dumps(payload, indent=2) + "\n"
 
