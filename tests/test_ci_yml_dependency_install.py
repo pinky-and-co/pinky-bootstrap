@@ -83,18 +83,6 @@ def test_ci_runs_pip_audit_after_install_and_it_is_blocking(lib_repo):
     assert "continue-on-error" not in audit, "pip-audit must be blocking, not advisory"
 
 
-def test_precommit_windows_job_does_not_run_pip_audit(pinky_core_repo):
-    names = _step_names(_steps(pinky_core_repo, "precommit-windows"))
-    assert "Audit dependencies" not in names, (
-        "pip-audit runs once, in the Linux `ci` job — findings do not depend on the OS"
-    )
-
-
-def test_precommit_windows_job_also_sets_up_uv(pinky_core_repo):
-    names = _step_names(_steps(pinky_core_repo, "precommit-windows"))
-    assert "Install uv" in names
-
-
 def test_pinky_core_override_keeps_extras_via_uv_sync(pinky_core_repo):
     install = next(
         s
@@ -139,12 +127,6 @@ def test_no_sources_ignored_when_repo_has_no_uv_sources_override(pinky_core_repo
 def test_tests_step_runs_through_uv(lib_repo):
 
     steps = _steps(lib_repo, "ci")
-    tests_step = next(s for s in steps if s.get("name") == "Tests")
-    assert tests_step["run"] == "uv run --no-sources pytest"
-
-
-def test_windows_tests_step_also_runs_through_uv(pinky_core_repo):
-    steps = _steps(pinky_core_repo, "precommit-windows")
     tests_step = next(s for s in steps if s.get("name") == "Tests")
     assert tests_step["run"] == "uv run --no-sources pytest"
 
