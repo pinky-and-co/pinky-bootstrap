@@ -25,6 +25,7 @@ class _CortexSim:
     def __init__(self):
         self.calls: list[tuple[list[str], dict]] = []
         self.validate_stdout: dict[Path, str] = {}
+        self.validate_stderr: dict[Path, str] = {}
         self.validate_error: dict[Path, Exception] = {}
 
     def __call__(self, cmd, **kw):
@@ -34,7 +35,10 @@ class _CortexSim:
             if cwd in self.validate_error:
                 raise self.validate_error[cwd]
             return subprocess.CompletedProcess(
-                cmd, 0, stdout=self.validate_stdout.get(cwd, "")
+                cmd,
+                0,
+                stdout=self.validate_stdout.get(cwd, ""),
+                stderr=self.validate_stderr.get(cwd, ""),
             )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -201,13 +205,15 @@ def test_validate_entries_marks_error_and_unresolved_unavailable(env):
 
 
 def test_entry_line_shapes():
+    """Whole-line oracles : id nu (sans marketplace), marqueur compact, jamais de verdict
+    rassurant."""
     base = plugin_coco.CocoEntry(
         spec="pc-a@mp",
         install_path=Path("/cache/pc-a"),
         description="Git workflow",
         issues=[],
     )
-    assert plugin_coco.entry_line(base) == "pc-a@mp — Git workflow"
+    assert plugin_coco.entry_line(base, width=80) == "pc-a — Git workflow"
     assert (
         plugin_coco.entry_line(
             plugin_coco.CocoEntry(
@@ -215,31 +221,62 @@ def test_entry_line_shapes():
                 Path("/cache/pc-a"),
                 "Git workflow",
                 ["- [mcp] .mcp.json: no type"],
-            )
+            ),
+            width=80,
         )
-        == "pc-a@mp — Git workflow  ⚠ - [mcp] .mcp.json: no type"
+        == "pc-a — Git workflow  ⚠ 1 validation issue"
     )
     assert (
         plugin_coco.entry_line(
-            plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "Git workflow", None)
+            plugin_coco.CocoEntry(
+                "pc-a@mp",
+                Path("/cache/pc-a"),
+                "Git workflow",
+                ["- [mcp] .mcp.json: no type", "- [hooks] hooks.json: unknown event"],
+            ),
+            width=80,
         )
-        == "pc-a@mp — Git workflow  ⚠ validation unavailable"
+        == "pc-a — Git workflow  ⚠ 2 validation issues"
     )
     assert (
-        plugin_coco.entry_line(plugin_coco.CocoEntry("pc-a@mp", None, "", None))
-        == "pc-a@mp  ⚠ unresolved — no installed_plugins.json entry"
+        plugin_coco.entry_line(
+            plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "Git workflow", None),
+            width=80,
+        )
+        == "pc-a — Git workflow  ⚠ validation unavailable"
+    )
+    assert (
+        plugin_coco.entry_line(
+            plugin_coco.CocoEntry("pc-a@mp", None, "", None), width=80
+        )
+        == "pc-a  ⚠ unresolved — no installed_plugins.json entry"
+    )
+
+
+def test_entry_line_truncates_the_description_to_the_width():
+    entry = plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "A" * 60, None)
+
+    # budget : 60 - 4 (id) - 26 (marqueur) - 8 (marge) = 22 colonnes de description
+    assert plugin_coco.entry_line(entry, width=60) == (
+        f"pc-a — {'A' * 21}…  ⚠ validation unavailable"
     )
 
 
 def test_render_plan_whole_string(env):
     entries = [
-        plugin_coco.CocoEntry("pc-b@mp", env.home / "cache" / "pc-b-mp", "Kanban", []),
+        plugin_coco.CocoEntry(
+            "pc-b@mp",
+            env.home / "cache" / "pc-b-mp",
+            "Kanban",
+            ["- [hooks] hooks.json: unknown event 'UserPromptExpansion'"],
+        ),
         plugin_coco.CocoEntry("pc-inline@mp", None, "", None),
     ]
 
     assert plugin_coco.render_plan(entries, env.repo) == (
         f"cortex in {env.repo}:\n"
         f"  pc-b@mp → {env.home / 'cache' / 'pc-b-mp'}\n"
+        "      - [hooks] hooks.json: unknown event 'UserPromptExpansion'\n"
         "  pc-inline@mp — unresolved (no installed_plugins.json entry)"
     )
 
@@ -264,13 +301,16 @@ def test_cortex_env_adds_project_dir_and_keeps_the_rest():
 # ── run(): picker → plan → confirm → launch, mocked cortex ─────────────────────────────────
 
 
-def test_run_launches_cortex_with_each_dir_and_the_project_env(env, monkeypatch):
+def test_run_launches_cortex_with_each_dir_and_the_project_env(
+    env, monkeypatch, capsys
+):
     pc_a = _install(env, "pc-a@mp", "Audit")
     pc_b = _install(env, "pc-b@mp", "Kanban")
     _enable(env.home, "pc-a@mp")
     _enable(env.ws / "grp", "pc-b@mp")
     env.sim.validate_stdout[pc_a] = "Plugin 'pc-a' has 0 validation issues.\n"
-    env.sim.validate_stdout[pc_b] = (
+    # cortex mesuré : le rapport d'erreurs part sur stderr (exit 1), le propre sur stdout
+    env.sim.validate_stderr[pc_b] = (
         "Plugin 'pc-b' has 1 validation issue(s):\n- [hooks] hooks.json: unknown event\n"
     )
     _canned(monkeypatch, ["y"])
@@ -278,6 +318,11 @@ def test_run_launches_cortex_with_each_dir_and_the_project_env(env, monkeypatch)
     code = plugin_coco.run(env.ws, start_dir=env.repo, picker=_keep_all)
 
     assert code == 0
+    # le plan porte la ligne d'erreur brute, indentée sous son plugin
+    assert (
+        "      - [hooks] hooks.json: unknown event"
+        in capsys.readouterr().out.splitlines()
+    )
     [launch] = env.sim.launch_calls()
     cmd, kw = launch
     assert cmd == [

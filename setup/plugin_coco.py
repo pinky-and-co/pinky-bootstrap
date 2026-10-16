@@ -174,7 +174,8 @@ def parse_validation(output: str) -> list[str] | None:
     clean verdict.
 
     Args:
-        output: the command's stdout.
+        output: the command's whole output — cortex prints the report to stderr when it finds
+            issues and to stdout when the plugin is valid, so the caller concatenates both.
 
     Returns:
         The raw issue lines, `[]` when clean, `None` when the shape is unexpected.
@@ -189,7 +190,8 @@ def parse_validation(output: str) -> list[str] | None:
 
 def _validate_one(install_path: Path, timeout: float) -> list[str] | None:
     """`cortex plugin validate` in the plugin's own directory — the form without an argument,
-    the only one cortex actually checks."""
+    the only one cortex actually checks. Both streams are parsed: cortex writes its report to
+    stderr when it finds issues, to stdout when the plugin is valid."""
     try:
         proc = subprocess.run(
             ["cortex", "plugin", "validate"],
@@ -201,7 +203,7 @@ def _validate_one(install_path: Path, timeout: float) -> list[str] | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return parse_validation(proc.stdout)
+    return parse_validation(f"{proc.stdout}{proc.stderr}")
 
 
 def validate_entries(
@@ -238,20 +240,48 @@ def validate_entries(
     return results
 
 
-def entry_line(entry: CocoEntry) -> str:
-    """One checkbox line: the plugin id, its manifest description, then cortex's validation
-    verdict. A warning is shown raw; an unavailable validation says so — never a reassuring
-    verdict where the validator did not answer."""
+_LINE_MARGIN = 8  # pointeur + case à cocher + suffixe « ✓ » de tui, plus la marge
+
+
+def _fit(text: str, budget: int) -> str:
+    """`text` cut to `budget` columns with an ellipsis — a checkbox row is one line, anything
+    longer wraps and breaks the whole screen's layout."""
+    if len(text) <= budget:
+        return text
+    if budget < 4:
+        return ""
+    return text[: budget - 1].rstrip() + "…"
+
+
+def entry_line(entry: CocoEntry, *, width: int | None = None) -> str:
+    """One checkbox line, fitted to the terminal: the bare plugin id, its manifest description
+    (truncated when long), then a compact validation marker. The raw issue lines live in the
+    plan instead — on the row itself they made the screen unreadable. Never a reassuring
+    verdict where the validator did not answer.
+
+    Args:
+        entry: the resolved, validated entry.
+        width: the terminal width in columns (default: the real terminal's).
+
+    Returns:
+        The whole line, marker included.
+    """
+    columns = width or shutil.get_terminal_size().columns
+    bare = entry.spec.partition("@")[0]
     if entry.install_path is None:
-        return f"{entry.spec}  ⚠ unresolved — no installed_plugins.json entry"
-    line = (
-        entry.spec if not entry.description else f"{entry.spec} — {entry.description}"
-    )
-    if entry.issues:
-        return f"{line}  ⚠ {' · '.join(entry.issues)}"
+        return f"{bare}  ⚠ unresolved — no installed_plugins.json entry"
     if entry.issues is None:
-        return f"{line}  ⚠ validation unavailable"
-    return line
+        marker = "  ⚠ validation unavailable"
+    elif entry.issues:
+        noun = "issue" if len(entry.issues) == 1 else "issues"
+        marker = f"  ⚠ {len(entry.issues)} validation {noun}"
+    else:
+        marker = ""
+    description = _fit(
+        entry.description, columns - len(bare) - len(marker) - _LINE_MARGIN
+    )
+    line = f"{bare} — {description}" if description else bare
+    return line + marker
 
 
 def pick_entries(
@@ -284,14 +314,15 @@ def pick_entries(
 
 def render_plan(selected: Sequence[CocoEntry], project_dir: Path) -> str:
     """The plan's exact text: one `plugin → directory` line per selected entry, an unresolved
-    entry saying so instead.
+    entry saying so instead, and the raw validation issue lines indented under their plugin —
+    the full detail the checkbox row only counts.
 
     Args:
         selected: the entries left checked.
         project_dir: the directory cortex will run in.
 
     Returns:
-        The whole plan, one line per entry under a header naming the project.
+        The whole plan, one line per entry (plus its issues) under a header naming the project.
     """
     lines = [f"cortex in {project_dir}:"]
     for entry in selected:
@@ -301,6 +332,8 @@ def render_plan(selected: Sequence[CocoEntry], project_dir: Path) -> str:
             )
         else:
             lines.append(f"  {entry.spec} → {entry.install_path}")
+            for issue in entry.issues or []:
+                lines.append(f"      {issue}")
     return "\n".join(lines)
 
 
