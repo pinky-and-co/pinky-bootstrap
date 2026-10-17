@@ -314,3 +314,31 @@ def test_runner_leaves_the_environment_untouched_without_a_session_id(tmp_path):
 @pytest.mark.parametrize("bad", ["", None, 7, ["x"]])
 def test_runner_ignores_a_session_id_that_is_not_a_non_empty_string(tmp_path, bad):
     assert _child_session_id(tmp_path, {"session_id": bad}) == "absent"
+
+
+def _path_grammar():
+    return json.dumps(
+        {"forms": [{"match": [{"re": r"/[\w./-]+"}], "emit": ["--repo", "{0}"]}]}
+    )
+
+
+def test_at_prefixed_relative_path_is_resolved_against_cwd(tmp_path):
+    cwd = tmp_path / "a" / "b"
+    cwd.mkdir(parents=True)
+    event = json.dumps({"command_args": "@../repo/", "cwd": str(cwd)})
+    out = json.loads(_run(tmp_path, "", grammar=_path_grammar(), raw_stdin=event))
+    assert out["reason"] == f"--repo {tmp_path / 'a' / 'repo'}"
+
+
+def test_at_prefixed_absolute_path_loses_trailing_slash(tmp_path):
+    out = json.loads(_run(tmp_path, "@/x/y/", grammar=_path_grammar()))
+    assert out["reason"] == "--repo /x/y"
+
+
+@pytest.mark.parametrize("args", ["@", "@~/repo"])
+def test_bare_at_and_tilde_words_stay_unresolved(tmp_path, args):
+    assert _run(tmp_path, args, grammar=_path_grammar()) == ""
+
+
+def test_word_without_at_is_unchanged(tmp_path):
+    assert _run(tmp_path, "../repo", grammar=_path_grammar()) == ""
