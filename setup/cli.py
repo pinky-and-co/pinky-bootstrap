@@ -152,6 +152,13 @@ def main(argv: list[str] | None = None) -> None:
         "(`pinky claude-plugin list --who`)",
     )
     parser.add_argument(
+        "--plugins-coco",
+        action="store_true",
+        help="launch `cortex` (Snowflake Cortex Code) with the plugins Claude Code has active "
+        "in the current directory — one --plugin-dir each, nothing written (`pinky "
+        "claude-plugin coco`)",
+    )
+    parser.add_argument(
         "--plugin-enable",
         nargs="*",
         default=None,
@@ -273,6 +280,21 @@ def main(argv: list[str] | None = None) -> None:
 
         print(plugin_provenance.format_origins(plugin_provenance.registry_origins()))
         return
+
+    if args.plugins_coco:
+        from . import plugin_coco
+
+        resolved = resolve_workspace_root(Path.cwd(), args.workspace)
+        print(
+            style.paint(
+                f"Workspace: {resolved.root} (via {resolved.via})",
+                style.DIM,
+                color=color,
+            )
+        )
+        raise SystemExit(
+            plugin_coco.run(resolved.root, yes=args.yes, dry_run=args.dry_run)
+        )
 
     if args.plugin_enable is not None or args.plugin_disable is not None:
         from . import plugin_curated, plugin_enable, plugin_reconcile

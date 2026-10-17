@@ -1,11 +1,11 @@
 """setup/plugin_scope.py — which directories a plugin gets enabled at.
 
-`enabledPlugins` resolves per directory, not always user-level — Claude Code reads it from the
-opened directory's own `.claude/settings.json`, never from a parent's. A plugin can be enabled at
-the workspace root, at a group directory (`pinky-lib/` — not itself a git repo, several repos
-nested under it), or at one specific repo, or several of these at once; a parent's enable reaches
-the folders below it only through pc-autodiscovery, which enables it in the directory a session
-opens.
+`enabledPlugins` resolves per git-repo-root, not always user-level — the project's own
+`.claude/settings.json` and every ancestor's (a group directory like `pinky-lib/`, the
+workspace root) all apply to a session opened in that repo, the nearest scope carrying the key
+winning, user scope last. A plugin can be enabled at the workspace root, at a group directory
+(`pinky-lib/` — not itself a git repo, several repos nested under it), or at one specific repo,
+or several of these at once.
 
 The wizard picks those targets; the enable itself is `claude plugin install --scope project` run
 from each target (`plugin_install.enable_at_project`), never a hand-rolled `enabledPlugins` merge —

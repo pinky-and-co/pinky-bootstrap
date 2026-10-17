@@ -25,6 +25,15 @@ from . import style
 
 
 @dataclass(frozen=True)
+class DetailLine:
+    """One secondary line under a checklist row, carrying its own style: the text, and an SGR
+    code from `style.py` mapped to a prompt_toolkit style string at render time."""
+
+    text: str
+    code: str
+
+
+@dataclass(frozen=True)
 class ChecklistItem:
     """One line of a checklist screen.
 
@@ -35,6 +44,9 @@ class ChecklistItem:
     focusable, never toggled. `key` is an opaque back-reference (a row's own index in the caller's
     own list) a caller reads off the result to map a final `checked` flag back to its row; `None`
     for a line with nothing to map back (every non-selectable line).
+
+    `details` puts extra lines under the row's own line, each carrying its own style — a row's
+    secondary prose (a description, a warning) instead of a single overlong line.
     """
 
     text: str
@@ -42,6 +54,36 @@ class ChecklistItem:
     depth: int = 0
     selectable: bool = True
     key: int | None = None
+    details: Sequence[DetailLine] = ()
+
+
+# questionary (2.1.1) renders a title that is a list of (style, text) tuples verbatim — any
+# other formatted-text object prints as its repr. prompt_toolkit's style grammar has no `dim`,
+# so the dim look is bright black; the mapping covers the codes our callers pass.
+_QUESTIONARY_STYLES = {
+    style.DIM: "fg:ansibrightblack",
+    style.YELLOW: "fg:ansiyellow",
+}
+
+
+def _choice_title(item: ChecklistItem, *, color: bool) -> "str | list[tuple[str, str]]":
+    """The choice's whole title: the row's own line, plus one indented line per detail, styled
+    when color is on — a plain multi-line string otherwise, the same shape every other title
+    takes under `NO_COLOR`. A row with details loses questionary's own pointer styling (the
+    checkbox glyph and the toggle are unaffected), which is why `details` stays opt-in."""
+    title = _title(item)
+    if not item.details:
+        return title
+    indent = "  " * (item.depth + 2)
+    if not color:
+        return title + "".join(f"\n{indent}{d.text}" for d in item.details)
+    return [
+        ("", title),
+        *(
+            (_QUESTIONARY_STYLES.get(d.code, ""), f"\n{indent}{d.text}")
+            for d in item.details
+        ),
+    ]
 
 
 ACTIVE_SUFFIX = " ✓"
@@ -91,9 +133,11 @@ def _initial_choice(items: Sequence[ChecklistItem]) -> int | None:
     )
 
 
-def _choice(index: int, item: ChecklistItem) -> questionary.Choice:
+def _choice(
+    index: int, item: ChecklistItem, *, color: bool = False
+) -> questionary.Choice:
     return questionary.Choice(
-        title=_title(item),
+        title=_choice_title(item, color=color),
         value=index,
         checked=item.checked,
         # A bool disables without the " (reason)" suffix a string adds; the stub only says str.
@@ -111,7 +155,7 @@ def run_checklist(
     Ctrl-C raises `KeyboardInterrupt` (`unsafe_ask`, where `.ask()` would swallow it into `None`),
     so it reaches `cli_pinky`'s handler: one-line message, exit 130, same as an `input()` prompt."""
     use_color = style.use_color() if color is None else color
-    choices = [_choice(i, item) for i, item in enumerate(items)]
+    choices = [_choice(i, item, color=use_color) for i, item in enumerate(items)]
     start = _initial_choice(items)
     answer = questionary.checkbox(
         title,

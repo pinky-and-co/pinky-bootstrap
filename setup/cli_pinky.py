@@ -235,6 +235,15 @@ def cmd_claude_plugin(args: argparse.Namespace) -> None:
         setup_main(argv)
     elif args.verb == "list":
         setup_main(["--plugins-who"] if args.who else ["--plugins-reconcile"])
+    elif args.verb == "coco":
+        argv = ["--plugins-coco"]
+        if args.workspace:
+            argv += ["--workspace", args.workspace]
+        if args.yes:
+            argv.append("--yes")
+        if args.dry_run:
+            argv.append("--dry-run")
+        setup_main(argv)
     elif args.verb in ("enable", "disable"):
         argv = [f"--plugin-{args.verb}", *args.plugins]
         if args.marketplace:
@@ -326,6 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
             "pinky claude-plugin rules  # distribute the plugins' rules into the workspace",
             "pinky claude-plugin list  # where each plugin is enabled",
             "pinky claude-plugin list --who  # which session ran each install",
+            "pinky claude-plugin coco  # launch cortex with this directory's plugins",
         ],
     )
     p = _add(
@@ -470,6 +480,43 @@ def build_parser() -> argparse.ArgumentParser:
         "interactively place each plugin (user / project / uninstall / skip), purging the enables "
         "that do not match",
         ["pinky claude-plugin reconcile  # one question per plugin"],
+    )
+    p.set_defaults(func=cmd_claude_plugin)
+    p = _add(
+        verbs,
+        "coco",
+        "launch `cortex` (Snowflake Cortex Code) with this directory's Claude Code plugins — "
+        "same environment in both tools",
+        [
+            "pinky claude-plugin coco  # the active plugins, prechecked, then cortex",
+            "pinky claude-plugin coco --yes  # no question: every active plugin, launch",
+            "pinky claude-plugin coco --dry-run  # the command, without launching cortex",
+        ],
+        extra=(
+            "limits, measured against cortex 1.2.14: CLI only (not the VS Code extension) · "
+            "cortex must be launched by this command — on its own it loads no plugin · "
+            "model-less commands (UserPromptExpansion hooks) go through the model · hook "
+            "events cortex does not know stay inert. Writes nothing: no settings, no marker "
+            "in the plugins."
+        ),
+    )
+    p.add_argument(
+        "--workspace",
+        default=None,
+        metavar="PATH",
+        help="the workspace to act on (default: PINKY_WORKSPACE_ROOT, or the nearest "
+        "*.code-workspace marker)",
+    )
+    p.add_argument(
+        "--yes",
+        "-y",
+        action="store_true",
+        help="launch without the checkbox or the [y/N] (required in a non-interactive shell)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the plan and the command, never launch cortex",
     )
     p.set_defaults(func=cmd_claude_plugin)
     for verb in ("enable", "disable"):
