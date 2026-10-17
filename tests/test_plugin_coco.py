@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from setup import cli, plugin_coco, plugin_install, plugin_reconcile
+from setup import cli, plugin_coco, plugin_install, plugin_reconcile, style, tui
 from setup.common import WorkspaceOrigin
 
 
@@ -204,62 +204,75 @@ def test_validate_entries_marks_error_and_unresolved_unavailable(env):
 # ── the rendered surfaces: whole-string oracles ────────────────────────────────────────────
 
 
-def test_entry_line_shapes():
-    """Whole-line oracles : id nu (sans marketplace), marqueur compact, jamais de verdict
-    rassurant."""
+def test_entry_details_shapes():
+    """Oracles complet : description en DIM, verdict en YELLOW, une ligne chacun — jamais de
+    verdict rassurant, et l'entrée non résolue le dit à la place des deux."""
     base = plugin_coco.CocoEntry(
         spec="pc-a@mp",
         install_path=Path("/cache/pc-a"),
         description="Git workflow",
         issues=[],
     )
-    assert plugin_coco.entry_line(base, width=80) == "pc-a — Git workflow"
-    assert (
-        plugin_coco.entry_line(
-            plugin_coco.CocoEntry(
-                "pc-a@mp",
-                Path("/cache/pc-a"),
-                "Git workflow",
-                ["- [mcp] .mcp.json: no type"],
-            ),
-            width=80,
-        )
-        == "pc-a — Git workflow  ⚠ 1 validation issue"
+    assert plugin_coco.entry_details(base) == (
+        tui.DetailLine("Git workflow", style.DIM),
     )
-    assert (
-        plugin_coco.entry_line(
-            plugin_coco.CocoEntry(
-                "pc-a@mp",
-                Path("/cache/pc-a"),
-                "Git workflow",
-                ["- [mcp] .mcp.json: no type", "- [hooks] hooks.json: unknown event"],
-            ),
-            width=80,
+    assert plugin_coco.entry_details(
+        plugin_coco.CocoEntry(
+            "pc-a@mp",
+            Path("/cache/pc-a"),
+            "Git workflow",
+            ["- [mcp] .mcp.json: no type"],
         )
-        == "pc-a — Git workflow  ⚠ 2 validation issues"
+    ) == (
+        tui.DetailLine("Git workflow", style.DIM),
+        tui.DetailLine("⚠ 1 validation issue", style.YELLOW),
     )
-    assert (
-        plugin_coco.entry_line(
-            plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "Git workflow", None),
-            width=80,
+    assert plugin_coco.entry_details(
+        plugin_coco.CocoEntry(
+            "pc-a@mp",
+            Path("/cache/pc-a"),
+            "Git workflow",
+            ["- [mcp] .mcp.json: no type", "- [hooks] hooks.json: unknown event"],
         )
-        == "pc-a — Git workflow  ⚠ validation unavailable"
+    ) == (
+        tui.DetailLine("Git workflow", style.DIM),
+        tui.DetailLine("⚠ 2 validation issues", style.YELLOW),
     )
-    assert (
-        plugin_coco.entry_line(
-            plugin_coco.CocoEntry("pc-a@mp", None, "", None), width=80
-        )
-        == "pc-a  ⚠ unresolved — no installed_plugins.json entry"
+    assert plugin_coco.entry_details(
+        plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "Git workflow", None)
+    ) == (
+        tui.DetailLine("Git workflow", style.DIM),
+        tui.DetailLine("⚠ validation unavailable", style.YELLOW),
+    )
+    assert plugin_coco.entry_details(
+        plugin_coco.CocoEntry("pc-a@mp", None, "", None)
+    ) == (
+        tui.DetailLine("⚠ unresolved — no installed_plugins.json entry", style.YELLOW),
     )
 
 
-def test_entry_line_truncates_the_description_to_the_width():
-    entry = plugin_coco.CocoEntry("pc-a@mp", Path("/cache/pc-a"), "A" * 60, None)
-
-    # budget : 60 - 4 (id) - 26 (marqueur) - 8 (marge) = 22 colonnes de description
-    assert plugin_coco.entry_line(entry, width=60) == (
-        f"pc-a — {'A' * 21}…  ⚠ validation unavailable"
+def test_checklist_details_render_one_indented_line_each():
+    """Oracle complet : la ligne propre du row, puis chaque détail indenté sur sa ligne — en
+    plain-text sous NO_COLOR, en liste de tuples (style, texte) que questionary rend tel quel
+    quand la couleur est ouverte."""
+    item = tui.ChecklistItem(
+        "pc-a",
+        checked=True,
+        key=0,
+        details=(
+            tui.DetailLine("Git workflow", style.DIM),
+            tui.DetailLine("⚠ 1 validation issue", style.YELLOW),
+        ),
     )
+
+    assert tui._choice_title(item, color=False) == (
+        "pc-a ✓\n    Git workflow\n    ⚠ 1 validation issue"
+    )
+    assert tui._choice_title(item, color=True) == [
+        ("", "pc-a ✓"),
+        ("fg:ansibrightblack", "\n    Git workflow"),
+        ("fg:ansiyellow", "\n    ⚠ 1 validation issue"),
+    ]
 
 
 def test_render_plan_whole_string(env):

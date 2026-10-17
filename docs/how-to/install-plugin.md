@@ -1,5 +1,5 @@
 # How to install a plugin at the right scope
-*Update date : 2026-10-17 01:44*
+*Update date : 2026-10-17 02:04*
 
 ```bash
 pinky claude-plugin install [<plugin-id> ...] [--marketplace <marketplace>] [--scope <path>] [--list <path>] [--workspace <path>] [--yes] [--dry-run] [--force]
@@ -101,10 +101,11 @@ pinky claude-plugin coco [--yes] [--dry-run] [--workspace <path>]
 
 Run it from the repo you want to work on. It computes the plugins Claude Code has active there —
 the same scope chain: the repo, each ancestor (group, workspace root), user last, the nearest
-scope carrying the key winning — then shows one prechecked checkbox line per plugin: its
-`plugin.json` description truncated to the terminal width, plus a compact `plugin validate`
-verdict marker (an issue count, or "validation unavailable"; never a reassuring "OK"). The raw
-issue lines are indented in the plan below. The plan (plugin → directory, unresolved `@inline`
+scope carrying the key winning — then shows one prechecked checkbox row per plugin: the bare id
+on the row's own line, its `plugin.json` description (dim) and the `plugin validate` verdict
+(yellow — an issue count, or "validation unavailable"; never a reassuring "OK") on indented
+lines below it. The raw issue lines are indented in the plan. The plan (plugin → directory,
+unresolved `@inline`
 entries listed as such) asks `[y/N]`, then launches `cortex` with one `--plugin-dir`
 per plugin and `CLAUDE_PROJECT_DIR` set to the repo root. Writes nothing — no settings, no
 marker in the plugins. `--yes` skips both questions (and the validation pass, which only feeds

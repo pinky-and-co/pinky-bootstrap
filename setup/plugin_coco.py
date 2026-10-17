@@ -240,48 +240,35 @@ def validate_entries(
     return results
 
 
-_LINE_MARGIN = 8  # pointeur + case à cocher + suffixe « ✓ » de tui, plus la marge
-
-
-def _fit(text: str, budget: int) -> str:
-    """`text` cut to `budget` columns with an ellipsis — a checkbox row is one line, anything
-    longer wraps and breaks the whole screen's layout."""
-    if len(text) <= budget:
-        return text
-    if budget < 4:
-        return ""
-    return text[: budget - 1].rstrip() + "…"
-
-
-def entry_line(entry: CocoEntry, *, width: int | None = None) -> str:
-    """One checkbox line, fitted to the terminal: the bare plugin id, its manifest description
-    (truncated when long), then a compact validation marker. The raw issue lines live in the
-    plan instead — on the row itself they made the screen unreadable. Never a reassuring
-    verdict where the validator did not answer.
+def entry_details(entry: CocoEntry) -> Sequence[tui.DetailLine]:
+    """The lines shown under the plugin's id on its checkbox row: its manifest description
+    (dim), then cortex's verdict (yellow) — never a reassuring verdict where the validator did
+    not answer. An unresolved entry says so instead of either; the raw issue lines stay in the
+    plan.
 
     Args:
         entry: the resolved, validated entry.
-        width: the terminal width in columns (default: the real terminal's).
 
     Returns:
-        The whole line, marker included.
+        The detail lines, in display order; empty for a clean, description-less, resolved plugin.
     """
-    columns = width or shutil.get_terminal_size().columns
-    bare = entry.spec.partition("@")[0]
     if entry.install_path is None:
-        return f"{bare}  ⚠ unresolved — no installed_plugins.json entry"
+        return (
+            tui.DetailLine(
+                "⚠ unresolved — no installed_plugins.json entry", style.YELLOW
+            ),
+        )
+    details: list[tui.DetailLine] = []
+    if entry.description:
+        details.append(tui.DetailLine(entry.description, style.DIM))
     if entry.issues is None:
-        marker = "  ⚠ validation unavailable"
+        details.append(tui.DetailLine("⚠ validation unavailable", style.YELLOW))
     elif entry.issues:
         noun = "issue" if len(entry.issues) == 1 else "issues"
-        marker = f"  ⚠ {len(entry.issues)} validation {noun}"
-    else:
-        marker = ""
-    description = _fit(
-        entry.description, columns - len(bare) - len(marker) - _LINE_MARGIN
-    )
-    line = f"{bare} — {description}" if description else bare
-    return line + marker
+        details.append(
+            tui.DetailLine(f"⚠ {len(entry.issues)} validation {noun}", style.YELLOW)
+        )
+    return tuple(details)
 
 
 def pick_entries(
@@ -289,8 +276,9 @@ def pick_entries(
     *,
     picker: Picker | None = None,
 ) -> list[CocoEntry]:
-    """The all-prechecked checkbox over every entry — one plugin per line, nothing ever
-    unchecked by the command itself.
+    """The all-prechecked checkbox over every entry — one plugin per row (its bare id), its
+    description and verdict on indented lines below, nothing ever unchecked by the command
+    itself.
 
     Args:
         entries: the resolved, validated entries.
@@ -305,7 +293,12 @@ def pick_entries(
     """
     picker = picker or tui.run_checklist
     items = [
-        tui.ChecklistItem(entry_line(entry), checked=True, key=index)
+        tui.ChecklistItem(
+            entry.spec.partition("@")[0],
+            checked=True,
+            key=index,
+            details=entry_details(entry),
+        )
         for index, entry in enumerate(entries)
     ]
     result = picker(items, title="plugins to load into cortex")

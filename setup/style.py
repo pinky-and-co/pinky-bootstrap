@@ -16,6 +16,7 @@ from typing import TextIO
 
 RESET = "\x1b[0m"
 GREEN = "32"
+YELLOW = "33"
 RED_BOLD = "1;31"
 BOLD = "1"
 DIM = "2"
