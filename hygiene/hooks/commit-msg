@@ -9,7 +9,7 @@
 #
 # Special case: 💾 save: <description> [skip ci]
 #
-# Distributed by `pinky distribute` from hygiene/hooks/ — do not edit in place;
+# Distributed by `pinky repo distribute` from hygiene/hooks/ — do not edit in place;
 # edit the source there.
 # =============================================================================
 

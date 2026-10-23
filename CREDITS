@@ -18,7 +18,7 @@ ECC (affaan-m/ECC) — MIT
 Diátaxis (Daniele Procida)
   https://diataxis.fr
   The documentation folder structure (tutorials / how-to / reference / explanation) that
-  `pinky new-repo --scaffold` and the doc-hygiene rule assume — structure only; the
+  `pinky repo new --scaffold` and the doc-hygiene rule assume — structure only; the
   Diátaxis text is CC-BY-SA and is not reproduced.
 
 ================================================================================

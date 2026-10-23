@@ -103,18 +103,13 @@ def enable_at_project(
 
     This is also the download: `claude` fetches the files on the first install at any scope and
     shares them across scopes. Adds a `{scope: project, projectPath: target}` registry entry and the
-    settings write, and records it in the installer's ledger (`setup.state_file`).
+    settings write.
     """
     spec = _spec(plugin_id, marketplace)
     subprocess.run(
         ["claude", "plugin", "install", spec, "--scope", "project", "--yes"],
         check=True,
         cwd=target,
-    )
-    state_file.record_posed(
-        f"enabledPlugins:{spec}@{target}",
-        path=str(target / ".claude" / "settings.json"),
-        value="true",
     )
 
 
