@@ -63,7 +63,7 @@ oubliée :
   `.claude/settings.json`, posé par le wizard, pas à la main. `env.ENABLE_LSP_TOOL: "1"` est posé
   une seule fois, en user scope (`~/.claude/settings.json`).
 - `pyright-lsp@claude-plugins-official` désactivé aux 3 scopes projet + décision `uninstall`
-  enregistrée dans le ledger (`~/.claude/pinky-install-state.json`,
+  enregistrée dans le ledger (`~/.claude/pinky/install-state.json`,
   `reconcile:pyright-lsp@claude-plugins-official`) — un futur `reconcile --apply` ne le réactivera
   pas. Reliquat inoffensif : son entrée de registre `scope: local` (fichiers en cache, jamais dans
   un `enabledPlugins`) a refusé la désinstallation CLI (`claude plugin uninstall --scope local` →

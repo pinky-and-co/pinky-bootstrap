@@ -190,7 +190,9 @@ def test_cli_require_then_pending_roundtrips(tmp_path):
 
 def test_cli_require_default_surfaced_is_false_in_the_stored_file(tmp_path):
     _cli(tmp_path, "require", "goal", "/goal x")
-    queue_path = tmp_path / ".claude" / "pinky-plugin-scope" / "cli-sess.pending.json"
+    queue_path = (
+        tmp_path / ".claude" / "pinky" / "plugin-scope" / "cli-sess.pending.json"
+    )
     assert json.loads(queue_path.read_text()) == {
         "goal": {"message": "/goal x", "surfaced": False}
     }
@@ -198,7 +200,9 @@ def test_cli_require_default_surfaced_is_false_in_the_stored_file(tmp_path):
 
 def test_cli_require_surfaced_flag_is_stored_on_the_entry(tmp_path):
     _cli(tmp_path, "require", "goal", "/goal x", "--surfaced")
-    queue_path = tmp_path / ".claude" / "pinky-plugin-scope" / "cli-sess.pending.json"
+    queue_path = (
+        tmp_path / ".claude" / "pinky" / "plugin-scope" / "cli-sess.pending.json"
+    )
     assert json.loads(queue_path.read_text()) == {
         "goal": {"message": "/goal x", "surfaced": True}
     }

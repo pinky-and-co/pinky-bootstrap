@@ -27,7 +27,7 @@ from collections.abc import Callable
 import argcomplete
 from argcomplete.shell_integration import shellcode
 
-from . import plugin_catalog
+from . import plugin_catalog, user_state
 from .cli import main as setup_main
 from .common import AGENTIC_HARNESS_DIR, SCRIPT_DIR
 from .llm_drift import DRIFT_KINDS, SCAN_KINDS_DEFAULT
@@ -390,7 +390,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="PATH",
         help="with no plugin name: the user's curated-list override (default: "
-        "~/.claude/pinky-curated-plugins.toml)",
+        "~/.claude/pinky/curated-plugins.toml)",
     )
     p.add_argument(
         "--workspace",
@@ -563,7 +563,7 @@ def build_parser() -> argparse.ArgumentParser:
                 default=None,
                 metavar="PATH",
                 help="with no plugin name: the user's curated-list override (default: "
-                "~/.claude/pinky-curated-plugins.toml)",
+                "~/.claude/pinky/curated-plugins.toml)",
             )
         p.add_argument(
             "--workspace",
@@ -776,6 +776,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     argcomplete.autocomplete(parser)
     args = parser.parse_args(argv)
+    user_state.migrate()
     if args.command is None:
         parser.print_help()
         sys.exit(1)

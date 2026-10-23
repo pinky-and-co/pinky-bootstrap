@@ -11,7 +11,7 @@ targets pre-checked, and the plan is the same one `enable` prints. Several plugi
 share a single table and a single confirmation.
 
 **No plugin id at all** opens a checkbox list instead — every plugin the curated list names
-(`setup/data/curated_plugins.toml`, a `~/.claude/pinky-curated-plugins.toml` user file layered on
+(`setup/data/curated_plugins.toml`, a `~/.claude/pinky/curated-plugins.toml` user file layered on
 top, or `--list <path>`) plus every plugin already installed, the installed ones pre-checked. With
 nothing installed yet, the whole curated list starts checked (a fresh machine bootstraps with all
 of it by default). A whole-marketplace curated entry expands to the individual plugins it publishes
