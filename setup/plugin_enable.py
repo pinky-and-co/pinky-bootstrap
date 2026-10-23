@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from . import plugin_install, plugin_reconcile, rules, state_file, style, tui
+from . import plugin_install, plugin_reconcile, rules, style, tui
 from .plugin_reconcile import PluginState, _ScopeLabels
 
 USER_LABEL = "user"
@@ -425,11 +425,6 @@ def _disable_label(
     spec = f"{plugin_id}@{marketplace}" if marketplace else plugin_id
     if _registry_scope_at(state, target_dir) == "project":
         plugin_reconcile.uninstall_at_scope(spec, "project", target_dir)
-        state_file.record_posed(
-            f"enabledPlugins:{spec}@{settings}",
-            path=str(settings),
-            value="disabled",
-        )
     else:
         plugin_reconcile.pop_enable_key(settings, spec)
 

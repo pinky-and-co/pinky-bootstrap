@@ -427,11 +427,6 @@ def _pop_key(settings_file: Path, spec: str) -> bool:
     settings_file.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
-    state_file.record_posed(
-        f"enabledPlugins:{spec}@{settings_file}",
-        path=str(settings_file),
-        value="reconcile-removed",
-    )
     return True
 
 
@@ -504,11 +499,6 @@ def purge_other_enables(
             plugin_install.drop_user_scope(*_spec_parts(spec))
         elif target_dir in scope_by_dir:
             _uninstall_at_scope(spec, scope_by_dir[target_dir], target_dir)
-            state_file.record_posed(
-                f"enabledPlugins:{spec}@{settings}",
-                path=str(settings),
-                value="reconcile-removed",
-            )
         else:
             _pop_key(settings, spec)
 

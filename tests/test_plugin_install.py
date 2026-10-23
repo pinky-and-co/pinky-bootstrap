@@ -231,17 +231,15 @@ def test_enable_at_project_installs_from_the_target_dir(home, monkeypatch, tmp_p
     assert kw["check"] is True
 
 
-def test_enable_at_project_records_the_ledger_at_the_target(
+def test_enable_at_project_writes_no_enabled_plugins_key_to_the_ledger(
     home, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: None)
-    target = tmp_path / "pinky-core"
-    plugin_install.enable_at_project("pc-snow", target, "mp")
+    plugin_install.enable_at_project("pc-snow", tmp_path / "pinky-core", "mp")
 
-    raw = json.loads((home / "ledger.json").read_text())
-    entry = raw[f"enabledPlugins:pc-snow@mp@{target}"]
-    assert entry["path"] == str(target / ".claude" / "settings.json")
-    assert entry["value"] == "true"
+    ledger = home / "ledger.json"
+    raw = json.loads(ledger.read_text()) if ledger.exists() else {}
+    assert not [k for k in raw if k.startswith("enabledPlugins:")]
 
 
 def test_enable_at_project_without_marketplace_uses_bare_id(
