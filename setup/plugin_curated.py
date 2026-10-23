@@ -22,7 +22,7 @@ from . import plugin_catalog, plugin_reconcile, style, tui
 from .common import PACKAGE_DIR
 
 DEFAULT_CURATED_PATH = PACKAGE_DIR / "data" / "curated_plugins.toml"
-USER_CURATED_PATH = Path.home() / ".claude" / "pinky-curated-plugins.toml"
+USER_CURATED_PATH = Path.home() / ".claude" / "pinky" / "curated-plugins.toml"
 # A picker row standing in for a whole-marketplace entry this machine has never registered —
 # not a real plugin name, so `expand_entry` never produces one; only
 # `resolve_no_name_selection`'s own row-building and recognition ever touch this marker.

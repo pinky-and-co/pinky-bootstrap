@@ -53,7 +53,7 @@ forcé ne pouvait que répéter la demande.
   donc sans le goal prévu ; le garde-fou n'existe plus, la borne de tours limite l'écart.
 - `reload-plugins` garde son `deny` : sans rechargement, le travail suivant s'exécuterait sur un jeu de
   plugins périmé.
-- Un fichier d'état `~/.claude/pinky-plugin-scope/<session>.pending.json` contenant déjà une clé `goal`
+- Un fichier d'état `~/.claude/pinky/plugin-scope/<session>.pending.json` contenant déjà une clé `goal`
   passe désormais par la branche `ask` du gate, sans verrou.
 - Un seul scénario a été rejoué en conditions réelles (goal contradictoire simple) ; un cycle de card
   complet ne l'a pas été. Complète ADR-0004 §4 sans le remplacer.

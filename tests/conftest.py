@@ -28,19 +28,25 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 @pytest.fixture(autouse=True)
 def _isolate_installer_ledger(tmp_path, monkeypatch):
-    """No test may write the machine's real `~/.claude/pinky-install-state.json`.
+    """No test may touch the machine's real `~/.claude/pinky/` — ledger, curated list, scope state.
 
-    `state_file.STATE_FILE_PATH` is a module-level path resolved at import from `Path.home()` —
-    patching `Path.home` afterwards does not reach it, so every test that reaches `record_posed`
-    (via `enable_at_project`, `set_status_lines`, ...) would append tmp
-    paths to the real ledger. Redirect it here for the whole suite. A test that inspects the ledger
-    still monkeypatches `STATE_FILE_PATH` to its own location — the later setattr wins.
+    The three paths are module-level, resolved at import from `Path.home()`; patching
+    `Path.home` afterwards does not reach them. `cli.main` / `cli_pinky.main` also run
+    `user_state.migrate()`, which reads the legacy `pinky-*` siblings of each path (one level
+    above), so all three live under `tmp_path/.claude/pinky` and their legacy siblings land
+    under `tmp_path/.claude`. A test that inspects them still monkeypatches its own location —
+    the later setattr wins.
     """
+    import setup.plugin_curated as plugin_curated
     import setup.state_file as state_file
+    import setup.user_state as user_state
 
+    pinky_dir = tmp_path / ".claude" / "pinky"
+    monkeypatch.setattr(state_file, "STATE_FILE_PATH", pinky_dir / "install-state.json")
     monkeypatch.setattr(
-        state_file, "STATE_FILE_PATH", tmp_path / "pinky-install-state.json"
+        plugin_curated, "USER_CURATED_PATH", pinky_dir / "curated-plugins.toml"
     )
+    monkeypatch.setattr(user_state, "PLUGIN_SCOPE_DIR", pinky_dir / "plugin-scope")
 
 
 @pytest.fixture(autouse=True)

@@ -1,4 +1,5 @@
 # pinky-bootstrap — index
+*Update date : 2026-10-23 17:41*
 
 ## ADR
 
@@ -18,6 +19,10 @@
 - [setup-declarative-secrets.md](how-to/setup-declarative-secrets.md) — déclarer une clé résolue à la demande (`keys` de `settings.pinky.json`, trousseau classique)
 - [pinky-doctor.md](how-to/pinky-doctor.md) — vérifier les prérequis des plugins installés (binaires, Ollama, clés API) ; `--fix` propose les `brew install`
 - [distribute-to-plugin-repos.md](how-to/distribute-to-plugin-repos.md) — `pinky repo distribute` : plan + `[y/N]`, ce que reçoit chaque repo (hooks, CI, fichiers partagés, vendored), `--commit`, drift
+
+## Reference
+
+- [disposition-claude-dir.md](reference/disposition-claude-dir.md) — qui écrit quoi sous `~/.claude/` (CLI, plugins, Claude Code), et la règle de désinstallation qui en découle
 
 ## Explanation
 

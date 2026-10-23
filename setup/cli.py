@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import plugin_install, style
+from . import plugin_install, style, user_state
 from .common import WORKSPACE_ROOT, resolve_workspace_root
 from .precommit import new_repo, run_distribution
 from .product_scaffold import REPO_TYPES
@@ -189,7 +189,7 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         metavar="PATH",
         help="with --plugin/--plugin-enable and no name: the user's curated-list override "
-        "(default: ~/.claude/pinky-curated-plugins.toml)",
+        "(default: ~/.claude/pinky/curated-plugins.toml)",
     )
     parser.add_argument(
         "--workspace",
@@ -236,6 +236,7 @@ def main(argv: list[str] | None = None) -> None:
         "or the whole table without a code",
     )
     args = parser.parse_args(argv)
+    user_state.migrate()
     color = style.use_color()
 
     if args.doctor:

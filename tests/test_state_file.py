@@ -21,7 +21,7 @@ from setup.state_file import (
 
 @pytest.fixture(autouse=True)
 def isolated_state_file(tmp_path, monkeypatch):
-    """Every test gets its own state file — never the real `~/.claude/pinky-install-state.json`."""
+    """Every test gets its own state file — never the real `~/.claude/pinky/install-state.json`."""
     import setup.state_file as state_file_module
 
     monkeypatch.setattr(state_file_module, "STATE_FILE_PATH", tmp_path / "state.json")

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-STATE_FILE_PATH = Path.home() / ".claude" / "pinky-install-state.json"
+STATE_FILE_PATH = Path.home() / ".claude" / "pinky" / "install-state.json"
 
 
 class EntryStatus(StrEnum):
