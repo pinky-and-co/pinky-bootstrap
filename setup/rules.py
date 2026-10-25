@@ -232,11 +232,12 @@ def _distribute_sources(
         cdst = content_dir / name
         # Comparer le contenu plutôt que réécrire : la cible n'est pas versionnée, donc une
         # réécriture systématique changerait la mtime sans qu'aucun diff ne le justifie.
-        stub_same = dst.exists() and dst.read_text(encoding="utf-8") == stub
+        # En octets : une copie CRLF d'avant le contrat LF doit différer pour être réécrite.
+        stub_same = dst.exists() and dst.read_bytes() == stub.encode("utf-8")
         content_same = (
             not cdst.exists()
             if content is None
-            else cdst.exists() and cdst.read_text(encoding="utf-8") == content
+            else cdst.exists() and cdst.read_bytes() == content.encode("utf-8")
         )
         if stub_same and content_same:
             unchanged.append(name)
@@ -247,9 +248,9 @@ def _distribute_sources(
             # content file (lazy → eager) is removed by the mirror pass below.
             if content is not None and not content_same:
                 content_dir.mkdir(parents=True, exist_ok=True)
-                cdst.write_text(content, encoding="utf-8")
+                cdst.write_text(content, encoding="utf-8", newline="")
             if not stub_same:
-                dst.write_text(stub, encoding="utf-8")
+                dst.write_text(stub, encoding="utf-8", newline="")
 
     owned = set(sources) | sibling_owned
     lazy = {name for name, (_, content) in rendered.items() if content is not None}

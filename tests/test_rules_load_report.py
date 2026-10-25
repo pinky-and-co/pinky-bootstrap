@@ -14,6 +14,9 @@ rlr = importlib.util.module_from_spec(_spec)
 sys.modules["rules_load_report"] = rlr
 _spec.loader.exec_module(rlr)
 
+# Le tz de référence se pose avec `time.tzset()`, appel POSIX sans équivalent Windows.
+_tzset = pytest.mark.skipif(not hasattr(time, "tzset"), reason="time.tzset() est POSIX")
+
 RULES = "/w/.claude/rules"
 CONTENT = "/w/.claude/rules-content"
 
@@ -171,6 +174,7 @@ def test_scan_ignores_non_rule_reads_and_bad_lines(tmp_path):
     assert rlr.scan_transcript(f) == {}
 
 
+@_tzset
 def test_parse_bound_naive_is_local_time(monkeypatch):
     monkeypatch.setenv("TZ", "Europe/Paris")
     time.tzset()
@@ -215,6 +219,7 @@ def test_windows_follow_first_timestamp_of_main_and_subagents_follow_parent(
     ]
 
 
+@_tzset
 def test_local_time_after_bound_is_converted(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("TZ", "Europe/Paris")
     time.tzset()

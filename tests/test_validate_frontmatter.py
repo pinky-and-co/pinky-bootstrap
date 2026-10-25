@@ -273,6 +273,15 @@ class TestValidateFrontmatter(unittest.TestCase):
         report = self._validate(content=_skill() + "see [notes](references/notes.md)\n")
         self.assertTrue(any("UTF-8" in p.message for p in report))
 
+    def test_non_utf8_artefact_reports_one_clean_problem(self):
+        path = self.root / "plugins/pc-x/skills/foo/SKILL.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"---\nname: foo\n\xff\xfe\n---\n")
+        report = vf.validate_file(path, "skill")
+        findings = [p for p in report if "UTF-8" in p.message]
+        self.assertEqual(len(findings), 1)
+        self.assertIsNone(findings[0].line)
+
     def test_orphan_md_next_to_skill_fails(self):
         _write(self.root / "plugins/pc-x/skills/foo/notes.md", "orphan\n")
         report = self._validate()

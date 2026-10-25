@@ -69,6 +69,7 @@ ACCEPTED = [
         "BREAKING CHANGE: the region field is now required in every profile.",
         id="footer-without-bang",
     ),
+    pytest.param("✨ feat: ééé", id="three-codepoint-description"),
 ]
 
 
@@ -106,6 +107,9 @@ REJECTED = [
         "🐛 fix: handle missing region\n\nBREAKING-CHANGE: the region field is now required.",
         "malformed BREAKING CHANGE footer",
         id="footer-hyphen-form",
+    ),
+    pytest.param(
+        "✨ feat: éé", "invalid commit format", id="two-codepoint-description"
     ),
 ]
 
@@ -216,4 +220,36 @@ def test_unknown_emoji_and_unknown_type_lists_the_types(tmp_path):
     assert (
         "= help: types: feat fix docs style refactor move perf test revert build chore release"
         in result.stdout
+    )
+
+
+def test_crlf_message_file_is_read_without_the_carriage_returns(tmp_path):
+    """Oracle : un COMMIT_EDITMSG CRLF (éditeur Windows) sort exactement comme un LF — le ``\r``
+    n'est ni compté dans le soulignement ni recraché dans la ligne source."""
+    msg_file = tmp_path / "COMMIT_EDITMSG"
+    msg_file.write_bytes("✨ feat ab\r\n".encode("utf-8"))
+    result = subprocess.run(
+        [_resolve_bash(), str(HOOK), str(msg_file)],
+        capture_output=True,
+    )
+    assert result.returncode == 1
+    assert result.stdout.decode("utf-8") == (
+        f"{msg_file} (1)\n"
+        "\n"
+        "  COMMIT-MSG invalid commit format\n"
+        f"   --> {msg_file}:1:1\n"
+        "    |\n"
+        "  1 | ✨ feat ab\n"
+        "    | ^^^^^^^^^\n"
+        "    |\n"
+        "    = help: format: <emoji> <type>[!]: <description>\n"
+        "            examples:\n"
+        "              ✨ feat: add manifest variable resolution\n"
+        "              🐛 fix: handle missing warehouse field\n"
+        "              🔧 chore: add release workflow\n"
+        "              📝 docs: add plan command usage\n"
+        "              ♻️ refactor!: rename upload_packages signature\n"
+        "              💾 save: core/manifest.py in progress [skip ci]\n"
+        "\n"
+        "Found 1 error in 1 file.\n"
     )

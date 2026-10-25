@@ -295,20 +295,26 @@ def test_render_plan_whole_string(env):
 
 
 def test_cortex_command_repeats_plugin_dir():
-    assert plugin_coco.cortex_command([Path("/a"), Path("/b")]) == [
+    dirs = [Path("/a"), Path("/b")]
+    assert plugin_coco.cortex_command(dirs) == [
         "cortex",
         "--plugin-dir",
-        "/a",
+        str(dirs[0]),
         "--plugin-dir",
-        "/b",
+        str(dirs[1]),
     ]
     assert plugin_coco.cortex_command([]) == ["cortex"]
 
 
 def test_cortex_env_adds_project_dir_and_keeps_the_rest():
-    env = plugin_coco.cortex_env({"PATH": "/bin", "HOME": "/home"}, Path("/ws/repo"))
+    project = Path("/ws/repo")
+    env = plugin_coco.cortex_env({"PATH": "/bin", "HOME": "/home"}, project)
 
-    assert env == {"PATH": "/bin", "HOME": "/home", "CLAUDE_PROJECT_DIR": "/ws/repo"}
+    assert env == {
+        "PATH": "/bin",
+        "HOME": "/home",
+        "CLAUDE_PROJECT_DIR": str(project),
+    }
 
 
 # ── run(): picker → plan → confirm → launch, mocked cortex ─────────────────────────────────

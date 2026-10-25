@@ -909,7 +909,7 @@ def test_malformed_frontmatter_is_refused_not_copied_eagerly(source, tmp_path, t
     ],
 )
 def test_eager_rule_is_copied_verbatim_whatever_its_first_line(source, tmp_path, text):
-    (source / "plain.md").write_text(text, encoding="utf-8")
+    (source / "plain.md").write_text(text, encoding="utf-8", newline="")
     ws = tmp_path / "ws"
 
     rules_mod.distribute_rules(source, ws)
@@ -920,7 +920,7 @@ def test_eager_rule_is_copied_verbatim_whatever_its_first_line(source, tmp_path,
 
 def test_eager_rule_with_trailing_space_fences_is_copied_verbatim(source, tmp_path):
     text = "--- \t\npaths:\n  - x\n---  \n\nBody\n"
-    (source / "plain.md").write_text(text, encoding="utf-8")
+    (source / "plain.md").write_text(text, encoding="utf-8", newline="")
     ws = tmp_path / "ws"
 
     rules_mod.distribute_rules(source, ws)
