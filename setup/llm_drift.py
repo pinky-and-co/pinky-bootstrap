@@ -278,6 +278,8 @@ def python_files(repo: Path) -> list[Path]:
         ["git", "-C", str(repo), "ls-files", "-z", "*.py"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=False,
     ).stdout
     return [
@@ -578,7 +580,9 @@ def run(
             print(report)
             for scan in scans:
                 for path in scan.skipped:
-                    print(f"  skipped (does not parse): {path}", file=sys.stderr)
+                    print(
+                        f"  skipped (does not decode or parse): {path}", file=sys.stderr
+                    )
             return 1 if any(scan.skipped for scan in scans) else 0
         fixes = [
             fix_repo(repo, name, dry_run=dry_run)
@@ -592,7 +596,7 @@ def run(
         print(format_fix(fix, dry_run=dry_run, color=color))
         for path in fix.skipped:
             print(
-                f"  skipped (does not parse, or its program would change): {path}",
+                f"  skipped (does not decode or parse, or its program would change): {path}",
                 file=sys.stderr,
             )
     return 1 if any(fix.skipped for fix in fixes) else 0

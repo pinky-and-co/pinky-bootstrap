@@ -1,6 +1,7 @@
 """setup.llm_drift — drift kinds, the comments fixer, and the per-read token savings it reports."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,11 +25,11 @@ SRC = (
 STRIPPED = "import os  # noqa: F401\n\nx = 1\ny = 2\n"
 
 
-def _repo(tmp_path: Path, files: dict[str, str | bytes]) -> Path:
+def _repo(tmp_path: Path, files: dict[str | bytes, str | bytes]) -> Path:
     repo = tmp_path / "demo"
     repo.mkdir()
     for name, text in files.items():
-        target = repo / name
+        target = repo / (os.fsdecode(name) if isinstance(name, bytes) else name)
         if isinstance(text, bytes):
             target.write_bytes(text)
         else:
@@ -214,6 +215,49 @@ def test_scan_and_fix_skip_a_non_utf8_file(tmp_path):
     assert (repo / "binary.py").read_bytes() == b"x = 'caf\xe9'\n"
 
 
+def test_scan_and_fix_survive_a_non_ascii_filename_in_a_c_locale(tmp_path, monkeypatch):
+    """`python_files` decodes `git ls-files -z` with `text=True` — in a POSIX/C locale that
+    is ASCII, and a non-ASCII name (laid down in bytes) blew the listing up before any file
+    was read. With the decode pinned to that encoding, scan and fix still cover the file:
+    it is scanned and fixed, not skipped, and no `UnicodeDecodeError` escapes."""
+    repo = _repo(tmp_path, {b"caf\xc3\xa9.py": SRC})
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "ascii")
+    scan = llm_drift.scan_repo(repo, ["comments"])
+    assert scan.files == 1
+    assert scan.skipped == []
+    assert scan.findings[0].path == Path("café.py")
+    assert scan.findings[0].text == "# decided 2026-07-24"
+    fix = llm_drift.fix_repo(repo, "comments", dry_run=True, reformat=False)
+    assert fix.changed == [Path("café.py")]
+    assert fix.skipped == []
+
+
+def test_run_names_decoding_in_the_skip_of_a_non_utf8_file(tmp_path, capsys):
+    """A file no UTF-8 decoder accepts is not announced `does not parse` — the skip names
+    the decode too, so the diagnosis points at the bytes, not at the grammar."""
+    repo = _repo(tmp_path, {"binary.py": b"x = 'caf\xe9'\n"})
+    rc = llm_drift.run("scan", [repo], ["comments"], dry_run=False, as_json=False)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.err == "  skipped (does not decode or parse): binary.py\n"
+
+
+def test_fix_skips_a_file_whose_strip_would_change_the_program(tmp_path, capsys):
+    """The `ValueError` arm of `_UNREADABLE`: a form feed inside a docstring splits the
+    file earlier for `str.splitlines` than for the tokenizer, the comment drop lands inside
+    the string, and `strip_comments` refuses — the file is skipped untouched, stderr named."""
+    repo = _repo(tmp_path, {"mod.py": 'x = """a\x0cQ\x0cb"""\n# why\n'})
+    rc = llm_drift.run("fix", [repo], ["comments"], dry_run=False, as_json=False)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.err == (
+        "  skipped (does not decode or parse, or its program would change): mod.py\n"
+    )
+    assert (repo / "mod.py").read_text(
+        encoding="utf-8"
+    ) == 'x = """a\x0cQ\x0cb"""\n# why\n'
+
+
 def test_fix_writes_lf_and_counts_a_preexisting_crlf_file_as_drift(tmp_path):
     """Whole-bytes oracle: the fixer's write carries no end-of-line translation, so a fixed
     file is LF on disk on any platform; carriage returns are drift themselves — a CRLF file
@@ -283,5 +327,5 @@ def test_run_reports_skipped_files_on_stderr_not_in_the_report(tmp_path, capsys)
     rc = llm_drift.run("scan", [repo], ["comments"], dry_run=False, as_json=False)
     captured = capsys.readouterr()
     assert rc == 1
-    assert captured.err == "  skipped (does not parse): bad.py\n"
+    assert captured.err == "  skipped (does not decode or parse): bad.py\n"
     assert captured.out.endswith("  8  # d\n\n  comments 6\n")
