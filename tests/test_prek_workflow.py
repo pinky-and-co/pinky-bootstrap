@@ -27,6 +27,12 @@ import pytest
 
 import yaml
 
+# Oracles de logique CI rendue pour des runners Linux : la simulation elle-même (bash, `jq`,
+# chemins POSIX) ne prouve rien sous Windows — la CI Linux/macOS porte ces contrats.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="simulation bash/jq POSIX"
+)
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from setup import precommit as precommit_mod  # noqa: E402
 
