@@ -200,6 +200,20 @@ def test_fix_rewrites_the_file_and_skips_what_does_not_parse(tmp_path):
     assert fix.skipped == [Path("bad.py")]
 
 
+def test_scan_and_fix_skip_a_non_utf8_file(tmp_path):
+    """Bytes no UTF-8 decoder accepts: `read_text` raises `UnicodeDecodeError`, caught like a
+    syntax error — both paths list the file `skipped`, leave it byte-identical, and the
+    readable file beside it is still scanned and fixed."""
+    repo = _repo(tmp_path, {"mod.py": SRC, "binary.py": b"x = 'caf\xe9'\n"})
+    scan = llm_drift.scan_repo(repo, ["comments"])
+    assert scan.skipped == [Path("binary.py")]
+    assert scan.files == 1
+    fix = llm_drift.fix_repo(repo, "comments", dry_run=False, reformat=False)
+    assert fix.skipped == [Path("binary.py")]
+    assert fix.changed == [Path("mod.py")]
+    assert (repo / "binary.py").read_bytes() == b"x = 'caf\xe9'\n"
+
+
 def test_fix_writes_lf_and_counts_a_preexisting_crlf_file_as_drift(tmp_path):
     """Whole-bytes oracle: the fixer's write carries no end-of-line translation, so a fixed
     file is LF on disk on any platform; carriage returns are drift themselves — a CRLF file
