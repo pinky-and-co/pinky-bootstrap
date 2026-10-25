@@ -5,7 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 import setup
@@ -157,7 +156,8 @@ def test_clean_file_passes_silently(tmp_path):
 
 
 def test_blocking_web_hooks_are_not_verbose(tmp_path):
-    yaml = pytest.importorskip("yaml")
+    import yaml
+
     cfg = yaml.safe_load(setup.build_precommit_config(tmp_path, ["web"]))
     hooks = {hook["id"]: hook for repo in cfg["repos"] for hook in repo["hooks"]}
     for pcid in ("js-file-size", "js-structure", "html-inline-js"):

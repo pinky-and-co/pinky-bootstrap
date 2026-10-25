@@ -325,7 +325,7 @@ def test_test_gate_declares_no_files_pattern():
     correct par construction : `run-tests` détecte les suites lui-même et sort en 0 quand il n'y en a
     pas. Ce test échoue si quelqu'un réintroduit un filtre — y compris un filtre « plus complet ».
     """
-    yaml = pytest.importorskip("yaml")
+    import yaml
 
     base = yaml.safe_load(
         (

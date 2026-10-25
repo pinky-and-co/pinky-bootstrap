@@ -36,12 +36,12 @@ pinky = "cli_pinky:main"
 [project.urls]
 Repository = "https://github.com/pinky-and-co/pinky-bootstrap"
 
-# Just `pytest`: pyyaml is already a core dependency (above), and the moteur's OWN pre-commit hooks
-# (ruff/mypy/bandit/darglint/…) are provisioned hermetically by prek itself (`language: python` —
-# see .github/workflows/hooks-portability.yml), not by this group. A lib's dev group carries its
-# doc-build toolchain (mkdocs*) too; the moteur has none of that yet.
+# Just `pytest` and `pyyaml` (the suite parses the distributed YAML configs); the moteur's OWN
+# pre-commit hooks (ruff/mypy/bandit/darglint/…) are provisioned hermetically by prek itself
+# (`language: python` — see .github/workflows/hooks-portability.yml), not by this group. A lib's
+# dev group carries its doc-build toolchain (mkdocs*) too; the moteur has none of that yet.
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest", "pyyaml>=3.12"]
 
 # ── uv ───────────────────────────────────────────────────────────────────────
 [tool.uv]

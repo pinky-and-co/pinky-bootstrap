@@ -25,7 +25,8 @@ IDENTITY = setup.SuiteIdentity(
 
 @pytest.mark.parametrize("extras", [["python"], ["python-lint"]])
 def test_linters_skip_the_distributed_hooks(tmp_path, extras):
-    yaml = pytest.importorskip("yaml")
+    import yaml
+
     config = yaml.safe_load(setup.build_precommit_config(tmp_path, extras))
     hooks = {hook["id"]: hook for repo in config["repos"] for hook in repo["hooks"]}
     assert {pcid: hooks[pcid].get("exclude") for pcid in SCOPED_HOOKS} == {
