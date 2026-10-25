@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-yaml = pytest.importorskip("yaml")
+import yaml
 
 import sys  # noqa: E402
 
