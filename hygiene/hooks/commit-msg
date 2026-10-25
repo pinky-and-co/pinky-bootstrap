@@ -16,6 +16,15 @@
 COMMIT_MSG_FILE=$1
 COMMIT_MSG=$(head -1 "$COMMIT_MSG_FILE")
 
+# `${#}` compte des caractères sous locale UTF-8, des octets sinon, et le bash de Git démarre en C :
+# sans bascule, colonne et largeur des soulignements sortent comptées en octets. Le probe vérifie que
+# la bascule a pris — sans C.UTF-8, tout reste tel quel.
+_probe=$'\xe2\x9c\x85' # ✅ — 3 octets UTF-8, 1 caractère
+if [ "${#_probe}" -ne 1 ]; then
+    LC_ALL=C.UTF-8
+    [ "${#_probe}" -eq 1 ] && export LC_ALL
+fi
+
 # Même rendu que `_report.py` (ruff-style), en bash pur : ce hook n'a pas le droit de dépendre de
 # python. Couleur : `NO_COLOR` coupe, `FORCE_COLOR` / `CLICOLOR_FORCE` forcent, sinon terminal seul.
 if [ -z "$NO_COLOR" ] \

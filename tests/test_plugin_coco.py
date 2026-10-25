@@ -295,12 +295,13 @@ def test_render_plan_whole_string(env):
 
 
 def test_cortex_command_repeats_plugin_dir():
-    assert plugin_coco.cortex_command([Path("/a"), Path("/b")]) == [
+    dirs = [Path("/a"), Path("/b")]
+    assert plugin_coco.cortex_command(dirs) == [
         "cortex",
         "--plugin-dir",
-        "/a",
+        str(dirs[0]),
         "--plugin-dir",
-        "/b",
+        str(dirs[1]),
     ]
     assert plugin_coco.cortex_command([]) == ["cortex"]
 

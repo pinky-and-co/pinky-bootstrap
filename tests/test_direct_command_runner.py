@@ -8,6 +8,12 @@ from pathlib import Path
 
 import pytest
 
+# Le runner est POSIX par contrat (docstring : bash, `os.killpg`) — sous Windows il ne peut pas
+# lancer le script, reste silencieux, et un test qui lit sa sortie n'y prouve rien.
+_posix_runner = pytest.mark.skipif(
+    sys.platform == "win32", reason="runner POSIX (bash, os.killpg)"
+)
+
 RUNNER = (
     Path(__file__).parent.parent / "hygiene" / "vendor" / "direct_command_runner.py"
 )
@@ -54,6 +60,7 @@ def _run(tmp_path, args, script=None, grammar=None, timeout=5, raw_stdin=None):
     return proc.stdout
 
 
+@_posix_runner
 def test_conforming_args_block_with_script_output(tmp_path):
     out = json.loads(_run(tmp_path, "myrepo"))
     assert out["decision"] == "block"
@@ -61,11 +68,13 @@ def test_conforming_args_block_with_script_output(tmp_path):
     assert set(out) == {"decision", "reason"}
 
 
+@_posix_runner
 def test_empty_args_match_the_empty_form_and_expand_env_fallback(tmp_path):
     out = json.loads(_run(tmp_path, ""))
     assert out["reason"] == f"--root {tmp_path}"
 
 
+@_posix_runner
 def test_repeat_spec_takes_several_tokens_and_splices(tmp_path):
     out = json.loads(_run(tmp_path, "multi a b c"))
     assert out["reason"] == "multi a b c"
@@ -112,11 +121,13 @@ def test_malformed_stdin_and_grammar_are_silent(tmp_path):
     assert _run(tmp_path, "x", grammar=json.dumps({"forms": [{"match": ["x"]}]})) == ""
 
 
+@_posix_runner
 def test_empty_script_output_is_reported_explicitly(tmp_path):
     out = json.loads(_run(tmp_path, "x", script=_script(tmp_path, "true")))
     assert out["reason"] == "(no output)"
 
 
+@_posix_runner
 def test_timeout_kills_grandchildren_and_returns_promptly(tmp_path):
     import time
 
@@ -129,6 +140,7 @@ def test_timeout_kills_grandchildren_and_returns_promptly(tmp_path):
     assert not sentinel.exists()
 
 
+@_posix_runner
 def test_chatty_stderr_and_large_stdout_do_not_deadlock(tmp_path):
     body = "head -c 300000 /dev/zero | tr '\\0' e >&2\nhead -c 300000 /dev/zero | tr '\\0' o"
     out = json.loads(_run(tmp_path, "x", script=_script(tmp_path, body), timeout=10))
@@ -170,6 +182,7 @@ def test_quoted_and_equals_leading_dash_never_match(tmp_path):
         assert _run(tmp_path, bad) == "", bad
 
 
+@_posix_runner
 def test_set_project_dir_wins_over_the_cwd_fallback(tmp_path):
     script = _script(tmp_path)
     proc = subprocess.run(
@@ -223,6 +236,7 @@ def test_invalid_interpreter_is_silent(tmp_path):
     assert (proc.returncode, proc.stdout) == (0, "")
 
 
+@_posix_runner
 def test_direct_exec_and_python3_interpreters_run(tmp_path):
     grammar = json.dumps({"forms": [{"match": [], "emit": ["hi"]}]})
     event = {"command_args": "", "cwd": str(tmp_path)}
@@ -249,6 +263,7 @@ def test_unset_env_placeholder_is_silent(tmp_path):
     assert _run(tmp_path, "", grammar=grammar) == ""
 
 
+@_posix_runner
 def test_non_ascii_output_survives_a_strict_ascii_stdout(tmp_path):
     proc = subprocess.run(
         [
@@ -297,20 +312,24 @@ def _child_session_id(tmp_path, event_extra, ambient=None):
     return json.loads(proc.stdout)["reason"]
 
 
+@_posix_runner
 def test_runner_forwards_the_event_session_id_to_the_child(tmp_path):
     assert _child_session_id(tmp_path, {"session_id": "sess-42"}) == "sess-42"
 
 
+@_posix_runner
 def test_runner_event_session_id_wins_over_the_ambient_variable(tmp_path):
     out = _child_session_id(tmp_path, {"session_id": "sess-42"}, ambient="ambient")
     assert out == "sess-42"
 
 
+@_posix_runner
 def test_runner_leaves_the_environment_untouched_without_a_session_id(tmp_path):
     assert _child_session_id(tmp_path, {}) == "absent"
     assert _child_session_id(tmp_path, {}, ambient="ambient") == "ambient"
 
 
+@_posix_runner
 @pytest.mark.parametrize("bad", ["", None, 7, ["x"]])
 def test_runner_ignores_a_session_id_that_is_not_a_non_empty_string(tmp_path, bad):
     assert _child_session_id(tmp_path, {"session_id": bad}) == "absent"
@@ -322,6 +341,7 @@ def _path_grammar():
     )
 
 
+@_posix_runner
 def test_at_prefixed_relative_path_is_resolved_against_cwd(tmp_path):
     cwd = tmp_path / "a" / "b"
     cwd.mkdir(parents=True)
@@ -330,6 +350,7 @@ def test_at_prefixed_relative_path_is_resolved_against_cwd(tmp_path):
     assert out["reason"] == f"--repo {tmp_path / 'a' / 'repo'}"
 
 
+@_posix_runner
 def test_at_prefixed_absolute_path_loses_trailing_slash(tmp_path):
     out = json.loads(_run(tmp_path, "@/x/y/", grammar=_path_grammar()))
     assert out["reason"] == "--repo /x/y"
