@@ -33,7 +33,7 @@ def _repo(tmp_path: Path, files: dict[str | bytes, str | bytes]) -> Path:
         if isinstance(text, bytes):
             target.write_bytes(text)
         else:
-            target.write_text(text, encoding="utf-8")
+            target.write_text(text, encoding="utf-8", newline="")
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     return repo
