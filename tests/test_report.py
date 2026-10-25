@@ -97,12 +97,7 @@ def test_render_skips_the_excerpt_when_the_file_is_unreadable(tmp_path):
     missing = str(tmp_path / "gone.py")
     out = report.render([Diagnostic("X", "boom", missing, 3, 1, 1)])
     assert out == (
-        f"{tmp_path}/gone.py (1)\n"
-        "\n"
-        "  X boom\n"
-        f"   --> {missing}:3:1\n"
-        "\n"
-        "Found 1 error in 1 file."
+        f"{missing} (1)\n\n  X boom\n   --> {missing}:3:1\n\nFound 1 error in 1 file."
     )
 
 
@@ -134,7 +129,8 @@ def test_use_color(env, tty, expected):
 def test_display_is_relative_under_the_working_directory(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert report.display(tmp_path / "a/b.md") == "a/b.md"
-    assert report.display(Path("/elsewhere/c.md")) == "/elsewhere/c.md"
+    elsewhere = Path("/elsewhere/c.md")
+    assert report.display(elsewhere) == str(elsewhere)
 
 
 def test_at_underlines_the_needle_case_insensitively_else_the_whole_line(

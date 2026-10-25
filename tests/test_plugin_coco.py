@@ -307,9 +307,14 @@ def test_cortex_command_repeats_plugin_dir():
 
 
 def test_cortex_env_adds_project_dir_and_keeps_the_rest():
-    env = plugin_coco.cortex_env({"PATH": "/bin", "HOME": "/home"}, Path("/ws/repo"))
+    project = Path("/ws/repo")
+    env = plugin_coco.cortex_env({"PATH": "/bin", "HOME": "/home"}, project)
 
-    assert env == {"PATH": "/bin", "HOME": "/home", "CLAUDE_PROJECT_DIR": "/ws/repo"}
+    assert env == {
+        "PATH": "/bin",
+        "HOME": "/home",
+        "CLAUDE_PROJECT_DIR": str(project),
+    }
 
 
 # ── run(): picker → plan → confirm → launch, mocked cortex ─────────────────────────────────
