@@ -364,7 +364,8 @@ def fix_repo(
 
     Returns:
         What changed and what it saves; a file that cannot be parsed, or whose program would
-        change, is listed as skipped and left untouched.
+        change, is listed as skipped and left untouched. A file holding carriage returns is
+        changed even with no other drift — it is rewritten with LF line endings.
 
     Raises:
         ValueError: The kind has no fixer.
@@ -378,13 +379,14 @@ def fix_repo(
     for path in python_files(repo):
         rel = path.relative_to(repo)
         try:
+            raw = path.read_bytes()
             source = path.read_text(encoding="utf-8")
             fixed = kind.fix(source)
         except _UNREADABLE:
             result.skipped.append(rel)
             continue
         result.total += weigh(source)
-        if fixed != source:
+        if b"\r" in raw or fixed != source:
             result.changed.append(rel)
             result.before += weigh(source)
             rewritten[path] = fixed
@@ -393,7 +395,7 @@ def fix_repo(
             result.after += weigh(fixed)
         return result
     for path, fixed in rewritten.items():
-        path.write_text(fixed, encoding="utf-8")
+        path.write_text(fixed, encoding="utf-8", newline="")
     if reformat and rewritten:
         _reformat(repo, list(rewritten))
     for path in rewritten:

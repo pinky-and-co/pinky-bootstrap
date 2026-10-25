@@ -24,11 +24,15 @@ SRC = (
 STRIPPED = "import os  # noqa: F401\n\nx = 1\ny = 2\n"
 
 
-def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
+def _repo(tmp_path: Path, files: dict[str, str | bytes]) -> Path:
     repo = tmp_path / "demo"
     repo.mkdir()
     for name, text in files.items():
-        (repo / name).write_text(text, encoding="utf-8")
+        target = repo / name
+        if isinstance(text, bytes):
+            target.write_bytes(text)
+        else:
+            target.write_text(text, encoding="utf-8")
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "add", "."], cwd=repo, check=True)
     return repo
@@ -194,6 +198,24 @@ def test_fix_rewrites_the_file_and_skips_what_does_not_parse(tmp_path):
     assert (repo / "bad.py").read_text(encoding="utf-8") == "def (:\n"
     assert fix.changed == [Path("mod.py")]
     assert fix.skipped == [Path("bad.py")]
+
+
+def test_fix_writes_lf_and_counts_a_preexisting_crlf_file_as_drift(tmp_path):
+    """Whole-bytes oracle: the fixer's write carries no end-of-line translation, so a fixed
+    file is LF on disk on any platform; carriage returns are drift themselves — a CRLF file
+    with nothing else to strip counts as changed in dry-run and comes back LF."""
+    repo = _repo(
+        tmp_path,
+        {
+            "drifted.py": b"x = 1  # why\r\ny = 2\r\n",
+            "crlf_only.py": b"x = 1\r\ny = 2\r\n",
+        },
+    )
+    dry = llm_drift.fix_repo(repo, "comments", dry_run=True, reformat=False)
+    assert dry.changed == [Path("crlf_only.py"), Path("drifted.py")]
+    llm_drift.fix_repo(repo, "comments", dry_run=False, reformat=False)
+    assert (repo / "drifted.py").read_bytes() == b"x = 1\ny = 2\n"
+    assert (repo / "crlf_only.py").read_bytes() == b"x = 1\ny = 2\n"
 
 
 def test_fix_refuses_a_kind_without_fixer(tmp_path):
